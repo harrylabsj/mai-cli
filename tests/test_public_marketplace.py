@@ -4,11 +4,44 @@ import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
-from mai_cli.api.app import _list_agents
+from mai_cli.api.app import AuthError, _list_agents
 from mai_cli.api.app import create_app
 from mai_cli.db.session import db_session
+
+
+class FakeFastAPI:
+    def __init__(self, *, title, version):
+        self.title = title
+        self.version = version
+        self.state = SimpleNamespace()
+        self.routes = []
+        self.exception_handlers = {}
+
+    def exception_handler(self, exc_type):
+        def decorator(func):
+            self.exception_handlers[exc_type] = func
+            return func
+
+        return decorator
+
+    def get(self, path):
+        return self._route("GET", path)
+
+    def post(self, path):
+        return self._route("POST", path)
+
+    def patch(self, path):
+        return self._route("PATCH", path)
+
+    def _route(self, method, path):
+        def decorator(func):
+            self.routes.append(SimpleNamespace(methods={method}, path=path, endpoint=func))
+            return func
+
+        return decorator
 
 
 class PublicMarketplaceTest(unittest.TestCase):
@@ -85,6 +118,30 @@ class PublicMarketplaceTest(unittest.TestCase):
             self.assertIn("agents", tables)
             self.assertIn("moderation_flags", tables)
             self.assertNotIn("payments", tables)
+
+    def test_fastapi_auth_errors_are_mapped_to_403_json(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "marketplace.sqlite"
+            with patch("mai_cli.api.app.FastAPI", FakeFastAPI):
+                app = create_app(db_file)
+
+        self.assertTrue(app.state.fastapi_available)
+        self.assertIn(AuthError, app.exception_handlers)
+
+        response = app.exception_handlers[AuthError](None, AuthError("merchant token required"))
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(
+            json.loads(response.body.decode("utf-8")),
+            {"ok": False, "error": "merchant token required"},
+        )
+
+        create_product = next(
+            route.endpoint
+            for route in app.routes
+            if route.path == "/products" and "POST" in route.methods
+        )
+        with self.assertRaises(AuthError):
+            create_product({"merchant_id": "seller-a", "name": "Tea", "price_cents": 500})
 
     def test_fallback_asgi_api_runs_marketplace_consultation_flow_with_sqlite(self):
         with tempfile.TemporaryDirectory() as tmp:

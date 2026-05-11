@@ -1,4 +1,5 @@
 import json
+import subprocess
 import sqlite3
 import sys
 import tempfile
@@ -665,6 +666,19 @@ class MaiCliMvpTest(unittest.TestCase):
         with self.assertRaises(SystemExit):
             with redirect_stderr(errors):
                 mai.main(["--db", str(Path(tempfile.gettempdir()) / "unused-mai-cli.sqlite"), "order", "create"])
+
+    def test_nested_help_shows_subcommand_options(self):
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "scripts" / "mai.py"), "buyer", "chat", "--help"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("Run a lightweight buyer chat REPL", result.stdout)
+        self.assertIn("--conversation", result.stdout)
+        self.assertNotIn("{merchant,delivery,product,buyer,agent,db}", result.stdout)
 
 
 if __name__ == "__main__":

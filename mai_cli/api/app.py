@@ -25,12 +25,23 @@ from mai_cli.db.session import db_session, decode_json, now_iso
 
 try:  # pragma: no cover - exercised when optional dependency is installed
     from fastapi import FastAPI
+    from fastapi.exceptions import RequestValidationError
+    from fastapi.responses import JSONResponse
 except ModuleNotFoundError:  # pragma: no cover - local CI currently has no fastapi
     FastAPI = None  # type: ignore[assignment]
+    JSONResponse = None  # type: ignore[assignment]
+    RequestValidationError = None  # type: ignore[assignment]
 
 
 class AuthError(Exception):
     pass
+
+
+def _json_error_response(status_code: int, error: str) -> Any:
+    payload = {"ok": False, "error": error}
+    if JSONResponse is not None:  # pragma: no cover - exercised with fastapi installed
+        return JSONResponse(status_code=status_code, content=payload)
+    return SimpleNamespace(status_code=status_code, body=json.dumps(payload, ensure_ascii=False).encode("utf-8"))
 
 
 class RouteInfo:
@@ -636,6 +647,27 @@ def create_app(db_path: str | Path = "mai-cli.sqlite") -> Any:
     app = FastAPI(title="mai-cli Marketplace API", version=VERSION)
     app.state.db_path = str(db_path)
     app.state.fastapi_available = True
+
+    @app.exception_handler(AuthError)
+    def auth_error_handler(_request: Any, exc: AuthError) -> Any:
+        return _json_error_response(403, str(exc))
+
+    @app.exception_handler(KeyError)
+    def key_error_handler(_request: Any, exc: KeyError) -> Any:
+        return _json_error_response(400, str(exc))
+
+    @app.exception_handler(ValueError)
+    def value_error_handler(_request: Any, exc: ValueError) -> Any:
+        return _json_error_response(400, str(exc))
+
+    @app.exception_handler(SystemExit)
+    def system_exit_handler(_request: Any, exc: SystemExit) -> Any:
+        return _json_error_response(400, str(exc))
+
+    if RequestValidationError is not None:  # pragma: no cover - exercised with fastapi installed
+        @app.exception_handler(RequestValidationError)
+        def request_validation_error_handler(_request: Any, exc: Exception) -> Any:
+            return _json_error_response(400, str(exc))
 
     @app.get("/health")
     def health() -> dict[str, Any]:

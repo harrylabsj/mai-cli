@@ -704,7 +704,11 @@ def build_parser() -> argparse.ArgumentParser:
     buyer_intent.add_argument("--text", required=True)
     buyer_intent.add_argument("--format", choices=["text", "json"], default="text")
     buyer_intent.set_defaults(func=cmd_buyer_intent)
-    buyer_chat = buyer_sub.add_parser("chat", help="Run a lightweight buyer chat REPL from stdin")
+    buyer_chat = buyer_sub.add_parser(
+        "chat",
+        help="Run a lightweight buyer chat REPL from stdin",
+        description="Run a lightweight buyer chat REPL from stdin",
+    )
     buyer_chat.add_argument("--buyer", required=True)
     buyer_chat.add_argument("--conversation", default="")
     buyer_chat.add_argument("--city", default="")
@@ -844,10 +848,28 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _is_top_level_help(args_list: list[str]) -> bool:
+    if not any(arg in {"-h", "--help"} for arg in args_list):
+        return False
+    remaining: list[str] = []
+    skip_next = False
+    for arg in args_list:
+        if skip_next:
+            skip_next = False
+            continue
+        if arg == "--db":
+            skip_next = True
+            continue
+        if arg.startswith("--db=") or arg in {"-h", "--help"}:
+            continue
+        remaining.append(arg)
+    return not remaining
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = build_parser()
     args_list = list(sys.argv[1:] if argv is None else argv)
-    if any(arg in {"-h", "--help"} for arg in args_list):
+    if _is_top_level_help(args_list):
         parser.print_help()
         return
     args = parser.parse_args(args_list)

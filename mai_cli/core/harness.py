@@ -80,7 +80,7 @@ def claim_agent_message(
         "select * from agent_message_processes where agent_id = ? and message_id = ?",
         (agent_id, message_id),
     ).fetchone()
-    if row is not None and row["status"] == "processed":
+    if row is not None and row["status"] != "failed":
         return {
             "claimed": False,
             "status": row["status"],
@@ -88,24 +88,51 @@ def claim_agent_message(
             "idempotency_key": row["idempotency_key"],
         }
 
-    attempts = int(row["attempts"] or 0) + 1 if row is not None else 1
-    conn.execute(
-        """
-        insert into agent_message_processes(
-            agent_id, message_id, conversation_id, idempotency_key, status,
-            attempts, last_error, created_at, updated_at, processed_at
+    if row is None:
+        attempts = 1
+        try:
+            conn.execute(
+                """
+                insert into agent_message_processes(
+                    agent_id, message_id, conversation_id, idempotency_key, status,
+                    attempts, last_error, created_at, updated_at, processed_at
+                )
+                values (?, ?, ?, ?, 'processing', ?, '', ?, ?, '')
+                """,
+                (agent_id, message_id, conversation_id, idempotency_key, attempts, now, now),
+            )
+        except sqlite3.IntegrityError:
+            current = agent_message_process_summary(conn, agent_id, message_id)
+            return {
+                "claimed": False,
+                "status": current["status"],
+                "attempts": current["attempts"],
+                "idempotency_key": current["idempotency_key"],
+            }
+    else:
+        attempts = int(row["attempts"] or 0) + 1
+        cursor = conn.execute(
+            """
+            update agent_message_processes
+            set conversation_id = ?,
+                idempotency_key = ?,
+                status = 'processing',
+                attempts = attempts + 1,
+                last_error = '',
+                updated_at = ?,
+                processed_at = ''
+            where agent_id = ? and message_id = ? and status = 'failed'
+            """,
+            (conversation_id, idempotency_key, now, agent_id, message_id),
         )
-        values (?, ?, ?, ?, 'processing', ?, '', ?, ?, '')
-        on conflict(agent_id, message_id) do update set
-            conversation_id = excluded.conversation_id,
-            idempotency_key = excluded.idempotency_key,
-            status = 'processing',
-            attempts = excluded.attempts,
-            last_error = '',
-            updated_at = excluded.updated_at
-        """,
-        (agent_id, message_id, conversation_id, idempotency_key, attempts, now, now),
-    )
+        if cursor.rowcount != 1:
+            current = agent_message_process_summary(conn, agent_id, message_id)
+            return {
+                "claimed": False,
+                "status": current["status"],
+                "attempts": current["attempts"],
+                "idempotency_key": current["idempotency_key"],
+            }
     append_audit_event(
         conn,
         conversation_id,

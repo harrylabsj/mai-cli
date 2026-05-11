@@ -6,6 +6,7 @@ from pathlib import Path
 from mai_cli.agents import buyer_cli, merchant_agent
 from mai_cli.core.catalog import create_merchant, create_product
 from mai_cli.core.conversations import conversation_summary
+from mai_cli.core.harness import claim_agent_message
 from mai_cli.db.session import db_session, decode_json
 
 
@@ -66,6 +67,29 @@ class OrchestrationHarnessTest(unittest.TestCase):
                 self.assertTrue(
                     any(event["event"] == "agent_message_processed" for event in updated["audit_events"])
                 )
+
+    def test_processing_claim_is_not_reclaimed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.seed_conversation(db_file)
+
+            with db_session(db_file) as conn:
+                first = claim_agent_message(conn, "merchant-agent", "CONV-0001", 1, "merchant-agent:1")
+                second = claim_agent_message(conn, "merchant-agent", "CONV-0001", 1, "merchant-agent:1")
+
+                self.assertTrue(first["claimed"])
+                self.assertFalse(second["claimed"])
+                self.assertEqual(second["status"], "processing")
+
+                process = conn.execute(
+                    """
+                    select attempts, status from agent_message_processes
+                    where agent_id = ? and message_id = ?
+                    """,
+                    ("merchant-agent", 1),
+                ).fetchone()
+                self.assertEqual(int(process["attempts"]), 1)
+                self.assertEqual(process["status"], "processing")
 
     def test_schema_migration_adds_harness_tables_to_existing_database(self):
         with tempfile.TemporaryDirectory() as tmp:
