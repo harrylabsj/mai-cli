@@ -44,7 +44,7 @@ class OpenAICompatibleProvider:
 
     def complete(
         self,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         tools: list[dict[str, Any]] | None = None,
     ) -> LLMResponse:
         payload: dict[str, Any] = {

@@ -82,7 +82,7 @@ python3 scripts/mai.py --db ./mai-cli.sqlite channel ingest \
   --format json
 ```
 
-The buyer id is always derived as `<channel>:<external-user>` for public channel ingress. Message payloads preserve `source_id`, `channel`, `external_user_id`, and optional `external_message_id`.
+The buyer id is always derived as `<channel>:<external-user>` for public channel ingress. Message payloads preserve `source_id`, `channel`, `external_user_id`, and optional `external_message_id`. When `external_message_id` is provided, retries with the same `(channel, external_user_id, external_message_id)` return the original message instead of appending a duplicate.
 
 ## Conversation CLI
 
@@ -113,6 +113,15 @@ python3 scripts/mai.py agent stop --merchant seller-a --db ./mai-cli.sqlite --fo
 
 Pid, state, and log files are written under `~/.local/state/mai-cli/` by default. Set `MAI_CLI_STATE_DIR` to use a different state directory for tests or demos.
 
+To run one merchant-agent pass through the Marketplace API boundary instead of direct SQLite access:
+
+```bash
+python3 scripts/mai.py --db ./mai-cli.sqlite agent token --merchant seller-a --format json
+python3 scripts/mai.py agent run --merchant seller-a --once --api-url http://127.0.0.1:8765 --agent-token "$MAI_AGENT_TOKEN" --format json
+```
+
+Use `agent token` locally, or `POST /agents/tokens` with a merchant token over the API, to issue a narrower token for the default merchant agent. API-backed agent runs accept `--agent-token` for that scoped token, while `--merchant-token` remains available for local demos.
+
 ## Marketplace API
 
 Inspect routes:
@@ -121,11 +130,11 @@ Inspect routes:
 python3 scripts/mai.py --db ./mai-cli.sqlite api routes --format json
 ```
 
-The local API covers catalog, search, conversations, message append/close, agent heartbeats, and human-review queues. In environments without FastAPI installed, `create_app()` still returns a lightweight ASGI app for local tests and demos.
+The local API covers catalog, search, conversations, message append/close, agent token issuance, agent heartbeats, agent message claim/complete/fail/abandon, and human-review queues. In environments without FastAPI installed, `create_app()` still returns a lightweight ASGI app for local tests and demos.
 
-External channel adapters can use `POST /channels/messages` with `channel`, `external_user_id`, `text`, and optional `conversation_id`, `city`, `area`, and `external_message_id`.
+External channel adapters can use `POST /channels/messages` with `channel`, `external_user_id`, `text`, and optional `conversation_id`, `city`, `area`, and `external_message_id`. The optional `external_message_id` is an idempotency key for webhook retry safety.
 
-`POST /merchants` returns a local `merchant_token`. Product writes, merchant profile updates, merchant/merchant-agent replies, heartbeats, and human-review write actions require that token in the JSON body as `merchant_token` or as a Bearer token. Buyer search and buyer conversation creation remain tokenless for local demos.
+`POST /merchants` returns a local `merchant_token`. Product writes, merchant profile updates, merchant human replies, and human-review resolution require that merchant token in the JSON body as `merchant_token` or as a Bearer token. Agent heartbeats, agent message processing, merchant-agent replies, and merchant-agent human-review flags may use either the merchant token or a scoped agent token. Buyer search and buyer conversation creation remain tokenless for local demos.
 
 Serve the FastAPI app after installing API dependencies:
 

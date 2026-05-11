@@ -6,15 +6,19 @@ import sqlite3
 from typing import Any
 
 from mai_cli.core.catalog import search_products
-from mai_cli.core.conversations import append_message, conversation_summary, ensure_conversation
+from mai_cli.core.conversations import append_message, conversation_summary, ensure_conversation, message_summary
 from mai_cli.core.harness import append_audit_event
 from mai_cli.core.risk import infer_intent
+from mai_cli.db.session import now_iso
 
 MVP_WARNINGS = [
     "MVP records consultation only; no order is created.",
     "No stock is reserved by mai-cli.",
     "Payment, refund, escrow, and delivery-success handling are outside this version.",
 ]
+
+PROCESSING_STATUS = "processing"
+PROCESSED_STATUS = "processed"
 
 
 def channel_buyer_id(channel: str, external_user_id: str) -> str:
@@ -52,6 +56,116 @@ def _channel_payload(
     return payload
 
 
+def _record_ingress_replay(conn: sqlite3.Connection, row: sqlite3.Row, channel: str) -> None:
+    conversation_id = str(row["conversation_id"] or "")
+    message_id = int(row["message_id"] or 0)
+    if not conversation_id or message_id <= 0:
+        return
+    conn.execute(
+        """
+        update channel_message_ingresses
+        set updated_at = ?
+        where channel = ? and external_user_id = ? and external_message_id = ?
+        """,
+        (now_iso(), channel, row["external_user_id"], row["external_message_id"]),
+    )
+    append_audit_event(
+        conn,
+        conversation_id,
+        f"channel:{channel}",
+        "channel_message_replayed",
+        {
+            "channel": channel,
+            "external_user_id": row["external_user_id"],
+            "external_message_id": row["external_message_id"],
+            "message_id": message_id,
+        },
+    )
+
+
+def _existing_ingress_response(conn: sqlite3.Connection, row: sqlite3.Row, buyer_id: str, channel: str) -> dict[str, Any]:
+    if row["status"] != PROCESSED_STATUS or int(row["message_id"] or 0) <= 0:
+        raise SystemExit(
+            f"Channel message {row['external_message_id']} is already being processed for {channel}:{row['external_user_id']}"
+        )
+    conversation_id = str(row["conversation_id"])
+    message = message_summary(conn, int(row["message_id"]))
+    _record_ingress_replay(conn, row, channel)
+    return {
+        "ok": True,
+        "idempotent": True,
+        "buyer_id": buyer_id,
+        "channel": channel,
+        "conversation": conversation_summary(conn, conversation_id),
+        "message": message,
+        "warnings": MVP_WARNINGS,
+    }
+
+
+def _begin_channel_ingress(
+    conn: sqlite3.Connection,
+    channel: str,
+    external_user_id: str,
+    external_message_id: str,
+    buyer_id: str,
+) -> dict[str, Any] | None:
+    if not external_message_id:
+        return None
+    row = conn.execute(
+        """
+        select * from channel_message_ingresses
+        where channel = ? and external_user_id = ? and external_message_id = ?
+        """,
+        (channel, external_user_id, external_message_id),
+    ).fetchone()
+    if row is not None:
+        return _existing_ingress_response(conn, row, buyer_id, channel)
+    now = now_iso()
+    try:
+        conn.execute(
+            """
+            insert into channel_message_ingresses(
+                channel, external_user_id, external_message_id, status,
+                conversation_id, message_id, created_at, updated_at
+            )
+            values (?, ?, ?, ?, '', 0, ?, ?)
+            """,
+            (channel, external_user_id, external_message_id, PROCESSING_STATUS, now, now),
+        )
+    except sqlite3.IntegrityError:
+        row = conn.execute(
+            """
+            select * from channel_message_ingresses
+            where channel = ? and external_user_id = ? and external_message_id = ?
+            """,
+            (channel, external_user_id, external_message_id),
+        ).fetchone()
+        if row is not None:
+            return _existing_ingress_response(conn, row, buyer_id, channel)
+        raise
+    return None
+
+
+def _complete_channel_ingress(
+    conn: sqlite3.Connection,
+    channel: str,
+    external_user_id: str,
+    external_message_id: str,
+    conversation_id: str,
+    message_id: int,
+) -> None:
+    if not external_message_id:
+        return
+    conn.execute(
+        """
+        update channel_message_ingresses
+        set status = ?, conversation_id = ?, message_id = ?, updated_at = ?
+        where channel = ? and external_user_id = ? and external_message_id = ?
+        """,
+        (PROCESSED_STATUS, conversation_id, int(message_id), now_iso(), channel, external_user_id, external_message_id),
+    )
+
+
 def ingest_buyer_message(
     conn: sqlite3.Connection,
     channel: str,
@@ -71,7 +185,11 @@ def ingest_buyer_message(
 
     resolved_buyer_id = channel_buyer_id(channel, external_user_id)
     source_id = f"channel:{channel}"
+    external_message_id = str(external_message_id or "").strip()
     if conversation_id:
+        existing = _begin_channel_ingress(conn, channel, external_user_id, external_message_id, resolved_buyer_id)
+        if existing is not None:
+            return existing
         conversation = conversation_summary(conn, conversation_id)
         if conversation["buyer_id"] != resolved_buyer_id:
             raise SystemExit(f"Channel buyer {resolved_buyer_id} cannot write to conversation {conversation_id}")
@@ -83,6 +201,7 @@ def ingest_buyer_message(
             text,
             structured_payload=_channel_payload(channel, external_user_id, source_id, external_message_id=external_message_id),
         )
+        _complete_channel_ingress(conn, channel, external_user_id, external_message_id, conversation_id, int(message["id"]))
         append_audit_event(
             conn,
             conversation_id,
@@ -92,6 +211,7 @@ def ingest_buyer_message(
         )
         return {
             "ok": True,
+            "idempotent": False,
             "buyer_id": resolved_buyer_id,
             "channel": channel,
             "conversation": conversation_summary(conn, conversation_id),
@@ -103,6 +223,7 @@ def ingest_buyer_message(
     if not candidates:
         return {
             "ok": True,
+            "idempotent": False,
             "buyer_id": resolved_buyer_id,
             "channel": channel,
             "candidates": [],
@@ -111,6 +232,9 @@ def ingest_buyer_message(
             "missing_facts": ["merchant", "product"],
         }
 
+    existing = _begin_channel_ingress(conn, channel, external_user_id, external_message_id, resolved_buyer_id)
+    if existing is not None:
+        return existing
     selected = candidates[0]
     conversation = ensure_conversation(conn, resolved_buyer_id, selected["merchant_id"], selected["sku"])
     message = append_message(
@@ -129,6 +253,7 @@ def ingest_buyer_message(
             external_message_id=external_message_id,
         ),
     )
+    _complete_channel_ingress(conn, channel, external_user_id, external_message_id, conversation["id"], int(message["id"]))
     append_audit_event(
         conn,
         conversation["id"],
@@ -138,6 +263,7 @@ def ingest_buyer_message(
     )
     return {
         "ok": True,
+        "idempotent": False,
         "buyer_id": resolved_buyer_id,
         "channel": channel,
         "candidates": candidates,

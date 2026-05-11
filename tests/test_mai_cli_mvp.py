@@ -195,6 +195,8 @@ class MaiCliMvpTest(unittest.TestCase):
                     "whatsapp",
                     "--external-user",
                     "+15550001111",
+                    "--external-message-id",
+                    "wa-msg-1",
                     "--text",
                     "今天想买龙井礼盒，西湖附近能送吗？",
                     "--city",
@@ -211,6 +213,31 @@ class MaiCliMvpTest(unittest.TestCase):
             self.assertEqual(opened["message"]["structured_payload"]["source_id"], "channel:whatsapp")
             self.assertEqual(opened["message"]["structured_payload"]["channel"], "whatsapp")
             self.assertEqual(opened["message"]["structured_payload"]["external_user_id"], "+15550001111")
+
+            retried_open = json.loads(
+                self.run_cli(
+                    db_file,
+                    "channel",
+                    "ingest",
+                    "--channel",
+                    "whatsapp",
+                    "--external-user",
+                    "+15550001111",
+                    "--external-message-id",
+                    "wa-msg-1",
+                    "--text",
+                    "今天想买龙井礼盒，西湖附近能送吗？",
+                    "--city",
+                    "Hangzhou",
+                    "--area",
+                    "西湖附近",
+                    "--format",
+                    "json",
+                )
+            )
+            self.assertTrue(retried_open["idempotent"])
+            self.assertEqual(retried_open["message"]["id"], opened["message"]["id"])
+            self.assertEqual(len(retried_open["conversation"]["messages"]), 1)
 
             continued = json.loads(
                 self.run_cli(
@@ -235,6 +262,48 @@ class MaiCliMvpTest(unittest.TestCase):
                 continued["conversation"]["messages"][1]["structured_payload"]["source_id"],
                 "channel:whatsapp",
             )
+
+            delivered = json.loads(
+                self.run_cli(
+                    db_file,
+                    "channel",
+                    "ingest",
+                    "--channel",
+                    "whatsapp",
+                    "--external-user",
+                    "+15550001111",
+                    "--conversation",
+                    "CONV-0001",
+                    "--external-message-id",
+                    "wa-msg-2",
+                    "--text",
+                    "今天能送到吗？",
+                    "--format",
+                    "json",
+                )
+            )
+            retried = json.loads(
+                self.run_cli(
+                    db_file,
+                    "channel",
+                    "ingest",
+                    "--channel",
+                    "whatsapp",
+                    "--external-user",
+                    "+15550001111",
+                    "--conversation",
+                    "CONV-0001",
+                    "--external-message-id",
+                    "wa-msg-2",
+                    "--text",
+                    "今天能送到吗？",
+                    "--format",
+                    "json",
+                )
+            )
+            self.assertTrue(retried["idempotent"])
+            self.assertEqual(retried["message"]["id"], delivered["message"]["id"])
+            self.assertEqual(len(retried["conversation"]["messages"]), 3)
 
     def test_bargaining_is_marked_for_human_review(self):
         with tempfile.TemporaryDirectory() as tmp:

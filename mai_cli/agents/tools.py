@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
+import urllib.error
+import urllib.parse
+import urllib.request
 from typing import Any, Protocol
 
 from mai_cli import VERSION
@@ -183,3 +187,207 @@ class SQLiteMerchantAgentTools:
 
     def abandon_stale_messages(self, agent_id: str, stale_after_seconds: int = 300) -> list[dict[str, Any]]:
         return abandon_stale_agent_messages(self.conn, agent_id, stale_after_seconds=stale_after_seconds)
+
+
+class HTTPMarketplaceError(RuntimeError):
+    pass
+
+
+class HTTPMerchantAgentTools:
+    def __init__(
+        self,
+        base_url: str,
+        merchant_id: str,
+        merchant_token: str,
+        timeout: float = 10.0,
+        opener: Any | None = None,
+    ):
+        self.base_url = str(base_url or "").rstrip("/")
+        if not self.base_url:
+            raise ValueError("base_url is required")
+        self.merchant_id = str(merchant_id or "").strip()
+        if not self.merchant_id:
+            raise ValueError("merchant_id is required")
+        self.merchant_token = str(merchant_token or "").strip()
+        if not self.merchant_token:
+            raise ValueError("merchant_token is required")
+        self.timeout = float(timeout or 10.0)
+        self.opener = opener or urllib.request.urlopen
+
+    def _merchant_payload(self, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+        merged = dict(payload or {})
+        merged["merchant_id"] = self.merchant_id
+        merged["merchant_token"] = self.merchant_token
+        return merged
+
+    def _token_payload(self, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+        merged = dict(payload or {})
+        merged["merchant_token"] = self.merchant_token
+        return merged
+
+    def _check_merchant(self, merchant_id: str) -> None:
+        if merchant_id != self.merchant_id:
+            raise ValueError(f"HTTP tools are scoped to merchant {self.merchant_id}, not {merchant_id}")
+
+    def _request(
+        self,
+        method: str,
+        path: str,
+        payload: dict[str, Any] | None = None,
+        query: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        url = f"{self.base_url}/{path.lstrip('/')}"
+        if query:
+            clean_query = {key: value for key, value in query.items() if value not in (None, "")}
+            if clean_query:
+                url = f"{url}?{urllib.parse.urlencode(clean_query)}"
+        body = None
+        headers = {"Accept": "application/json", "Authorization": f"Bearer {self.merchant_token}"}
+        if payload is not None:
+            body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+            headers["Content-Type"] = "application/json"
+        request = urllib.request.Request(url, data=body, headers=headers, method=method.upper())
+        try:
+            with self.opener(request, timeout=self.timeout) as response:
+                raw_body = response.read()
+        except urllib.error.HTTPError as exc:  # pragma: no cover - network path
+            raw_body = exc.read()
+            raise HTTPMarketplaceError(self._error_message(raw_body, f"Marketplace API returned HTTP {exc.code}")) from exc
+        except urllib.error.URLError as exc:
+            raise HTTPMarketplaceError(f"Marketplace API request failed: {exc.reason}") from exc
+        result = self._decode_body(raw_body)
+        if result.get("ok") is False:
+            raise HTTPMarketplaceError(str(result.get("error") or "Marketplace API request failed"))
+        return result
+
+    @staticmethod
+    def _decode_body(raw_body: bytes) -> dict[str, Any]:
+        if not raw_body:
+            return {}
+        try:
+            decoded = json.loads(raw_body.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise HTTPMarketplaceError("Marketplace API returned invalid JSON") from exc
+        if not isinstance(decoded, dict):
+            raise HTTPMarketplaceError("Marketplace API returned a non-object response")
+        return decoded
+
+    @classmethod
+    def _error_message(cls, raw_body: bytes, fallback: str) -> str:
+        try:
+            decoded = cls._decode_body(raw_body)
+        except HTTPMarketplaceError:
+            return fallback
+        return str(decoded.get("error") or fallback)
+
+    def heartbeat(
+        self,
+        merchant_id: str,
+        status: str = "online",
+        last_error: str = "",
+        checked_count: int = 0,
+        replied_count: int = 0,
+    ) -> dict[str, Any]:
+        self._check_merchant(merchant_id)
+        result = self._request(
+            "POST",
+            "/agents/heartbeat",
+            self._merchant_payload(
+                {
+                    "status": status,
+                    "last_error": last_error,
+                    "checked_count": int(checked_count or 0),
+                    "replied_count": int(replied_count or 0),
+                }
+            ),
+        )
+        return dict(result["agent"])
+
+    def waiting_merchant_conversations(self, merchant_id: str) -> list[dict[str, Any]]:
+        self._check_merchant(merchant_id)
+        path = f"/merchants/{urllib.parse.quote(merchant_id, safe='')}/conversations"
+        result = self._request("GET", path, query={"status": "waiting_merchant"})
+        return list(result["conversations"])
+
+    def product_summary(self, sku: str) -> dict[str, Any]:
+        result = self._request("GET", f"/products/{urllib.parse.quote(str(sku), safe='')}")
+        return dict(result["product"])
+
+    def append_message(
+        self,
+        conversation_id: str,
+        sender: str,
+        intent: str,
+        text: str,
+        structured_payload: dict[str, Any],
+        status: str,
+    ) -> dict[str, Any]:
+        result = self._request(
+            "POST",
+            f"/conversations/{urllib.parse.quote(conversation_id, safe='')}/messages",
+            self._token_payload(
+                {
+                    "sender": sender,
+                    "intent": intent,
+                    "text": text,
+                    "structured_payload": structured_payload,
+                    "status": status,
+                }
+            ),
+        )
+        return dict(result["message"])
+
+    def add_flag(self, conversation_id: str, reason: str, sku: str = "") -> dict[str, Any]:
+        result = self._request(
+            "POST",
+            f"/conversations/{urllib.parse.quote(conversation_id, safe='')}/human-review",
+            self._merchant_payload({"reason": reason, "sku": sku, "source_id": f"mai-cli-merchant-agent:{self.merchant_id}"}),
+        )
+        return dict(result["review"])
+
+    def claim_message(self, agent_id: str, conversation_id: str, message_id: int, idempotency_key: str) -> dict[str, Any]:
+        result = self._request(
+            "POST",
+            "/agents/messages/claim",
+            self._merchant_payload(
+                {
+                    "agent_id": agent_id,
+                    "conversation_id": conversation_id,
+                    "message_id": int(message_id),
+                    "idempotency_key": idempotency_key,
+                }
+            ),
+        )
+        return dict(result["claim"])
+
+    def complete_message(self, agent_id: str, message_id: int) -> dict[str, Any]:
+        result = self._request(
+            "POST",
+            "/agents/messages/complete",
+            self._merchant_payload({"agent_id": agent_id, "message_id": int(message_id)}),
+        )
+        return dict(result["process"])
+
+    def fail_message(self, agent_id: str, message_id: int, error: str) -> dict[str, Any]:
+        result = self._request(
+            "POST",
+            "/agents/messages/fail",
+            self._merchant_payload({"agent_id": agent_id, "message_id": int(message_id), "error": error}),
+        )
+        return dict(result["process"])
+
+    def abandon_message(self, agent_id: str, message_id: int, error: str) -> dict[str, Any]:
+        result = self._request(
+            "POST",
+            "/agents/messages/abandon",
+            self._merchant_payload({"agent_id": agent_id, "message_id": int(message_id), "error": error}),
+        )
+        return dict(result["process"])
+
+    def abandon_stale_messages(self, agent_id: str, stale_after_seconds: int = 300) -> list[dict[str, Any]]:
+        result = self._request(
+            "POST",
+            "/agents/messages/abandon-stale",
+            self._merchant_payload({"agent_id": agent_id, "stale_after_seconds": int(stale_after_seconds or 300)}),
+        )
+        return list(result["abandoned"])

@@ -56,10 +56,13 @@ class FakeFastAPI:
 
 
 class PublicMarketplaceTest(unittest.TestCase):
-    async def asgi_request(self, app, method, path, payload=None, query_string=""):
+    async def asgi_request(self, app, method, path, payload=None, query_string="", headers=None):
         body = json.dumps(payload or {}).encode("utf-8") if payload is not None else b""
         received = False
         sent = []
+        request_headers = [(b"content-type", b"application/json")]
+        for key, value in (headers or {}).items():
+            request_headers.append((str(key).lower().encode("latin1"), str(value).encode("latin1")))
 
         async def receive():
             nonlocal received
@@ -77,7 +80,7 @@ class PublicMarketplaceTest(unittest.TestCase):
                 "method": method,
                 "path": path,
                 "query_string": query_string.encode("utf-8"),
-                "headers": [(b"content-type", b"application/json")],
+                "headers": request_headers,
             },
             receive,
             send,
@@ -86,8 +89,10 @@ class PublicMarketplaceTest(unittest.TestCase):
         response_body = b"".join(message.get("body", b"") for message in sent if message["type"] == "http.response.body")
         return status, json.loads(response_body.decode("utf-8") or "{}")
 
-    def request(self, app, method, path, payload=None, query_string=""):
-        return asyncio.run(self.asgi_request(app, method, path, payload=payload, query_string=query_string))
+    def request(self, app, method, path, payload=None, query_string="", headers=None):
+        return asyncio.run(
+            self.asgi_request(app, method, path, payload=payload, query_string=query_string, headers=headers)
+        )
 
     def fastapi_request(self, app, method, path, *args):
         endpoint = next(
@@ -132,6 +137,12 @@ class PublicMarketplaceTest(unittest.TestCase):
             self.assertIn("/conversations/{conversation_id}/close", route_paths)
             self.assertIn("/buyers/{buyer_id}/conversations", route_paths)
             self.assertIn("/agents/heartbeat", route_paths)
+            self.assertIn("/agents/tokens", route_paths)
+            self.assertIn("/agents/messages/claim", route_paths)
+            self.assertIn("/agents/messages/complete", route_paths)
+            self.assertIn("/agents/messages/fail", route_paths)
+            self.assertIn("/agents/messages/abandon", route_paths)
+            self.assertIn("/agents/messages/abandon-stale", route_paths)
             self.assertIn("/agents", route_paths)
             self.assertIn("/agents/{agent_id}", route_paths)
             self.assertIn("/merchants/{merchant_id}/agents", route_paths)
@@ -237,6 +248,46 @@ class PublicMarketplaceTest(unittest.TestCase):
                 with db_session(db_file) as conn:
                     count = conn.execute("select count(*) as count from products").fetchone()["count"]
                 self.assertEqual(count, 0)
+
+    def test_fastapi_and_fallback_accept_bearer_tokens_for_protected_routes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fallback_db = Path(tmp) / "fallback.sqlite"
+            fastapi_db = Path(tmp) / "fastapi.sqlite"
+            with patch("mai_cli.api.app.FastAPI", None):
+                fallback_app = create_app(fallback_db)
+            with patch("mai_cli.api.app.FastAPI", FakeFastAPI):
+                fastapi_app = create_app(fastapi_db)
+
+            merchant_payload = {"id": "seller-a", "name": "West Lake Tea"}
+            fallback_merchant = self.request(fallback_app, "POST", "/merchants", merchant_payload)
+            fastapi_merchant = self.fastapi_request(fastapi_app, "POST", "/merchants", merchant_payload)
+            product_payload = {
+                "merchant_id": "seller-a",
+                "sku": "tea-a",
+                "title": "Longjing Gift Box",
+                "price": 88,
+                "stock": 5,
+            }
+
+            fallback_product = self.request(
+                fallback_app,
+                "POST",
+                "/products",
+                product_payload,
+                headers={"authorization": f"Bearer {fallback_merchant[1]['merchant_token']}"},
+            )
+            fastapi_product = self.fastapi_request(
+                fastapi_app,
+                "POST",
+                "/products",
+                product_payload,
+                f"Bearer {fastapi_merchant[1]['merchant_token']}",
+            )
+
+            self.assertEqual(fallback_product[0], 200)
+            self.assertEqual(fastapi_product[0], 200)
+            self.assertEqual(fallback_product[1]["product"]["sku"], "tea-a")
+            self.assertEqual(fastapi_product[1]["product"]["sku"], "tea-a")
 
     def test_fallback_asgi_api_runs_marketplace_consultation_flow_with_sqlite(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -395,6 +446,7 @@ class PublicMarketplaceTest(unittest.TestCase):
                 {
                     "channel": "telegram",
                     "external_user_id": "@alice",
+                    "external_message_id": "tg-msg-1",
                     "text": "longjing gift delivery today",
                     "city": "Hangzhou",
                 },
@@ -404,6 +456,23 @@ class PublicMarketplaceTest(unittest.TestCase):
             self.assertEqual(opened["conversation"]["id"], "CONV-0001")
             self.assertEqual(opened["message"]["structured_payload"]["source_id"], "channel:telegram")
             self.assertEqual(opened["message"]["structured_payload"]["channel"], "telegram")
+
+            status, retried_open = self.request(
+                app,
+                "POST",
+                "/channels/messages",
+                {
+                    "channel": "telegram",
+                    "external_user_id": "@alice",
+                    "external_message_id": "tg-msg-1",
+                    "text": "longjing gift delivery today",
+                    "city": "Hangzhou",
+                },
+            )
+            self.assertEqual(status, 200)
+            self.assertTrue(retried_open["idempotent"])
+            self.assertEqual(retried_open["message"]["id"], opened["message"]["id"])
+            self.assertEqual(len(retried_open["conversation"]["messages"]), 1)
 
             status, continued = self.request(
                 app,
@@ -419,6 +488,50 @@ class PublicMarketplaceTest(unittest.TestCase):
             self.assertEqual(status, 200)
             self.assertEqual([message["sender"] for message in continued["conversation"]["messages"]], ["buyer", "buyer"])
 
+            status, first_delivery = self.request(
+                app,
+                "POST",
+                "/channels/messages",
+                {
+                    "channel": "telegram",
+                    "external_user_id": "@alice",
+                    "conversation_id": "CONV-0001",
+                    "external_message_id": "tg-msg-2",
+                    "text": "Delivery today?",
+                },
+            )
+            self.assertEqual(status, 200)
+
+            status, retried_delivery = self.request(
+                app,
+                "POST",
+                "/channels/messages",
+                {
+                    "channel": "telegram",
+                    "external_user_id": "@alice",
+                    "conversation_id": "CONV-0001",
+                    "external_message_id": "tg-msg-2",
+                    "text": "Delivery today?",
+                },
+            )
+            self.assertEqual(status, 200)
+            self.assertTrue(retried_delivery["idempotent"])
+            self.assertEqual(retried_delivery["message"]["id"], first_delivery["message"]["id"])
+            self.assertEqual(len(retried_delivery["conversation"]["messages"]), 3)
+            replay_events = [
+                event
+                for event in retried_delivery["conversation"]["audit_events"]
+                if event["event"] == "channel_message_replayed"
+            ]
+            self.assertEqual(
+                [event["details"]["external_message_id"] for event in replay_events],
+                ["tg-msg-1", "tg-msg-2"],
+            )
+            self.assertEqual(
+                [event["details"]["message_id"] for event in replay_events],
+                [opened["message"]["id"], first_delivery["message"]["id"]],
+            )
+
             status, denied = self.request(
                 app,
                 "POST",
@@ -427,6 +540,7 @@ class PublicMarketplaceTest(unittest.TestCase):
                     "channel": "telegram",
                     "external_user_id": "@bob",
                     "conversation_id": "CONV-0001",
+                    "external_message_id": "tg-msg-bob-denied",
                     "text": "I should not enter alice's channel conversation.",
                 },
             )
@@ -450,7 +564,203 @@ class PublicMarketplaceTest(unittest.TestCase):
 
             status, conversation = self.request(app, "GET", "/conversations/CONV-0001")
             self.assertEqual(status, 200)
-            self.assertEqual(len(conversation["conversation"]["messages"]), 2)
+            self.assertEqual(len(conversation["conversation"]["messages"]), 3)
+            with db_session(db_file) as conn:
+                poisoned = conn.execute(
+                    """
+                    select count(*) as count from channel_message_ingresses
+                    where channel = 'telegram'
+                      and external_user_id = '@bob'
+                      and external_message_id = 'tg-msg-bob-denied'
+                    """
+                ).fetchone()["count"]
+            self.assertEqual(poisoned, 0)
+
+    def test_agent_message_process_api_enforces_merchant_boundary(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "marketplace.sqlite"
+            app = create_app(db_file)
+
+            status, merchant_a = self.request(app, "POST", "/merchants", {"id": "seller-a", "name": "West Lake Tea"})
+            self.assertEqual(status, 200)
+            status, merchant_b = self.request(app, "POST", "/merchants", {"id": "seller-b", "name": "Other Tea"})
+            self.assertEqual(status, 200)
+            status, product = self.request(
+                app,
+                "POST",
+                "/products",
+                {
+                    "merchant_id": "seller-a",
+                    "sku": "tea-a",
+                    "title": "Longjing Gift Box",
+                    "price": 88,
+                    "stock": 5,
+                    "tags": ["longjing"],
+                    "merchant_token": merchant_a["merchant_token"],
+                },
+            )
+            self.assertEqual(status, 200)
+            status, ask = self.request(
+                app,
+                "POST",
+                "/buyer/ask",
+                {"buyer_id": "alice", "text": "longjing delivery today"},
+            )
+            self.assertEqual(status, 200)
+            buyer_message_id = ask["conversation"]["messages"][0]["id"]
+
+            claim_payload = {
+                "merchant_id": "seller-a",
+                "agent_id": "mai-cli-merchant-agent:seller-a",
+                "conversation_id": "CONV-0001",
+                "message_id": buyer_message_id,
+                "idempotency_key": "mai-cli-merchant-agent:seller-a:1",
+                "merchant_token": merchant_a["merchant_token"],
+            }
+            status, claim = self.request(app, "POST", "/agents/messages/claim", claim_payload)
+            self.assertEqual(status, 200)
+            self.assertTrue(claim["claim"]["claimed"])
+
+            status, denied = self.request(
+                app,
+                "POST",
+                "/agents/messages/claim",
+                {
+                    **claim_payload,
+                    "merchant_id": "seller-b",
+                    "agent_id": "mai-cli-merchant-agent:seller-b",
+                    "merchant_token": merchant_b["merchant_token"],
+                },
+            )
+            self.assertEqual(status, 403)
+            self.assertIn("cannot access", denied["error"])
+
+            status, completed = self.request(
+                app,
+                "POST",
+                "/agents/messages/complete",
+                {
+                    "merchant_id": "seller-a",
+                    "agent_id": "mai-cli-merchant-agent:seller-a",
+                    "message_id": buyer_message_id,
+                    "merchant_token": merchant_a["merchant_token"],
+                },
+            )
+            self.assertEqual(status, 200)
+            self.assertEqual(completed["process"]["status"], "processed")
+
+            status, conversation = self.request(app, "GET", "/conversations/CONV-0001")
+            self.assertEqual(status, 200)
+            events = [event["event"] for event in conversation["conversation"]["audit_events"]]
+            self.assertIn("agent_message_claimed", events)
+            self.assertIn("agent_message_processed", events)
+
+    def test_agent_token_is_scoped_to_agent_routes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "marketplace.sqlite"
+            app = create_app(db_file)
+
+            status, merchant = self.request(app, "POST", "/merchants", {"id": "seller-a", "name": "West Lake Tea"})
+            self.assertEqual(status, 200)
+            merchant_token = merchant["merchant_token"]
+
+            status, issued = self.request(
+                app,
+                "POST",
+                "/agents/tokens",
+                {"merchant_id": "seller-a", "merchant_token": merchant_token},
+            )
+            self.assertEqual(status, 200)
+            self.assertEqual(issued["agent_id"], "mai-cli-merchant-agent:seller-a")
+            agent_token = issued["agent_token"]
+
+            status, heartbeat = self.request(
+                app,
+                "POST",
+                "/agents/heartbeat",
+                {"merchant_id": "seller-a", "_auth_token": agent_token},
+            )
+            self.assertEqual(status, 200)
+            self.assertEqual(heartbeat["agent"]["owner_id"], "seller-a")
+
+            status, product = self.request(
+                app,
+                "POST",
+                "/products",
+                {
+                    "merchant_id": "seller-a",
+                    "sku": "tea-a",
+                    "title": "Longjing Gift Box",
+                    "price": 88,
+                    "stock": 5,
+                    "_auth_token": agent_token,
+                },
+            )
+            self.assertEqual(status, 403)
+            self.assertIn("merchant token", product["error"])
+
+            status, product = self.request(
+                app,
+                "POST",
+                "/products",
+                {
+                    "merchant_id": "seller-a",
+                    "sku": "tea-a",
+                    "title": "Longjing Gift Box",
+                    "price": 88,
+                    "stock": 5,
+                    "merchant_token": merchant_token,
+                },
+            )
+            self.assertEqual(status, 200)
+            status, ask = self.request(app, "POST", "/buyer/ask", {"buyer_id": "alice", "text": "longjing delivery today"})
+            self.assertEqual(status, 200)
+            buyer_message_id = ask["conversation"]["messages"][0]["id"]
+
+            status, claim = self.request(
+                app,
+                "POST",
+                "/agents/messages/claim",
+                {
+                    "merchant_id": "seller-a",
+                    "agent_id": issued["agent_id"],
+                    "conversation_id": "CONV-0001",
+                    "message_id": buyer_message_id,
+                    "idempotency_key": f"{issued['agent_id']}:{buyer_message_id}",
+                    "_auth_token": agent_token,
+                },
+            )
+            self.assertEqual(status, 200)
+            self.assertTrue(claim["claim"]["claimed"])
+
+            status, message = self.request(
+                app,
+                "POST",
+                "/conversations/CONV-0001/messages",
+                {
+                    "sender": "merchant_agent",
+                    "intent": "ask_delivery",
+                    "text": "Stock is 5.",
+                    "status": "waiting_buyer",
+                    "structured_payload": {"source_id": issued["agent_id"]},
+                    "_auth_token": agent_token,
+                },
+            )
+            self.assertEqual(status, 200)
+            self.assertEqual(message["message"]["sender"], "merchant_agent")
+
+            status, review = self.request(
+                app,
+                "POST",
+                "/conversations/CONV-0001/human-review",
+                {
+                    "reason": "low_stock",
+                    "source_id": issued["agent_id"],
+                    "_auth_token": agent_token,
+                },
+            )
+            self.assertEqual(status, 200)
+            self.assertEqual(review["review"]["reason"], "low_stock")
 
     def test_api_exposes_conversation_agent_and_human_review_lifecycle(self):
         with tempfile.TemporaryDirectory() as tmp:

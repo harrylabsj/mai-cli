@@ -113,6 +113,7 @@ SCHEMA = [
         role text not null,
         merchant_id text not null default '',
         buyer_id text not null default '',
+        agent_id text not null default '',
         created_at text not null
     )
     """,
@@ -142,6 +143,19 @@ SCHEMA = [
         foreign key (message_id) references messages(id)
     )
     """,
+    """
+    create table if not exists channel_message_ingresses (
+        channel text not null,
+        external_user_id text not null,
+        external_message_id text not null,
+        conversation_id text not null default '',
+        message_id integer not null default 0,
+        status text not null,
+        created_at text not null,
+        updated_at text not null,
+        primary key (channel, external_user_id, external_message_id)
+    )
+    """,
 ]
 
 EXTRA_COLUMNS = {
@@ -159,5 +173,8 @@ EXTRA_COLUMNS = {
         ("resolved_at", "text not null default ''"),
         ("resolution", "text not null default ''"),
         ("resolved_by", "text not null default ''"),
+    ],
+    "api_tokens": [
+        ("agent_id", "text not null default ''"),
     ],
 }

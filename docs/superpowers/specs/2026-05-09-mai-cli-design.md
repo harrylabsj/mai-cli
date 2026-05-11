@@ -309,6 +309,47 @@ Prioritized gaps:
     - Do not jump directly to orders, payment, or fulfillment.
     - Add `quote_draft` and `merchant_confirmed_quote` as pre-transaction records so the system can capture a merchant-confirmed commercial answer without reserving stock, charging payment, or claiming delivery success.
 
+### Independent Agent Runtime Roadmap
+
+Compared with Hermes and OpenClaw, the main gap for `mai-cli` is not another adapter layer. It is the set of runtime primitives that let `mai-cli` operate as its own safe, auditable commerce-agent platform.
+
+Priority order:
+
+1. First-class agent sessions and identity.
+   - Add agent session id, owner, scope, capabilities, lifecycle state, expiry, and audit trail.
+   - Treat `buyer_id`, `merchant_id`, and `source_id` as domain identifiers, not a complete agent identity model.
+   - First implementation slice: issue scoped default merchant-agent tokens through `agent token` and `/agents/tokens`; allow those tokens on agent heartbeat, claim/complete/fail/abandon, merchant-agent reply, and merchant-agent human-review flag routes while keeping catalog writes merchant-token-only.
+
+2. HTTP-backed marketplace tool boundary.
+   - Keep SQLite tools for local tests, but add an API-backed implementation of `MerchantAgentTools` and buyer/LLM tools.
+   - Long-running agents should mutate trusted state through Marketplace API contracts rather than direct database access.
+   - First implementation slice: add `HTTPMerchantAgentTools`, agent message process API routes, merchant ownership checks, and `agent run --once --api-url --agent-token` with merchant-token compatibility.
+
+3. Channel ingress idempotency.
+   - `external_message_id` should become an enforcement key, not only payload metadata.
+   - Add a unique idempotency record for `(channel, external_user_id, external_message_id)` so webhook retries from Telegram, WhatsApp, Slack, or web chat cannot duplicate buyer messages.
+   - First implementation slice: persist channel ingress records in SQLite and return the original message/conversation when a channel retry repeats the same key.
+   - Replay observability slice: refresh the ingress record and append `channel_message_replayed` audit events when retries are suppressed.
+
+4. Complete LLM tool execution loop.
+   - Current provider, prompt, schema, and dispatcher pieces are only the tool substrate.
+   - Add the loop: model response -> tool calls -> scoped dispatcher -> tool results -> final answer, with deterministic fallback when the model or tool call fails.
+   - First implementation slice: add `run_marketplace_tool_loop()` for OpenAI-compatible tool calls, scoped dispatcher execution, tool result messages, and deterministic fallback on provider/tool errors.
+
+5. Central policy layer.
+   - Consolidate tool permission, scope ownership, human-review triggers, and forbidden transaction claims outside prompts.
+   - LLM prompts should explain policy, but trusted code should enforce it.
+
+6. Merchant/operator human console.
+   - Before a web UI, complete the CLI workbench: review queue, show detail, reply, approve, reject, close, escalate, and audit search.
+   - This gives `mai-cli` its own human-in-the-loop surface instead of relying on Hermes/OpenClaw host workflows.
+
+7. Hosted-readiness primitives.
+   - Add Postgres, migrations, token rotation, rate limits, request logs, backup/restore, and multi-worker-safe leases only after the local deterministic runtime is stable.
+   - Keep orders, payment, escrow, refunds, and courier dispatch behind a separate transaction design.
+
+Recommended next build sequence: channel idempotency first, HTTP-backed tool boundary second, then the LLM execution loop. This turns `mai-cli` from a CLI/tool package into an independently safe agent runtime.
+
 ## Internal Agent Protocol
 
 ### Agent
@@ -561,6 +602,7 @@ After the first vertical slice, development should proceed in small, shippable i
 - Add provider abstraction for OpenAI-compatible APIs first.
 - Define typed tool schemas for catalog search, conversation send, summarize, human-review flag, and merchant reply.
 - Add a tool-call dispatcher that maps those schemas to real `mai-cli` API/CLI actions without letting the LLM mutate trusted state directly.
+- Add a tool-call loop that feeds model tool calls through the scoped dispatcher and returns deterministic fallback content on provider or tool failure.
 - Add prompt templates for buyer assistant and merchant assistant.
 - Add guardrails: no payment claims, no binding merchant commitment, no private rule leakage.
 - Add token/time budgets, retries, and deterministic fallback when the model is unavailable.
@@ -594,7 +636,7 @@ After the first vertical slice, development should proceed in small, shippable i
 
 If choosing the next concrete engineering task, prefer this order:
 
-1. Add a tool-call dispatcher that connects LLM tool schemas to real marketplace operations (`catalog_search`, `conversation_send`, `conversation_summarize`, `human_review_flag`, and `merchant_reply`) while preserving the API as the trusted state boundary.
+1. Broaden the LLM tool loop into a buyer/merchant runtime entrypoint with budgets, retries, and API-backed tools as the default trusted state boundary.
 2. Add a real OpenClaw merchant + Hermes buyer end-to-end demo/test that proves both hosts can share one `mai-cli` marketplace database/API and complete a consultation without owning business state.
 3. Add adapter setup and inspection helpers such as `doctor`, `install`, and `inspect` for OpenClaw/Hermes so missing host paths, stale skills, bad DB paths, and version mismatches are visible.
 4. Add scoped agent tokens, tool permission checks, and audit records for every host-visible tool call, including `host`, `session_id`, `actor`, `token_scope`, and result status.

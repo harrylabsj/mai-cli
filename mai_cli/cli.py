@@ -11,12 +11,14 @@ from typing import Any
 from mai_cli import VERSION
 from mai_cli.adapters.mai_legacy import import_json_store
 from mai_cli.agents import buyer_cli, merchant_agent, merchant_daemon
-from mai_cli.api.app import create_app
+from mai_cli.agents.tools import HTTPMerchantAgentTools
+from mai_cli.api.app import _default_merchant_agent_id, _issue_agent_token, _require_merchant_token, create_app
 from mai_cli.config import DEFAULT_DB_PATH
 from mai_cli.core.catalog import (
     create_merchant,
     create_product,
     merchant_summary,
+    require_merchant,
     search_merchants,
     search_products,
     set_stock,
@@ -468,6 +470,16 @@ def cmd_conversation_resolve_review(args: argparse.Namespace) -> None:
 
 
 def cmd_agent_run(args: argparse.Namespace) -> None:
+    if args.api_url:
+        if not args.once:
+            raise SystemExit("API-backed agent run currently supports --once")
+        token = args.agent_token or args.merchant_token
+        if not token:
+            raise SystemExit("--merchant-token or --agent-token is required with --api-url")
+        tools = HTTPMerchantAgentTools(args.api_url, args.merchant, token)
+        result = merchant_agent.process_once_with_tools(tools, args.merchant)
+        emit(result, args.format)
+        return
     if args.once:
         with db_session(db_path_from_args(args)) as conn:
             result = merchant_agent.process_once(conn, args.merchant)
@@ -516,6 +528,16 @@ def cmd_agent_heartbeat(args: argparse.Namespace) -> None:
     with db_session(db_path_from_args(args)) as conn:
         result = merchant_agent.heartbeat(conn, args.merchant, args.status)
     emit({"ok": True, "agent": result}, args.format)
+
+
+def cmd_agent_token(args: argparse.Namespace) -> None:
+    with db_session(db_path_from_args(args)) as conn:
+        require_merchant(conn, args.merchant)
+        if args.merchant_token:
+            _require_merchant_token(conn, args.merchant, {"merchant_token": args.merchant_token})
+        agent_id = _default_merchant_agent_id(args.merchant)
+        token = _issue_agent_token(conn, args.merchant, agent_id)
+    emit({"ok": True, "merchant_id": args.merchant, "agent_id": agent_id, "agent_token": token}, args.format)
 
 
 def _agent_summary(row: Any) -> dict[str, Any]:
@@ -850,6 +872,9 @@ def build_parser() -> argparse.ArgumentParser:
     agent_run.add_argument("--merchant", required=True)
     agent_run.add_argument("--once", action="store_true")
     agent_run.add_argument("--interval", type=float, default=3.0)
+    agent_run.add_argument("--api-url", default="", help="Run one agent cycle through the marketplace API")
+    agent_run.add_argument("--merchant-token", default="", help="Merchant API token for --api-url")
+    agent_run.add_argument("--agent-token", default="", help="Scoped agent API token for --api-url")
     agent_run.add_argument("--format", choices=["text", "json"], default="text")
     agent_run.add_argument("--state-file", default=None, help=argparse.SUPPRESS)
     agent_run.add_argument("--stop-file", default=None, help=argparse.SUPPRESS)
@@ -861,6 +886,11 @@ def build_parser() -> argparse.ArgumentParser:
     agent_heartbeat.add_argument("--format", choices=["text", "json"], default="text")
     add_agent_runtime_options(agent_heartbeat)
     agent_heartbeat.set_defaults(func=cmd_agent_heartbeat)
+    agent_token = agent_sub.add_parser("token", help="Issue a scoped merchant-agent API token")
+    agent_token.add_argument("--merchant", required=True)
+    agent_token.add_argument("--merchant-token", default="")
+    agent_token.add_argument("--format", choices=["text", "json"], default="text")
+    agent_token.set_defaults(func=cmd_agent_token)
 
     human_review_cli = subparsers.add_parser("human-review", help="Review flagged conversations")
     human_review_sub = human_review_cli.add_subparsers(dest="human_review_command", required=True)

@@ -10,6 +10,7 @@ from mai_cli.db.session import db_session
 from mai_cli.llm.dispatcher import MarketplaceToolDispatcher, dispatch_marketplace_tool
 from mai_cli.llm.prompts import buyer_system_prompt, merchant_system_prompt
 from mai_cli.llm.providers import OpenAICompatibleProvider, provider_from_env
+from mai_cli.llm.runner import run_marketplace_tool_loop
 from mai_cli.llm.tools import marketplace_tool_schemas
 
 
@@ -110,6 +111,98 @@ class LlmContractTest(unittest.TestCase):
         self.assertEqual(provider.model, "env-model")
         self.assertEqual(provider.timeout, 9)
         self.assertEqual(provider.max_tokens, 2048)
+
+    def test_llm_tool_loop_dispatches_tool_calls_and_returns_final_content(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.seed_consultation(db_file)
+            calls = []
+
+            def fake_transport(_url, _headers, payload, _timeout):
+                calls.append(payload)
+                if len(calls) == 1:
+                    return {
+                        "choices": [
+                            {
+                                "message": {
+                                    "role": "assistant",
+                                    "content": "",
+                                    "tool_calls": [
+                                        {
+                                            "id": "call_catalog",
+                                            "type": "function",
+                                            "function": {
+                                                "name": "catalog_search",
+                                                "arguments": "{\"query\":\"longjing\",\"city\":\"Hangzhou\"}",
+                                            },
+                                        }
+                                    ],
+                                }
+                            }
+                        ]
+                    }
+                return {"choices": [{"message": {"role": "assistant", "content": "Longjing Gift Box is available."}}]}
+
+            provider = OpenAICompatibleProvider(
+                base_url="https://llm.example/v1",
+                api_key="secret-token",
+                model="mai-test-model",
+                transport=fake_transport,
+            )
+            dispatcher = MarketplaceToolDispatcher(db_file, source_id="llm-loop", actor="alice", token_scope="buyer")
+
+            result = run_marketplace_tool_loop(
+                provider,
+                dispatcher,
+                [{"role": "user", "content": "Find longjing near Hangzhou."}],
+            )
+
+            self.assertTrue(result["ok"])
+            self.assertEqual(result["content"], "Longjing Gift Box is available.")
+            self.assertEqual(result["tool_results"][0]["tool"], "catalog_search")
+            self.assertEqual(calls[0]["tools"][0]["function"]["name"], "catalog_search")
+            tool_message = calls[1]["messages"][-1]
+            self.assertEqual(tool_message["role"], "tool")
+            self.assertEqual(tool_message["tool_call_id"], "call_catalog")
+            self.assertIn("tea-a", tool_message["content"])
+
+    def test_llm_tool_loop_returns_deterministic_fallback_on_tool_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.seed_consultation(db_file)
+
+            def fake_transport(_url, _headers, _payload, _timeout):
+                return {
+                    "choices": [
+                        {
+                            "message": {
+                                "role": "assistant",
+                                "content": "",
+                                "tool_calls": [
+                                    {
+                                        "id": "call_bad",
+                                        "type": "function",
+                                        "function": {"name": "create_order", "arguments": "{}"},
+                                    }
+                                ],
+                            }
+                        }
+                    ]
+                }
+
+            provider = OpenAICompatibleProvider(
+                base_url="https://llm.example/v1",
+                api_key="secret-token",
+                model="mai-test-model",
+                transport=fake_transport,
+            )
+            dispatcher = MarketplaceToolDispatcher(db_file, source_id="llm-loop", actor="alice", token_scope="buyer")
+
+            result = run_marketplace_tool_loop(provider, dispatcher, [{"role": "user", "content": "Create an order."}])
+
+            self.assertFalse(result["ok"])
+            self.assertIn("human should review", result["content"])
+            self.assertIn("create_order", result["error"])
 
     def test_system_prompts_include_mvp_guardrails(self):
         buyer_prompt = buyer_system_prompt()

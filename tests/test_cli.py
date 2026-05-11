@@ -6,6 +6,7 @@ import unittest
 from contextlib import redirect_stdout
 from io import StringIO
 from pathlib import Path
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -152,6 +153,78 @@ class MaiCliTest(unittest.TestCase):
             self.assertEqual(product["stock"], 4)
             self.assertEqual(product["merchant"]["contact"], "wechat:new")
             self.assertEqual(product["merchant"]["delivery"]["eta_minutes"], 30)
+
+    def test_agent_run_once_can_use_http_marketplace_tools(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            constructed = []
+
+            class FakeHTTPMerchantAgentTools:
+                def __init__(self, base_url, merchant_id, merchant_token):
+                    constructed.append(
+                        {
+                            "base_url": base_url,
+                            "merchant_id": merchant_id,
+                            "merchant_token": merchant_token,
+                        }
+                    )
+
+            with (
+                patch("mai_cli.cli.HTTPMerchantAgentTools", FakeHTTPMerchantAgentTools),
+                patch(
+                    "mai_cli.cli.merchant_agent.process_once_with_tools",
+                    return_value={"ok": True, "merchant_id": "seller-a", "checked": 0, "replied": []},
+                ) as process_once,
+            ):
+                output = self.run_cli(
+                    db_file,
+                    "agent",
+                    "run",
+                    "--merchant",
+                    "seller-a",
+                    "--once",
+                    "--api-url",
+                    "http://127.0.0.1:8765",
+                    "--agent-token",
+                    "agent_tok_seller_a",
+                    "--format",
+                    "json",
+                )
+
+            self.assertEqual(json.loads(output)["merchant_id"], "seller-a")
+            self.assertEqual(
+                constructed,
+                [
+                    {
+                        "base_url": "http://127.0.0.1:8765",
+                        "merchant_id": "seller-a",
+                        "merchant_token": "agent_tok_seller_a",
+                    }
+                ],
+            )
+            self.assertEqual(process_once.call_args.args[1], "seller-a")
+
+    def test_agent_token_command_issues_scoped_agent_token(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            created = json.loads(
+                self.run_cli(db_file, "merchant", "create", "--id", "seller-a", "--name", "West Lake Tea", "--format", "json")
+            )
+
+            issued = json.loads(
+                self.run_cli(
+                    db_file,
+                    "agent",
+                    "token",
+                    "--merchant",
+                    "seller-a",
+                    "--format",
+                    "json",
+                )
+            )
+
+            self.assertEqual(issued["agent_id"], "mai-cli-merchant-agent:seller-a")
+            self.assertTrue(issued["agent_token"].startswith("mai_agent_seller-a_"))
 
 
 if __name__ == "__main__":

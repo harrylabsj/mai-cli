@@ -1,6 +1,39 @@
 import unittest
+import urllib.error
+from urllib.parse import parse_qs, urlparse
 
 from mai_cli.agents import merchant_agent
+
+
+class FakeHTTPResponse:
+    def __init__(self, payload):
+        self.payload = payload
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, traceback):
+        return False
+
+    def read(self):
+        import json
+
+        return json.dumps(self.payload).encode("utf-8")
+
+
+class CapturingHTTPOpener:
+    def __init__(self, responses):
+        self.responses = list(responses)
+        self.requests = []
+
+    def __call__(self, request, timeout=0):
+        import json
+
+        body = None
+        if request.data:
+            body = json.loads(request.data.decode("utf-8"))
+        self.requests.append({"request": request, "timeout": timeout, "body": body})
+        return FakeHTTPResponse(self.responses.pop(0))
 
 
 class FakeMarketplaceTools:
@@ -90,6 +123,79 @@ class FailingMarketplaceTools(FakeMarketplaceTools):
 
 
 class AgentToolsBoundaryTest(unittest.TestCase):
+    def test_http_merchant_agent_tools_call_marketplace_api_contract(self):
+        from mai_cli.agents.tools import HTTPMerchantAgentTools
+
+        opener = CapturingHTTPOpener(
+            [
+                {
+                    "ok": True,
+                    "agent": {
+                        "id": "mai-cli-merchant-agent:seller-a",
+                        "owner_id": "seller-a",
+                        "status": "online",
+                    },
+                },
+                {"ok": True, "conversations": [{"id": "CONV-0001"}]},
+                {"ok": True, "claim": {"claimed": True, "attempts": 1}},
+                {"ok": True, "message": {"id": 2, "sender": "merchant_agent"}},
+            ]
+        )
+        tools = HTTPMerchantAgentTools(
+            "http://127.0.0.1:8765/",
+            merchant_id="seller-a",
+            merchant_token="tok_seller_a",
+            opener=opener,
+            timeout=12,
+        )
+
+        agent = tools.heartbeat("seller-a", checked_count=1)
+        conversations = tools.waiting_merchant_conversations("seller-a")
+        claim = tools.claim_message("mai-cli-merchant-agent:seller-a", "CONV-0001", 1, "claim-key")
+        message = tools.append_message(
+            "CONV-0001",
+            "merchant_agent",
+            "ask_delivery",
+            "Stock is 5.",
+            structured_payload={"source_id": "mai-cli-merchant-agent:seller-a"},
+            status="waiting_buyer",
+        )
+
+        self.assertEqual(agent["status"], "online")
+        self.assertEqual(conversations, [{"id": "CONV-0001"}])
+        self.assertTrue(claim["claimed"])
+        self.assertEqual(message["id"], 2)
+        self.assertEqual(opener.requests[0]["request"].full_url, "http://127.0.0.1:8765/agents/heartbeat")
+        self.assertEqual(opener.requests[0]["body"]["merchant_id"], "seller-a")
+        self.assertEqual(opener.requests[0]["body"]["merchant_token"], "tok_seller_a")
+        self.assertEqual(opener.requests[0]["request"].get_header("Authorization"), "Bearer tok_seller_a")
+        parsed = urlparse(opener.requests[1]["request"].full_url)
+        self.assertEqual(parsed.path, "/merchants/seller-a/conversations")
+        self.assertEqual(parse_qs(parsed.query), {"status": ["waiting_merchant"]})
+        self.assertEqual(opener.requests[2]["request"].full_url, "http://127.0.0.1:8765/agents/messages/claim")
+        self.assertEqual(opener.requests[2]["body"]["idempotency_key"], "claim-key")
+        self.assertEqual(opener.requests[2]["body"]["merchant_token"], "tok_seller_a")
+        self.assertEqual(opener.requests[3]["body"]["status"], "waiting_buyer")
+        self.assertEqual(opener.requests[3]["body"]["merchant_token"], "tok_seller_a")
+
+    def test_http_merchant_agent_tools_wrap_transport_errors(self):
+        from mai_cli.agents.tools import HTTPMarketplaceError, HTTPMerchantAgentTools
+
+        def failing_opener(_request, timeout=0):
+            raise urllib.error.URLError("connection refused")
+
+        tools = HTTPMerchantAgentTools(
+            "http://127.0.0.1:8765",
+            merchant_id="seller-a",
+            merchant_token="tok_seller_a",
+            opener=failing_opener,
+        )
+
+        with self.assertRaises(HTTPMarketplaceError) as exc:
+            tools.heartbeat("seller-a")
+        self.assertIn("Marketplace API request failed", str(exc.exception))
+        self.assertIn("connection refused", str(exc.exception))
+
     def test_process_once_uses_marketplace_tools_without_sqlite_connection(self):
         tools = FakeMarketplaceTools()
 

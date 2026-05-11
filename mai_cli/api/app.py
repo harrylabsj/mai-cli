@@ -21,15 +21,25 @@ from mai_cli.config import agent_stale_ttl_seconds_from
 from mai_cli.core import catalog
 from mai_cli.core.channels import ingest_buyer_message
 from mai_cli.core.conversations import add_flag, append_message, conversation_summary, ensure_conversation, merchant_conversations
-from mai_cli.core.harness import append_audit_event, next_actor_for_status
+from mai_cli.core.harness import (
+    abandon_agent_message,
+    abandon_stale_agent_messages,
+    agent_message_process_summary,
+    append_audit_event,
+    claim_agent_message,
+    complete_agent_message,
+    fail_agent_message,
+    next_actor_for_status,
+)
 from mai_cli.db.session import db_session, decode_json, now_iso
 
 try:  # pragma: no cover - exercised when optional dependency is installed
-    from fastapi import FastAPI
+    from fastapi import FastAPI, Header
     from fastapi.exceptions import RequestValidationError
     from fastapi.responses import JSONResponse
 except ModuleNotFoundError:  # pragma: no cover - local CI currently has no fastapi
     FastAPI = None  # type: ignore[assignment]
+    Header = None  # type: ignore[assignment]
     JSONResponse = None  # type: ignore[assignment]
     RequestValidationError = None  # type: ignore[assignment]
 
@@ -110,6 +120,12 @@ def route_info() -> list[RouteInfo]:
         RouteInfo("/conversations/{conversation_id}/close", {"POST"}),
         RouteInfo("/buyers/{buyer_id}/conversations", {"GET"}),
         RouteInfo("/agents/heartbeat", {"POST"}),
+        RouteInfo("/agents/tokens", {"POST"}),
+        RouteInfo("/agents/messages/claim", {"POST"}),
+        RouteInfo("/agents/messages/complete", {"POST"}),
+        RouteInfo("/agents/messages/fail", {"POST"}),
+        RouteInfo("/agents/messages/abandon", {"POST"}),
+        RouteInfo("/agents/messages/abandon-stale", {"POST"}),
         RouteInfo("/agents", {"GET"}),
         RouteInfo("/agents/{agent_id}", {"GET"}),
         RouteInfo("/merchants/{merchant_id}/agents", {"GET"}),
@@ -138,14 +154,42 @@ def _payload_token(payload: dict[str, Any]) -> str:
     return str(payload.get("merchant_token") or payload.get("_auth_token") or "")
 
 
+def _auth_header_default() -> Any:
+    if Header is None:
+        return ""
+    return Header(default="")
+
+
+AUTHORIZATION_HEADER = _auth_header_default()
+
+
+def _payload_with_auth(payload: dict[str, Any], authorization: Any = "") -> dict[str, Any]:
+    merged = dict(payload or {})
+    if isinstance(authorization, str) and authorization.lower().startswith("bearer "):
+        merged["_auth_token"] = authorization.split(" ", 1)[1].strip()
+    return merged
+
+
 def _issue_merchant_token(conn: Any, merchant_id: str) -> str:
     token = f"mai_{merchant_id}_{secrets.token_urlsafe(18)}"
     conn.execute(
         """
-        insert into api_tokens(token, role, merchant_id, buyer_id, created_at)
-        values (?, 'merchant', ?, '', ?)
+        insert into api_tokens(token, role, merchant_id, buyer_id, agent_id, created_at)
+        values (?, 'merchant', ?, '', '', ?)
         """,
         (token, merchant_id, now_iso()),
+    )
+    return token
+
+
+def _issue_agent_token(conn: Any, merchant_id: str, agent_id: str) -> str:
+    token = f"mai_agent_{merchant_id}_{secrets.token_urlsafe(18)}"
+    conn.execute(
+        """
+        insert into api_tokens(token, role, merchant_id, buyer_id, agent_id, created_at)
+        values (?, 'agent', ?, '', ?, ?)
+        """,
+        (token, merchant_id, agent_id, now_iso()),
     )
     return token
 
@@ -154,12 +198,23 @@ def _require_merchant_token(conn: Any, merchant_id: str, payload: dict[str, Any]
     token = _payload_token(payload)
     if not token:
         raise AuthError("merchant token required")
-    row = conn.execute(
-        "select role, merchant_id from api_tokens where token = ?",
-        (token,),
-    ).fetchone()
+    row = conn.execute("select role, merchant_id from api_tokens where token = ?", (token,)).fetchone()
     if row is None or row["role"] != "merchant" or row["merchant_id"] != merchant_id:
         raise AuthError("invalid merchant token")
+
+
+def _require_agent_or_merchant_token(conn: Any, merchant_id: str, agent_id: str, payload: dict[str, Any]) -> None:
+    token = _payload_token(payload)
+    if not token:
+        raise AuthError("agent or merchant token required")
+    row = conn.execute("select role, merchant_id, agent_id from api_tokens where token = ?", (token,)).fetchone()
+    if row is None or row["merchant_id"] != merchant_id:
+        raise AuthError("invalid agent or merchant token")
+    if row["role"] == "merchant":
+        return
+    if row["role"] == "agent" and row["agent_id"] == agent_id:
+        return
+    raise AuthError("invalid agent or merchant token")
 
 
 def _health(db_path: str | Path) -> dict[str, Any]:
@@ -345,11 +400,14 @@ def _append_conversation_message(db_path: str | Path, conversation_id: str, payl
     with db_session(db_path) as conn:
         conversation = conversation_summary(conn, conversation_id)
         sender = str(payload["sender"])
-        if sender in {"merchant", "merchant_agent"}:
-            _require_merchant_token(conn, conversation["merchant_id"], payload)
         structured_payload = dict(payload.get("structured_payload") or {})
         if payload.get("source_id"):
             structured_payload["source_id"] = payload.get("source_id")
+        if sender == "merchant":
+            _require_merchant_token(conn, conversation["merchant_id"], payload)
+        elif sender == "merchant_agent":
+            agent_id = str(structured_payload.get("source_id") or _default_merchant_agent_id(conversation["merchant_id"]))
+            _require_agent_or_merchant_token(conn, conversation["merchant_id"], agent_id, payload)
         message = append_message(
             conn,
             conversation_id,
@@ -391,7 +449,8 @@ def _close_conversation(db_path: str | Path, conversation_id: str, payload: dict
 def _agent_heartbeat(db_path: str | Path, payload: dict[str, Any]) -> dict[str, Any]:
     with db_session(db_path) as conn:
         merchant_id = str(payload["merchant_id"])
-        _require_merchant_token(conn, merchant_id, payload)
+        agent_id = _default_merchant_agent_id(merchant_id)
+        _require_agent_or_merchant_token(conn, merchant_id, agent_id, payload)
         agent = merchant_agent.heartbeat(
             conn,
             merchant_id=merchant_id,
@@ -404,6 +463,108 @@ def _agent_heartbeat(db_path: str | Path, payload: dict[str, Any]) -> dict[str, 
             replied_count=int(payload.get("replied_count") or 0),
         )
         return {"ok": True, "agent": agent}
+
+
+def _default_merchant_agent_id(merchant_id: str) -> str:
+    return f"mai-cli-merchant-agent:{merchant_id}"
+
+
+def _create_agent_token(db_path: str | Path, payload: dict[str, Any]) -> dict[str, Any]:
+    with db_session(db_path) as conn:
+        merchant_id = str(payload["merchant_id"])
+        _require_merchant_token(conn, merchant_id, payload)
+        agent_id = str(payload.get("agent_id") or _default_merchant_agent_id(merchant_id))
+        if agent_id != _default_merchant_agent_id(merchant_id):
+            raise AuthError(f"Agent {agent_id} cannot act for merchant {merchant_id}")
+        token = _issue_agent_token(conn, merchant_id, agent_id)
+        return {"ok": True, "merchant_id": merchant_id, "agent_id": agent_id, "agent_token": token}
+
+
+def _require_agent_payload(conn: Any, payload: dict[str, Any]) -> tuple[str, str]:
+    merchant_id = str(payload["merchant_id"])
+    agent_id = str(payload.get("agent_id") or _default_merchant_agent_id(merchant_id))
+    if agent_id != _default_merchant_agent_id(merchant_id):
+        raise AuthError(f"Agent {agent_id} cannot act for merchant {merchant_id}")
+    _require_agent_or_merchant_token(conn, merchant_id, agent_id, payload)
+    return merchant_id, agent_id
+
+
+def _require_agent_conversation(conn: Any, merchant_id: str, conversation_id: str) -> dict[str, Any]:
+    conversation = conversation_summary(conn, conversation_id)
+    if conversation["merchant_id"] != merchant_id:
+        raise AuthError(f"Merchant {merchant_id} cannot access conversation {conversation_id}")
+    return conversation
+
+
+def _require_message_in_conversation(conn: Any, conversation_id: str, message_id: int) -> None:
+    row = conn.execute("select conversation_id, sender from messages where id = ?", (message_id,)).fetchone()
+    if row is None:
+        raise SystemExit(f"Unknown message: {message_id}")
+    if row["conversation_id"] != conversation_id:
+        raise SystemExit(f"Message {message_id} does not belong to conversation {conversation_id}")
+    if row["sender"] != "buyer":
+        raise SystemExit(f"Agent can only claim buyer messages, got {row['sender']}")
+
+
+def _require_agent_process_scope(conn: Any, merchant_id: str, agent_id: str, message_id: int) -> dict[str, Any]:
+    process = agent_message_process_summary(conn, agent_id, message_id)
+    _require_agent_conversation(conn, merchant_id, process["conversation_id"])
+    return process
+
+
+def _claim_agent_message(db_path: str | Path, payload: dict[str, Any]) -> dict[str, Any]:
+    with db_session(db_path) as conn:
+        merchant_id, agent_id = _require_agent_payload(conn, payload)
+        conversation_id = str(payload["conversation_id"])
+        _require_agent_conversation(conn, merchant_id, conversation_id)
+        message_id = int(payload["message_id"])
+        _require_message_in_conversation(conn, conversation_id, message_id)
+        claim = claim_agent_message(
+            conn,
+            agent_id,
+            conversation_id,
+            message_id,
+            str(payload["idempotency_key"]),
+        )
+        return {"ok": True, "claim": claim}
+
+
+def _complete_agent_message(db_path: str | Path, payload: dict[str, Any]) -> dict[str, Any]:
+    with db_session(db_path) as conn:
+        merchant_id, agent_id = _require_agent_payload(conn, payload)
+        message_id = int(payload["message_id"])
+        _require_agent_process_scope(conn, merchant_id, agent_id, message_id)
+        process = complete_agent_message(conn, agent_id, message_id)
+        return {"ok": True, "process": process}
+
+
+def _fail_agent_message(db_path: str | Path, payload: dict[str, Any]) -> dict[str, Any]:
+    with db_session(db_path) as conn:
+        merchant_id, agent_id = _require_agent_payload(conn, payload)
+        message_id = int(payload["message_id"])
+        _require_agent_process_scope(conn, merchant_id, agent_id, message_id)
+        process = fail_agent_message(conn, agent_id, message_id, str(payload.get("error") or "agent failure"))
+        return {"ok": True, "process": process}
+
+
+def _abandon_agent_message(db_path: str | Path, payload: dict[str, Any]) -> dict[str, Any]:
+    with db_session(db_path) as conn:
+        merchant_id, agent_id = _require_agent_payload(conn, payload)
+        message_id = int(payload["message_id"])
+        _require_agent_process_scope(conn, merchant_id, agent_id, message_id)
+        process = abandon_agent_message(conn, agent_id, message_id, str(payload.get("error") or "agent abandoned claim"))
+        return {"ok": True, "process": process}
+
+
+def _abandon_stale_agent_messages(db_path: str | Path, payload: dict[str, Any]) -> dict[str, Any]:
+    with db_session(db_path) as conn:
+        _merchant_id, agent_id = _require_agent_payload(conn, payload)
+        abandoned = abandon_stale_agent_messages(
+            conn,
+            agent_id,
+            stale_after_seconds=int(payload.get("stale_after_seconds") or 300),
+        )
+        return {"ok": True, "abandoned": abandoned}
 
 
 def _agent_summary(row: Any) -> dict[str, Any]:
@@ -507,7 +668,11 @@ def _human_review_queue(db_path: str | Path, merchant_id: str = "") -> dict[str,
 def _create_human_review(db_path: str | Path, conversation_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     with db_session(db_path) as conn:
         conversation = conversation_summary(conn, conversation_id)
-        _require_merchant_token(conn, conversation["merchant_id"], payload)
+        actor = str(payload.get("source_id") or _default_merchant_agent_id(conversation["merchant_id"]))
+        if actor.startswith("mai-cli-merchant-agent:"):
+            _require_agent_or_merchant_token(conn, conversation["merchant_id"], actor, payload)
+        else:
+            _require_merchant_token(conn, conversation["merchant_id"], payload)
         review = add_flag(
             conn,
             conversation_id,
@@ -516,7 +681,6 @@ def _create_human_review(db_path: str | Path, conversation_id: str, payload: dic
             sku=conversation.get("sku") or "",
         )
         next_actor = next_actor_for_status("human_required", review["reason"])
-        actor = str(payload.get("source_id") or "merchant_agent")
         conn.execute(
             "update conversations set status = 'human_required', next_actor = ?, updated_at = ?, last_sender = ? where id = ?",
             (next_actor, now_iso(), actor, conversation_id),
@@ -635,6 +799,18 @@ def handle_request(
             return 200, _close_conversation(db_path, parts[1], payload)
         if path == "/agents/heartbeat" and method == "POST":
             return 200, _agent_heartbeat(db_path, payload)
+        if path == "/agents/tokens" and method == "POST":
+            return 200, _create_agent_token(db_path, payload)
+        if path == "/agents/messages/claim" and method == "POST":
+            return 200, _claim_agent_message(db_path, payload)
+        if path == "/agents/messages/complete" and method == "POST":
+            return 200, _complete_agent_message(db_path, payload)
+        if path == "/agents/messages/fail" and method == "POST":
+            return 200, _fail_agent_message(db_path, payload)
+        if path == "/agents/messages/abandon" and method == "POST":
+            return 200, _abandon_agent_message(db_path, payload)
+        if path == "/agents/messages/abandon-stale" and method == "POST":
+            return 200, _abandon_stale_agent_messages(db_path, payload)
         if path == "/agents" and method == "GET":
             return 200, _list_agents(db_path)
         if len(parts) == 2 and parts[0] == "agents" and method == "GET":
@@ -712,20 +888,28 @@ def create_app(db_path: str | Path = "mai-cli.sqlite") -> Any:
         return _get_merchant(db_path, merchant_id)
 
     @app.patch("/merchants/{merchant_id}")
-    def update_merchant(merchant_id: str, payload: dict[str, Any]) -> dict[str, Any]:
-        return _update_merchant(db_path, merchant_id, payload)
+    def update_merchant(
+        merchant_id: str,
+        payload: dict[str, Any],
+        authorization: str = AUTHORIZATION_HEADER,
+    ) -> dict[str, Any]:
+        return _update_merchant(db_path, merchant_id, _payload_with_auth(payload, authorization))
 
     @app.post("/products")
-    def create_product(payload: dict[str, Any]) -> dict[str, Any]:
-        return _create_product(db_path, payload)
+    def create_product(payload: dict[str, Any], authorization: str = AUTHORIZATION_HEADER) -> dict[str, Any]:
+        return _create_product(db_path, _payload_with_auth(payload, authorization))
 
     @app.get("/products/{sku}")
     def get_product(sku: str) -> dict[str, Any]:
         return _get_product(db_path, sku)
 
     @app.patch("/products/{sku}")
-    def update_product(sku: str, payload: dict[str, Any]) -> dict[str, Any]:
-        return _update_product(db_path, sku, payload)
+    def update_product(
+        sku: str,
+        payload: dict[str, Any],
+        authorization: str = AUTHORIZATION_HEADER,
+    ) -> dict[str, Any]:
+        return _update_product(db_path, sku, _payload_with_auth(payload, authorization))
 
     @app.get("/search/products")
     def search_products(query: str = "", city: str = "", area: str = "") -> dict[str, Any]:
@@ -771,16 +955,63 @@ def create_app(db_path: str | Path = "mai-cli.sqlite") -> Any:
         return _get_conversation(db_path, conversation_id)
 
     @app.post("/conversations/{conversation_id}/messages")
-    def add_message(conversation_id: str, payload: dict[str, Any]) -> dict[str, Any]:
-        return _append_conversation_message(db_path, conversation_id, payload)
+    def add_message(
+        conversation_id: str,
+        payload: dict[str, Any],
+        authorization: str = AUTHORIZATION_HEADER,
+    ) -> dict[str, Any]:
+        return _append_conversation_message(db_path, conversation_id, _payload_with_auth(payload, authorization))
 
     @app.post("/conversations/{conversation_id}/close")
-    def close_conversation(conversation_id: str, payload: dict[str, Any]) -> dict[str, Any]:
-        return _close_conversation(db_path, conversation_id, payload)
+    def close_conversation(
+        conversation_id: str,
+        payload: dict[str, Any],
+        authorization: str = AUTHORIZATION_HEADER,
+    ) -> dict[str, Any]:
+        return _close_conversation(db_path, conversation_id, _payload_with_auth(payload, authorization))
 
     @app.post("/agents/heartbeat")
-    def agent_heartbeat(payload: dict[str, Any]) -> dict[str, Any]:
-        return _agent_heartbeat(db_path, payload)
+    def agent_heartbeat(payload: dict[str, Any], authorization: str = AUTHORIZATION_HEADER) -> dict[str, Any]:
+        return _agent_heartbeat(db_path, _payload_with_auth(payload, authorization))
+
+    @app.post("/agents/tokens")
+    def create_agent_token(payload: dict[str, Any], authorization: str = AUTHORIZATION_HEADER) -> dict[str, Any]:
+        return _create_agent_token(db_path, _payload_with_auth(payload, authorization))
+
+    @app.post("/agents/messages/claim")
+    def claim_agent_message_route(
+        payload: dict[str, Any],
+        authorization: str = AUTHORIZATION_HEADER,
+    ) -> dict[str, Any]:
+        return _claim_agent_message(db_path, _payload_with_auth(payload, authorization))
+
+    @app.post("/agents/messages/complete")
+    def complete_agent_message_route(
+        payload: dict[str, Any],
+        authorization: str = AUTHORIZATION_HEADER,
+    ) -> dict[str, Any]:
+        return _complete_agent_message(db_path, _payload_with_auth(payload, authorization))
+
+    @app.post("/agents/messages/fail")
+    def fail_agent_message_route(
+        payload: dict[str, Any],
+        authorization: str = AUTHORIZATION_HEADER,
+    ) -> dict[str, Any]:
+        return _fail_agent_message(db_path, _payload_with_auth(payload, authorization))
+
+    @app.post("/agents/messages/abandon")
+    def abandon_agent_message_route(
+        payload: dict[str, Any],
+        authorization: str = AUTHORIZATION_HEADER,
+    ) -> dict[str, Any]:
+        return _abandon_agent_message(db_path, _payload_with_auth(payload, authorization))
+
+    @app.post("/agents/messages/abandon-stale")
+    def abandon_stale_agent_messages_route(
+        payload: dict[str, Any],
+        authorization: str = AUTHORIZATION_HEADER,
+    ) -> dict[str, Any]:
+        return _abandon_stale_agent_messages(db_path, _payload_with_auth(payload, authorization))
 
     @app.get("/agents")
     def list_agents() -> dict[str, Any]:
@@ -822,11 +1053,19 @@ def create_app(db_path: str | Path = "mai-cli.sqlite") -> Any:
         return _merchant_conversations(db_path, merchant_id, status="human_required")
 
     @app.post("/conversations/{conversation_id}/human-review")
-    def create_human_review(conversation_id: str, payload: dict[str, Any]) -> dict[str, Any]:
-        return _create_human_review(db_path, conversation_id, payload)
+    def create_human_review(
+        conversation_id: str,
+        payload: dict[str, Any],
+        authorization: str = AUTHORIZATION_HEADER,
+    ) -> dict[str, Any]:
+        return _create_human_review(db_path, conversation_id, _payload_with_auth(payload, authorization))
 
     @app.post("/conversations/{conversation_id}/human-review/resolve")
-    def resolve_human_review(conversation_id: str, payload: dict[str, Any]) -> dict[str, Any]:
-        return _resolve_human_review(db_path, conversation_id, payload)
+    def resolve_human_review(
+        conversation_id: str,
+        payload: dict[str, Any],
+        authorization: str = AUTHORIZATION_HEADER,
+    ) -> dict[str, Any]:
+        return _resolve_human_review(db_path, conversation_id, _payload_with_auth(payload, authorization))
 
     return app

@@ -47,6 +47,7 @@ PUBLIC_SUBCOMMANDS = [
     ("agent", "show"),
     ("agent", "run"),
     ("agent", "heartbeat"),
+    ("agent", "token"),
     ("human-review", "queue"),
     ("legacy", "import"),
     ("api", "routes"),
