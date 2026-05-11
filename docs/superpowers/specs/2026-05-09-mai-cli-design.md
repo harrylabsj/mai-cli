@@ -338,6 +338,7 @@ Priority order:
    - Add the loop: model response -> tool calls -> scoped dispatcher -> tool results -> final answer, with deterministic fallback when the model or tool call fails.
    - First implementation slice: add `run_marketplace_tool_loop()` for OpenAI-compatible tool calls, scoped dispatcher execution, tool result messages, and deterministic fallback on provider/tool errors.
    - Stability slice: add bounded provider retries and `max_tool_calls` so transient model failures can recover without letting one response run unbounded tools.
+   - Entrypoint slice: expose the guarded loop as `llm run` with buyer/merchant prompts, scoped dispatcher identity, `max_steps`, `max_tool_calls`, and provider retry controls.
 
 5. Central policy layer.
    - Consolidate tool permission, scope ownership, human-review triggers, and forbidden transaction claims outside prompts.

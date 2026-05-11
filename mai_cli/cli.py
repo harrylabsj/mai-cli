@@ -33,6 +33,10 @@ from mai_cli.core.conversations import add_flag, append_message, conversation_su
 from mai_cli.core.harness import append_audit_event, next_actor_for_status
 from mai_cli.core.risk import infer_intent
 from mai_cli.db.session import db_session, decode_json, now_iso
+from mai_cli.llm.dispatcher import MarketplaceToolDispatcher
+from mai_cli.llm.prompts import buyer_system_prompt, merchant_system_prompt
+from mai_cli.llm.providers import provider_from_env
+from mai_cli.llm.runner import run_marketplace_tool_loop
 
 
 def emit_json(value: Any) -> None:
@@ -545,6 +549,43 @@ def cmd_agent_heartbeat(args: argparse.Namespace) -> None:
     emit({"ok": True, "agent": result}, args.format)
 
 
+def cmd_llm_run(args: argparse.Namespace) -> None:
+    role = str(args.role)
+    actor = str(args.actor)
+    source_id = args.source_id or f"mai-cli-{role}-llm:{actor}"
+    token_scope = args.token_scope or ("merchant_agent" if role == "merchant" else "buyer")
+    if role == "merchant":
+        automation_boundaries = ""
+        with db_session(db_path_from_args(args)) as conn:
+            row = conn.execute("select automation_boundaries from merchants where id = ?", (actor,)).fetchone()
+            if row is not None:
+                automation_boundaries = str(row["automation_boundaries"] or "")
+        system_prompt = merchant_system_prompt(automation_boundaries)
+    else:
+        system_prompt = buyer_system_prompt()
+    dispatcher = MarketplaceToolDispatcher(
+        db_path_from_args(args),
+        source_id=source_id,
+        host=args.host,
+        session_id=args.session_id,
+        actor=actor,
+        token_scope=token_scope,
+    )
+    result = run_marketplace_tool_loop(
+        provider_from_env(),
+        dispatcher,
+        [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": args.text},
+        ],
+        max_steps=args.max_steps,
+        max_tool_calls=args.max_tool_calls,
+        provider_retries=args.provider_retries,
+        provider_retry_delay_seconds=args.provider_retry_delay_seconds,
+    )
+    emit(result, args.format)
+
+
 def cmd_agent_token(args: argparse.Namespace) -> None:
     with db_session(db_path_from_args(args)) as conn:
         require_merchant(conn, args.merchant)
@@ -925,6 +966,27 @@ def build_parser() -> argparse.ArgumentParser:
     human_review_queue.add_argument("--merchant", default="")
     human_review_queue.add_argument("--format", choices=["text", "json"], default="text")
     human_review_queue.set_defaults(func=cmd_human_review_queue)
+
+    llm = subparsers.add_parser("llm", help="Run optional LLM marketplace tool loops")
+    llm_sub = llm.add_subparsers(dest="llm_command", required=True)
+    llm_run = llm_sub.add_parser("run", help="Run one scoped LLM marketplace tool loop")
+    llm_run.add_argument("--role", choices=["buyer", "merchant"], default="buyer")
+    llm_run.add_argument("--actor", required=True)
+    llm_run.add_argument("--text", required=True)
+    llm_run.add_argument("--source-id", default="")
+    llm_run.add_argument("--host", default="mai-cli")
+    llm_run.add_argument("--session-id", default="")
+    llm_run.add_argument(
+        "--token-scope",
+        choices=["buyer", "buyer_cli", "merchant", "merchant_agent", "local_trusted", "operator"],
+        default="",
+    )
+    llm_run.add_argument("--max-steps", type=int, default=4)
+    llm_run.add_argument("--max-tool-calls", type=int, default=None)
+    llm_run.add_argument("--provider-retries", type=int, default=0)
+    llm_run.add_argument("--provider-retry-delay-seconds", type=float, default=0.0)
+    llm_run.add_argument("--format", choices=["text", "json"], default="text")
+    llm_run.set_defaults(func=cmd_llm_run)
 
     legacy = subparsers.add_parser("legacy", help="Import existing Mai catalog data")
     legacy_sub = legacy.add_subparsers(dest="legacy_command", required=True)

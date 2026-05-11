@@ -356,6 +356,48 @@ class MaiCliTest(unittest.TestCase):
             self.assertEqual(calls[0]["agent_token"], "agent_secret")
             self.assertEqual(calls[0]["merchant_token"], "")
 
+    def test_llm_run_cli_invokes_tool_loop_with_role_prompt_and_budgets(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            dispatcher = object()
+
+            with (
+                patch("mai_cli.cli.provider_from_env", return_value="provider", create=True),
+                patch("mai_cli.cli.MarketplaceToolDispatcher", return_value=dispatcher, create=True) as dispatcher_cls,
+                patch(
+                    "mai_cli.cli.run_marketplace_tool_loop",
+                    return_value={"ok": True, "content": "LLM answer.", "error": "", "tool_results": []},
+                    create=True,
+                ) as run_loop,
+            ):
+                output = self.run_cli(
+                    db_file,
+                    "llm",
+                    "run",
+                    "--role",
+                    "buyer",
+                    "--actor",
+                    "alice",
+                    "--text",
+                    "Find longjing near Hangzhou.",
+                    "--max-tool-calls",
+                    "2",
+                    "--provider-retries",
+                    "1",
+                    "--format",
+                    "json",
+                )
+
+            result = json.loads(output)
+            self.assertTrue(result["ok"])
+            self.assertEqual(result["content"], "LLM answer.")
+            dispatcher_cls.assert_called_once()
+            self.assertEqual(dispatcher_cls.call_args.kwargs["actor"], "alice")
+            self.assertEqual(dispatcher_cls.call_args.kwargs["token_scope"], "buyer")
+            self.assertIn("buyer-side assistant", run_loop.call_args.args[2][0]["content"])
+            self.assertEqual(run_loop.call_args.kwargs["max_tool_calls"], 2)
+            self.assertEqual(run_loop.call_args.kwargs["provider_retries"], 1)
+
     def test_agent_token_command_issues_scoped_agent_token(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"
