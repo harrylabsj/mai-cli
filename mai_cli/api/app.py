@@ -644,7 +644,13 @@ def create_app(db_path: str | Path = "mai-cli.sqlite") -> Any:
     if FastAPI is None:
         return MarketplaceASGIApp(db_path)
 
-    app = FastAPI(title="mai-cli Marketplace API", version=VERSION)
+    app = FastAPI(
+        title="mai-cli Marketplace API",
+        version=VERSION,
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None,
+    )
     app.state.db_path = str(db_path)
     app.state.fastapi_available = True
 

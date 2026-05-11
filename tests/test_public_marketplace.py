@@ -7,18 +7,29 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from mai_cli.api.app import AuthError, _list_agents
+from mai_cli.api.app import AuthError, _list_agents, route_info
 from mai_cli.api.app import create_app
 from mai_cli.db.session import db_session
 
 
 class FakeFastAPI:
-    def __init__(self, *, title, version):
+    def __init__(
+        self,
+        *,
+        title,
+        version,
+        docs_url="/docs",
+        redoc_url="/redoc",
+        openapi_url="/openapi.json",
+    ):
         self.title = title
         self.version = version
         self.state = SimpleNamespace()
         self.routes = []
         self.exception_handlers = {}
+        for path in (openapi_url, docs_url, redoc_url):
+            if path is not None:
+                self.routes.append(SimpleNamespace(methods={"GET"}, path=path, endpoint=lambda: None))
 
     def exception_handler(self, exc_type):
         def decorator(func):
@@ -77,6 +88,29 @@ class PublicMarketplaceTest(unittest.TestCase):
 
     def request(self, app, method, path, payload=None, query_string=""):
         return asyncio.run(self.asgi_request(app, method, path, payload=payload, query_string=query_string))
+
+    def fastapi_request(self, app, method, path, *args):
+        endpoint = next(
+            route.endpoint
+            for route in app.routes
+            if route.path == path and method in route.methods
+        )
+        try:
+            return 200, endpoint(*args)
+        except BaseException as exc:
+            for exc_type, handler in app.exception_handlers.items():
+                if isinstance(exc, exc_type):
+                    response = handler(None, exc)
+                    return response.status_code, json.loads(response.body.decode("utf-8"))
+            raise
+
+    def route_map(self, app):
+        routes = {}
+        for route in getattr(app, "routes", []):
+            if not hasattr(route, "path"):
+                continue
+            routes.setdefault(route.path, set()).update(route.methods)
+        return routes
 
     def test_api_factory_exposes_consultation_routes_and_initializes_sqlite(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -142,6 +176,66 @@ class PublicMarketplaceTest(unittest.TestCase):
         )
         with self.assertRaises(AuthError):
             create_product({"merchant_id": "seller-a", "name": "Tea", "price_cents": 500})
+
+    def test_route_metadata_matches_fastapi_and_fallback_apps(self):
+        expected = {route.path: set(route.methods) for route in route_info()}
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "marketplace.sqlite"
+            with patch("mai_cli.api.app.FastAPI", None):
+                fallback_app = create_app(db_file)
+            with patch("mai_cli.api.app.FastAPI", FakeFastAPI):
+                fastapi_app = create_app(db_file)
+
+        self.assertEqual(self.route_map(fallback_app), expected)
+        self.assertEqual(self.route_map(fastapi_app), expected)
+
+    def test_fastapi_and_fallback_error_contracts_match_for_auth_and_bad_payloads(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fallback_db = Path(tmp) / "fallback.sqlite"
+            fastapi_db = Path(tmp) / "fastapi.sqlite"
+            with patch("mai_cli.api.app.FastAPI", None):
+                fallback_app = create_app(fallback_db)
+            with patch("mai_cli.api.app.FastAPI", FakeFastAPI):
+                fastapi_app = create_app(fastapi_db)
+
+            product_without_token = {
+                "merchant_id": "seller-a",
+                "sku": "tea-a",
+                "title": "Longjing Gift Box",
+                "price": 88,
+                "stock": 5,
+            }
+            fallback_auth = self.request(fallback_app, "POST", "/products", product_without_token)
+            fastapi_auth = self.fastapi_request(fastapi_app, "POST", "/products", product_without_token)
+            self.assertEqual(fastapi_auth, fallback_auth)
+            self.assertEqual(fallback_auth[0], 403)
+            self.assertEqual(fallback_auth[1]["ok"], False)
+
+            merchant_payload = {"id": "seller-a", "name": "West Lake Tea"}
+            fallback_merchant = self.request(fallback_app, "POST", "/merchants", merchant_payload)
+            fastapi_merchant = self.fastapi_request(fastapi_app, "POST", "/merchants", merchant_payload)
+            self.assertEqual(fallback_merchant[0], 200)
+            self.assertEqual(fastapi_merchant[0], 200)
+
+            malformed_product = {
+                "merchant_id": "seller-a",
+                "title": "Longjing Gift Box",
+                "price": 88,
+                "stock": 5,
+                "merchant_token": fallback_merchant[1]["merchant_token"],
+            }
+            malformed_fastapi_product = dict(malformed_product)
+            malformed_fastapi_product["merchant_token"] = fastapi_merchant[1]["merchant_token"]
+            fallback_bad = self.request(fallback_app, "POST", "/products", malformed_product)
+            fastapi_bad = self.fastapi_request(fastapi_app, "POST", "/products", malformed_fastapi_product)
+
+            self.assertEqual(fastapi_bad, fallback_bad)
+            self.assertEqual(fallback_bad[0], 400)
+            self.assertEqual(fallback_bad[1], {"ok": False, "error": "'sku'"})
+            for db_file in (fallback_db, fastapi_db):
+                with db_session(db_file) as conn:
+                    count = conn.execute("select count(*) as count from products").fetchone()["count"]
+                self.assertEqual(count, 0)
 
     def test_fallback_asgi_api_runs_marketplace_consultation_flow_with_sqlite(self):
         with tempfile.TemporaryDirectory() as tmp:

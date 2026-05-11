@@ -91,6 +91,14 @@ Conversation requirements:
   - close action -> `closed`
 - Every message stores sender, intent, text, structured payload, created_at, and source agent/process id.
 
+API behavior requirements:
+
+- FastAPI and fallback ASGI routes must return the same status codes and JSON error shapes.
+- Auth failures return `403 {"ok": false, "error": ...}` in both implementations, never an unhandled 500.
+- Missing or malformed request fields return deterministic `400` errors with no partial state changes.
+- Route metadata from `api routes` must match the live FastAPI app and fallback app.
+- Token-bearing requests may pass credentials in `Authorization: Bearer <token>` or local-demo JSON payloads; responses must not echo tokens except at merchant creation time.
+
 Agent heartbeat APIs:
 
 ```text
@@ -160,6 +168,8 @@ Harness requirements for MVP:
 
 - Assign each conversation to a merchant agent by `merchant_id`.
 - Ensure each buyer message is processed at most once by the same merchant agent using message idempotency keys.
+- Claiming a message must be atomic across multiple local daemons or processes. A claim succeeds only when no processed/in-flight claim already owns `(agent_id, message_id)`, and the worker must not append a reply unless it owns the claim.
+- Retry is allowed only from explicit failed/abandoned processing state; processed messages are immutable for idempotency purposes.
 - Track per-conversation `next_actor`: `buyer`, `merchant_agent`, `merchant_human`, or `operator`.
 - Support retry after transient failures and store `last_error` on the agent heartbeat.
 - Move ambiguous/bargaining/high-risk conversations to `human_required` instead of looping agent replies.
@@ -237,6 +247,16 @@ A full LLM buyer agent is a later milestone.
 ### Merchant CLI
 
 The first version can be CLI-only. It must allow merchants to create/edit shop profiles, manage products and stock, configure delivery rules, configure automation boundaries, start the resident merchant agent, and view conversations requiring human review.
+
+### CLI UX Contract
+
+The CLI is both a human tool and an adapter boundary, so its behavior must stay predictable:
+
+- Global `--help` prints top-level commands; nested help such as `merchant create --help` prints that subcommand's options.
+- `--format json` emits exactly one JSON value for one-shot commands and one JSON object per line for streaming chat/daemon log events.
+- Text output may be concise, but JSON output is the compatibility surface for tests, host adapters, and demos.
+- `--db` and legacy `--data` resolve to the same database path behavior; command-specific `--db` aliases must not shadow the global path unexpectedly.
+- Errors should exit non-zero for CLI use while preserving machine-readable JSON only where a command explicitly promises JSON output.
 
 ### Optional Host Adapters
 
@@ -423,13 +443,16 @@ Upgrade JSON file storage to SQLite, the dependency-free HTTP server to FastAPI,
 
 - `mai-cli` can run without OpenClaw or Hermes.
 - Marketplace API can run locally with SQLite.
+- FastAPI and fallback ASGI modes pass the same auth/error contract tests.
 - A merchant can create a shop, product, inventory attributes, and delivery rule.
 - A merchant agent can run as an independent process.
+- Duplicate merchant-agent daemons cannot produce duplicate replies for the same buyer message.
 - A buyer can ask for a nearby product through CLI text.
 - Buyer CLI can search the marketplace and contact a merchant agent.
 - Merchant agent can answer stock, price, and delivery questions from structured shop data.
 - Buyer CLI can summarize options and missing facts.
 - Risky, unsupported, bargaining, or unclear situations are marked for human review.
+- Nested command help works for every public subcommand.
 - No order, payment, refund, escrow, or delivery-success claim is made in MVP.
 - Existing Mai data can be imported through a legacy adapter.
 
@@ -459,7 +482,9 @@ After the first vertical slice, development should proceed in small, shippable i
 - Add heartbeat read/list APIs and stale-agent detection.
 - Add human-review queue, flag, resolve, and merchant review CLI.
 - Add append-only audit events for conversation status changes, agent replies, human-review creation, and human-review resolution.
-- Add tests for idempotent message processing and duplicate agent starts.
+- Add tests for idempotent message processing, concurrent claim attempts, and duplicate agent starts.
+- Add parity tests that exercise auth failures and malformed payloads through both FastAPI and fallback ASGI paths.
+- Add CLI contract tests for nested help, JSON output shape, and `--db`/`--data` path resolution.
 
 ### Stage 2: Agent daemon lifecycle
 
@@ -517,9 +542,9 @@ After the first vertical slice, development should proceed in small, shippable i
 
 If choosing the next concrete engineering task, prefer this order:
 
-1. Conversation/detail/message/human-review FastAPI routes and matching CLI commands.
-2. Heartbeat read/list/stale-agent support.
-3. Agent daemon `start/stop/status/logs` lifecycle.
-4. Harness fields: `next_actor`, processed message idempotency, audit events.
-5. Buyer `chat` REPL.
-6. LLM provider abstraction and typed tools.
+1. Make merchant-agent message claims atomic and add a concurrent-claim regression test.
+2. Add FastAPI/fallback ASGI parity tests for auth failures, malformed payloads, and route metadata.
+3. Fix nested CLI help and add CLI contract tests for all public subcommands.
+4. Harden daemon retry semantics: failed, abandoned, and processed message states should have explicit transitions.
+5. Expand buyer `chat` history and summary coverage for multi-turn and human-review flows.
+6. Add LLM provider abstraction and typed tools only after the deterministic runtime contract is stable.
