@@ -262,6 +262,53 @@ The CLI is both a human tool and an adapter boundary, so its behavior must stay 
 
 OpenClaw and Hermes remain optional adapters. They should call the same marketplace API and CLI commands as standalone `mai-cli`; they should not own core business state.
 
+### OpenClaw/Hermes Gap Roadmap
+
+Hermes and OpenClaw are general-purpose agent platforms. `mai-cli` is a vertical commerce runtime, so it should not copy every platform feature. The right product boundary is to keep commerce state, rules, permissions, and conversation orchestration inside `mai-cli`, while integrating the platform capabilities that are necessary for buyer and merchant collaboration.
+
+Prioritized gaps:
+
+1. Real message-channel integration.
+   - OpenClaw has gateway, channels, message delivery, devices, and pairing. Hermes has gateway, WhatsApp, Slack, and webhook support.
+   - `mai-cli` should accept buyer messages from channels such as WhatsApp, Telegram, Slack, or web chat, map them into conversations, and let merchants answer from OpenClaw/Hermes without losing the trusted marketplace state.
+   - First implementation slice: expose a local `channel ingest` CLI and `POST /channels/messages` API that convert external channel messages into buyer conversation messages while preserving channel metadata. Real network gateways can adapt to this entry point later.
+
+2. Host-native tool and permission integration.
+   - The current plugin bridge can wrap local CLI commands, but it does not yet expose a first-class MCP/ACP/tool server boundary.
+   - Add a host-native tool server that maps OpenClaw/Hermes identities, devices, sessions, and scopes to `mai-cli` buyer, merchant, merchant-agent, and operator permissions.
+
+3. Merchant human-review workbench.
+   - `mai-cli` has human-review queues, but merchants still need a practical review surface.
+   - Add a workbench for flagged conversations, pending replies, low stock, bargaining, suspicious content, and unclear delivery, with approve, reply, reject, close, and escalate actions.
+
+4. Durable background tasks and scheduling.
+   - The current daemon lifecycle is local pid/log based.
+   - Add durable task records, scheduler support, retry policy, worker leases, restart recovery, and task-level observability so resident agents can run reliably outside a single terminal session.
+
+5. Multi-profile and session isolation.
+   - OpenClaw and Hermes support profiles, sessions, and isolated agent workspaces.
+   - Add first-class `mai-cli` profiles for merchant accounts, demo environments, staging databases, and buyer test sessions, including export, restore, and switch commands.
+
+6. Memory and preference layer.
+   - Platform memory is broad, while commerce memory needs domain structure.
+   - Store buyer preferences, merchant policies, frequently answered questions, delivery constraints, and prior consultation outcomes in a retrievable form that agents can use safely.
+
+7. LLM runtime governance.
+   - `mai-cli` has tool schemas and a dispatcher, but not a full governed agent runtime.
+   - Add model fallback, tool budgets, cost and latency logs, streaming responses, provider auth isolation, and a configurable choice between deterministic agents and LLM-backed agents.
+
+8. Security governance and audit upgrades.
+   - Ownership checks are necessary but not sufficient for hosted or channel-based use.
+   - Add host consent, device pairing, token rotation, secret storage, rate limits, audit search, and reviewable permission grants.
+
+9. Public deployment readiness.
+   - SQLite local demos are not enough for multi-merchant production use.
+   - Add Postgres support, migrations, backup/restore, TLS/auth guidance, webhook callbacks, multi-instance safe worker coordination, and deployment health checks.
+
+10. Merchant-confirmed quote drafts before orders.
+    - Do not jump directly to orders, payment, or fulfillment.
+    - Add `quote_draft` and `merchant_confirmed_quote` as pre-transaction records so the system can capture a merchant-confirmed commercial answer without reserving stock, charging payment, or claiming delivery success.
+
 ## Internal Agent Protocol
 
 ### Agent

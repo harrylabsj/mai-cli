@@ -15,6 +15,11 @@ from mai_cli.llm.tools import marketplace_tool_schema_objects
 
 ToolHandler = Callable[[dict[str, Any]], dict[str, Any]]
 
+BUYER_SCOPES = {"buyer", "buyer_cli"}
+MERCHANT_SCOPES = {"merchant", "merchant_agent"}
+PRIVILEGED_CONVERSATION_SCOPES = {"local_trusted", "operator"}
+SOURCE_OWNER_PREFIXES = ("mai-cli-merchant-agent:", "mai-cli-buyer-agent:", "merchant:", "buyer:")
+
 TOOL_SCOPE_ALLOWLIST = {
     "catalog_search": {"local_trusted", "buyer", "buyer_cli", "merchant", "merchant_agent", "operator"},
     "conversation_send": {"local_trusted", "buyer", "buyer_cli"},
@@ -22,6 +27,10 @@ TOOL_SCOPE_ALLOWLIST = {
     "human_review_flag": {"local_trusted", "merchant", "merchant_agent", "operator"},
     "merchant_reply": {"local_trusted", "merchant", "merchant_agent"},
 }
+
+
+class ToolAccessDenied(Exception):
+    """Raised when a scoped tool call targets a conversation owned by another actor."""
 
 
 class MarketplaceToolDispatcher:
@@ -55,6 +64,10 @@ class MarketplaceToolDispatcher:
         handler = getattr(self, f"_dispatch_{tool_name}")
         try:
             result = handler(arguments)
+        except ToolAccessDenied as exc:
+            error = str(exc)
+            self._audit_tool_call(tool_name, arguments, "denied", error)
+            raise SystemExit(error) from exc
         except Exception as exc:
             self._audit_tool_call(tool_name, arguments, "error", str(exc))
             raise
@@ -81,6 +94,44 @@ class MarketplaceToolDispatcher:
                 },
             )
 
+    def _conversation_for_tool(self, conn: Any, conversation_id: str, tool_name: str) -> dict[str, Any]:
+        conversation = conversation_summary(conn, conversation_id)
+        self._require_conversation_access(conversation, tool_name)
+        return conversation
+
+    def _identity_candidates(self) -> set[str]:
+        candidates: set[str] = set()
+        for value in (self.actor, self.source_id):
+            identity = str(value or "").strip()
+            if not identity:
+                continue
+            candidates.add(identity)
+            for prefix in SOURCE_OWNER_PREFIXES:
+                if identity.startswith(prefix):
+                    owner_id = identity[len(prefix) :].strip()
+                    if owner_id:
+                        candidates.add(owner_id)
+        return candidates
+
+    def _require_conversation_access(self, conversation: dict[str, Any], tool_name: str) -> None:
+        if self.token_scope in PRIVILEGED_CONVERSATION_SCOPES:
+            return
+        if self.token_scope in MERCHANT_SCOPES:
+            owner_key = "merchant_id"
+        elif self.token_scope in BUYER_SCOPES:
+            owner_key = "buyer_id"
+        else:
+            raise ToolAccessDenied(f"tool {tool_name} is not allowed for token scope {self.token_scope}")
+
+        owner_id = str(conversation.get(owner_key) or "")
+        if owner_id and owner_id in self._identity_candidates():
+            return
+        actor = self.actor or self.source_id or "<missing>"
+        raise ToolAccessDenied(
+            f"tool {tool_name} is not allowed for token scope {self.token_scope} actor {actor} "
+            f"on conversation {conversation.get('id')}"
+        )
+
     def _dispatch_catalog_search(self, arguments: dict[str, Any]) -> dict[str, Any]:
         with db_session(self.db_path) as conn:
             results = search_products(
@@ -97,21 +148,25 @@ class MarketplaceToolDispatcher:
         sender = str(arguments["sender"])
         if sender not in {"buyer", "buyer_cli"}:
             raise SystemExit("conversation_send only supports buyer or buyer_cli senders")
+        conversation_id = str(arguments["conversation_id"])
         with db_session(self.db_path) as conn:
+            self._conversation_for_tool(conn, conversation_id, "conversation_send")
             message = append_message(
                 conn,
-                str(arguments["conversation_id"]),
+                conversation_id,
                 sender,
                 str(arguments["intent"]),
                 str(arguments["text"]),
                 structured_payload={"source_id": self.source_id, "tool": "conversation_send"},
             )
-            conversation = conversation_summary(conn, str(arguments["conversation_id"]))
+            conversation = conversation_summary(conn, conversation_id)
         return {"ok": True, "message": message, "conversation": conversation}
 
     def _dispatch_conversation_summarize(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        conversation_id = str(arguments["conversation_id"])
         with db_session(self.db_path) as conn:
-            summary = buyer_cli.summarize(conn, str(arguments["conversation_id"]))
+            self._conversation_for_tool(conn, conversation_id, "conversation_summarize")
+            summary = buyer_cli.summarize(conn, conversation_id)
         return {"ok": True, "summary": summary}
 
     def _dispatch_human_review_flag(self, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -119,7 +174,7 @@ class MarketplaceToolDispatcher:
         reason = str(arguments.get("reason") or "human_required")
         severity = str(arguments.get("severity") or "review")
         with db_session(self.db_path) as conn:
-            conversation = conversation_summary(conn, conversation_id)
+            conversation = self._conversation_for_tool(conn, conversation_id, "human_review_flag")
             flag = add_flag(conn, conversation_id, reason=reason, severity=severity, sku=conversation.get("sku") or "")
             next_actor = next_actor_for_status("human_required", reason)
             conn.execute(
@@ -143,7 +198,7 @@ class MarketplaceToolDispatcher:
         reason = str(arguments.get("reason") or "")
         status = "human_required" if human_required else "waiting_buyer"
         with db_session(self.db_path) as conn:
-            conversation = conversation_summary(conn, conversation_id)
+            conversation = self._conversation_for_tool(conn, conversation_id, "merchant_reply")
             message = append_message(
                 conn,
                 conversation_id,

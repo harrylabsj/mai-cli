@@ -268,6 +268,84 @@ class LlmContractTest(unittest.TestCase):
             self.assertEqual(tool_events[2]["details"]["host"], "openclaw")
             self.assertEqual(tool_events[2]["details"]["token_scope"], "merchant_agent")
 
+    def test_marketplace_tool_dispatcher_rejects_cross_merchant_conversation_tools(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.seed_consultation(db_file)
+            with db_session(db_file) as conn:
+                create_merchant(
+                    conn,
+                    merchant_id="seller-b",
+                    name="River Tea",
+                    city="Hangzhou",
+                    service_area="West Lake",
+                    delivery_eta_minutes=30,
+                )
+
+            dispatcher = MarketplaceToolDispatcher(
+                db_file,
+                source_id="openclaw-merchant-b",
+                host="openclaw",
+                session_id="sess-merchant-b",
+                actor="seller-b",
+                token_scope="merchant_agent",
+            )
+
+            with self.assertRaises(SystemExit):
+                dispatcher.dispatch(
+                    "merchant_reply",
+                    {
+                        "conversation_id": "CONV-0001",
+                        "intent": "ask_stock",
+                        "text": "seller-b must not reply to seller-a conversations.",
+                    },
+                )
+            with self.assertRaises(SystemExit):
+                dispatcher.dispatch(
+                    "human_review_flag",
+                    {"conversation_id": "CONV-0001", "reason": "cross_merchant", "severity": "review"},
+                )
+            with self.assertRaises(SystemExit):
+                dispatcher.dispatch("conversation_summarize", {"conversation_id": "CONV-0001"})
+
+            with db_session(db_file) as conn:
+                conversation = conversation_summary(conn, "CONV-0001")
+            self.assertEqual([message["sender"] for message in conversation["messages"]], ["buyer"])
+            self.assertEqual(conversation["flags"], [])
+
+    def test_marketplace_tool_dispatcher_rejects_cross_buyer_conversation_tools(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.seed_consultation(db_file)
+            with db_session(db_file) as conn:
+                ensure_conversation(conn, "bob", "seller-a", "tea-a")
+
+            dispatcher = MarketplaceToolDispatcher(
+                db_file,
+                source_id="hermes-buyer-bob",
+                host="hermes",
+                session_id="sess-buyer-bob",
+                actor="bob",
+                token_scope="buyer",
+            )
+
+            with self.assertRaises(SystemExit):
+                dispatcher.dispatch(
+                    "conversation_send",
+                    {
+                        "conversation_id": "CONV-0001",
+                        "sender": "buyer",
+                        "intent": "ask_stock",
+                        "text": "bob must not write to alice conversations.",
+                    },
+                )
+            with self.assertRaises(SystemExit):
+                dispatcher.dispatch("conversation_summarize", {"conversation_id": "CONV-0001"})
+
+            with db_session(db_file) as conn:
+                conversation = conversation_summary(conn, "CONV-0001")
+            self.assertEqual([message["sender"] for message in conversation["messages"]], ["buyer"])
+
 
 if __name__ == "__main__":
     unittest.main()

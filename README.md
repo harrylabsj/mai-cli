@@ -61,6 +61,29 @@ printf 'longjing gift delivery today\n/summary\n/quit\n' | \
 
 Default database path: `~/.local/share/mai-cli/mai-cli.sqlite`.
 
+## Channel Ingress
+
+External channel adapters can ingest buyer messages through a stable local entry point before real WhatsApp, Telegram, Slack, or OpenClaw/Hermes gateway bridges are attached:
+
+```bash
+python3 scripts/mai.py --db ./mai-cli.sqlite channel ingest \
+  --channel whatsapp \
+  --external-user "+15550001111" \
+  --text "longjing gift delivery today" \
+  --city Hangzhou \
+  --area "West Lake" \
+  --format json
+
+python3 scripts/mai.py --db ./mai-cli.sqlite channel ingest \
+  --channel whatsapp \
+  --external-user "+15550001111" \
+  --conversation CONV-0001 \
+  --text "Any stock left?" \
+  --format json
+```
+
+The buyer id is always derived as `<channel>:<external-user>` for public channel ingress. Message payloads preserve `source_id`, `channel`, `external_user_id`, and optional `external_message_id`.
+
 ## Conversation CLI
 
 The raw conversation lifecycle is available without the API server:
@@ -99,6 +122,8 @@ python3 scripts/mai.py --db ./mai-cli.sqlite api routes --format json
 ```
 
 The local API covers catalog, search, conversations, message append/close, agent heartbeats, and human-review queues. In environments without FastAPI installed, `create_app()` still returns a lightweight ASGI app for local tests and demos.
+
+External channel adapters can use `POST /channels/messages` with `channel`, `external_user_id`, `text`, and optional `conversation_id`, `city`, `area`, and `external_message_id`.
 
 `POST /merchants` returns a local `merchant_token`. Product writes, merchant profile updates, merchant/merchant-agent replies, heartbeats, and human-review write actions require that token in the JSON body as `merchant_token` or as a Bearer token. Buyer search and buyer conversation creation remain tokenless for local demos.
 

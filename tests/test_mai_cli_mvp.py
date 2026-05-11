@@ -181,6 +181,61 @@ class MaiCliMvpTest(unittest.TestCase):
             self.assertNotIn("orders", tables)
             self.assertNotIn("payments", tables)
 
+    def test_channel_ingest_opens_and_continues_buyer_conversation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai-cli.sqlite"
+            self.seed_longjing_shop(db_file)
+
+            opened = json.loads(
+                self.run_cli(
+                    db_file,
+                    "channel",
+                    "ingest",
+                    "--channel",
+                    "whatsapp",
+                    "--external-user",
+                    "+15550001111",
+                    "--text",
+                    "今天想买龙井礼盒，西湖附近能送吗？",
+                    "--city",
+                    "Hangzhou",
+                    "--area",
+                    "西湖附近",
+                    "--format",
+                    "json",
+                )
+            )
+            self.assertEqual(opened["buyer_id"], "whatsapp:+15550001111")
+            self.assertEqual(opened["conversation"]["id"], "CONV-0001")
+            self.assertEqual(opened["conversation"]["status"], "waiting_merchant")
+            self.assertEqual(opened["message"]["structured_payload"]["source_id"], "channel:whatsapp")
+            self.assertEqual(opened["message"]["structured_payload"]["channel"], "whatsapp")
+            self.assertEqual(opened["message"]["structured_payload"]["external_user_id"], "+15550001111")
+
+            continued = json.loads(
+                self.run_cli(
+                    db_file,
+                    "channel",
+                    "ingest",
+                    "--channel",
+                    "whatsapp",
+                    "--external-user",
+                    "+15550001111",
+                    "--conversation",
+                    "CONV-0001",
+                    "--text",
+                    "再确认一下库存。",
+                    "--format",
+                    "json",
+                )
+            )
+            self.assertEqual(continued["conversation"]["id"], "CONV-0001")
+            self.assertEqual([message["sender"] for message in continued["conversation"]["messages"]], ["buyer", "buyer"])
+            self.assertEqual(
+                continued["conversation"]["messages"][1]["structured_payload"]["source_id"],
+                "channel:whatsapp",
+            )
+
     def test_bargaining_is_marked_for_human_review(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai-cli.sqlite"

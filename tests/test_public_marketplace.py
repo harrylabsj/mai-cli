@@ -124,6 +124,7 @@ class PublicMarketplaceTest(unittest.TestCase):
             self.assertIn("/products/{sku}", route_paths)
             self.assertIn("/search/products", route_paths)
             self.assertIn("/search/merchants", route_paths)
+            self.assertIn("/channels/messages", route_paths)
             self.assertIn("/buyer/ask", route_paths)
             self.assertIn("/conversations", route_paths)
             self.assertIn("/conversations/{conversation_id}", route_paths)
@@ -356,6 +357,100 @@ class PublicMarketplaceTest(unittest.TestCase):
             )
             self.assertEqual(status, 200)
             self.assertEqual(update["product"]["stock"], 4)
+
+    def test_channel_message_api_ingests_external_buyer_messages(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "marketplace.sqlite"
+            app = create_app(db_file)
+            _, merchant = self.request(
+                app,
+                "POST",
+                "/merchants",
+                {
+                    "id": "seller-a",
+                    "name": "West Lake Tea",
+                    "city": "Hangzhou",
+                    "service_area": "West Lake",
+                },
+            )
+            self.request(
+                app,
+                "POST",
+                "/products",
+                {
+                    "merchant_id": "seller-a",
+                    "sku": "tea-a",
+                    "title": "Longjing Gift Box",
+                    "price": 88,
+                    "stock": 5,
+                    "tags": ["longjing", "gift"],
+                    "merchant_token": merchant["merchant_token"],
+                },
+            )
+
+            status, opened = self.request(
+                app,
+                "POST",
+                "/channels/messages",
+                {
+                    "channel": "telegram",
+                    "external_user_id": "@alice",
+                    "text": "longjing gift delivery today",
+                    "city": "Hangzhou",
+                },
+            )
+            self.assertEqual(status, 200)
+            self.assertEqual(opened["buyer_id"], "telegram:@alice")
+            self.assertEqual(opened["conversation"]["id"], "CONV-0001")
+            self.assertEqual(opened["message"]["structured_payload"]["source_id"], "channel:telegram")
+            self.assertEqual(opened["message"]["structured_payload"]["channel"], "telegram")
+
+            status, continued = self.request(
+                app,
+                "POST",
+                "/channels/messages",
+                {
+                    "channel": "telegram",
+                    "external_user_id": "@alice",
+                    "conversation_id": "CONV-0001",
+                    "text": "Any stock left?",
+                },
+            )
+            self.assertEqual(status, 200)
+            self.assertEqual([message["sender"] for message in continued["conversation"]["messages"]], ["buyer", "buyer"])
+
+            status, denied = self.request(
+                app,
+                "POST",
+                "/channels/messages",
+                {
+                    "channel": "telegram",
+                    "external_user_id": "@bob",
+                    "conversation_id": "CONV-0001",
+                    "text": "I should not enter alice's channel conversation.",
+                },
+            )
+            self.assertEqual(status, 400)
+            self.assertIn("cannot write", denied["error"])
+
+            status, spoofed = self.request(
+                app,
+                "POST",
+                "/channels/messages",
+                {
+                    "channel": "telegram",
+                    "external_user_id": "@bob",
+                    "buyer_id": "telegram:@alice",
+                    "conversation_id": "CONV-0001",
+                    "text": "Forged buyer_id should not enter alice's channel conversation.",
+                },
+            )
+            self.assertEqual(status, 400)
+            self.assertIn("buyer_id override", spoofed["error"])
+
+            status, conversation = self.request(app, "GET", "/conversations/CONV-0001")
+            self.assertEqual(status, 200)
+            self.assertEqual(len(conversation["conversation"]["messages"]), 2)
 
     def test_api_exposes_conversation_agent_and_human_review_lifecycle(self):
         with tempfile.TemporaryDirectory() as tmp:

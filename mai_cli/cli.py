@@ -24,6 +24,7 @@ from mai_cli.core.catalog import (
     update_product,
     upsert_delivery_rule,
 )
+from mai_cli.core.channels import ingest_buyer_message
 from mai_cli.core.conversations import merchant_conversations
 from mai_cli.core.conversations import add_flag, append_message, conversation_summary, ensure_conversation
 from mai_cli.core.harness import append_audit_event, next_actor_for_status
@@ -178,6 +179,21 @@ def cmd_search_merchants(args: argparse.Namespace) -> None:
 def cmd_buyer_ask(args: argparse.Namespace) -> None:
     with db_session(db_path_from_args(args)) as conn:
         result = buyer_cli.ask(conn, args.buyer, args.text, city=args.city or "", area=args.area or "")
+    emit(result, args.format)
+
+
+def cmd_channel_ingest(args: argparse.Namespace) -> None:
+    with db_session(db_path_from_args(args)) as conn:
+        result = ingest_buyer_message(
+            conn,
+            channel=args.channel,
+            external_user_id=args.external_user,
+            text=args.text,
+            city=args.city or "",
+            area=args.area or "",
+            conversation_id=args.conversation or "",
+            external_message_id=args.external_message_id or "",
+        )
     emit(result, args.format)
 
 
@@ -695,6 +711,19 @@ def build_parser() -> argparse.ArgumentParser:
     search_merchants_parser.add_argument("--city", default="")
     search_merchants_parser.add_argument("--format", choices=["text", "json"], default="text")
     search_merchants_parser.set_defaults(func=cmd_search_merchants)
+
+    channel = subparsers.add_parser("channel", help="Ingest external channel messages")
+    channel_sub = channel.add_subparsers(dest="channel_command", required=True)
+    channel_ingest = channel_sub.add_parser("ingest", help="Ingest an external buyer message")
+    channel_ingest.add_argument("--channel", required=True)
+    channel_ingest.add_argument("--external-user", required=True)
+    channel_ingest.add_argument("--text", required=True)
+    channel_ingest.add_argument("--conversation", default="")
+    channel_ingest.add_argument("--city", default="")
+    channel_ingest.add_argument("--area", default="")
+    channel_ingest.add_argument("--external-message-id", default="")
+    channel_ingest.add_argument("--format", choices=["text", "json"], default="text")
+    channel_ingest.set_defaults(func=cmd_channel_ingest)
 
     buyer = subparsers.add_parser("buyer", help="Buyer consultation commands")
     buyer_sub = buyer.add_subparsers(dest="buyer_command", required=True)

@@ -19,6 +19,7 @@ from mai_cli import VERSION
 from mai_cli.agents import buyer_cli, merchant_agent
 from mai_cli.config import agent_stale_ttl_seconds_from
 from mai_cli.core import catalog
+from mai_cli.core.channels import ingest_buyer_message
 from mai_cli.core.conversations import add_flag, append_message, conversation_summary, ensure_conversation, merchant_conversations
 from mai_cli.core.harness import append_audit_event, next_actor_for_status
 from mai_cli.db.session import db_session, decode_json, now_iso
@@ -101,6 +102,7 @@ def route_info() -> list[RouteInfo]:
         RouteInfo("/products/{sku}", {"GET", "PATCH"}),
         RouteInfo("/search/products", {"GET"}),
         RouteInfo("/search/merchants", {"GET"}),
+        RouteInfo("/channels/messages", {"POST"}),
         RouteInfo("/buyer/ask", {"POST"}),
         RouteInfo("/conversations", {"POST"}),
         RouteInfo("/conversations/{conversation_id}", {"GET"}),
@@ -294,6 +296,22 @@ def _buyer_ask(db_path: str | Path, payload: dict[str, Any]) -> dict[str, Any]:
             text=str(payload["text"]),
             city=str(payload.get("city") or ""),
             area=str(payload.get("area") or ""),
+        )
+
+
+def _ingest_channel_message(db_path: str | Path, payload: dict[str, Any]) -> dict[str, Any]:
+    if payload.get("buyer_id"):
+        raise SystemExit("buyer_id override is not allowed for channel ingress")
+    with db_session(db_path) as conn:
+        return ingest_buyer_message(
+            conn,
+            channel=str(payload["channel"]),
+            external_user_id=str(payload["external_user_id"]),
+            text=str(payload["text"]),
+            city=str(payload.get("city") or ""),
+            area=str(payload.get("area") or ""),
+            conversation_id=str(payload.get("conversation_id") or ""),
+            external_message_id=str(payload.get("external_message_id") or ""),
         )
 
 
@@ -599,6 +617,8 @@ def handle_request(
             return 200, _search_products(db_path, query)
         if path == "/search/merchants" and method == "GET":
             return 200, _search_merchants(db_path, query)
+        if path == "/channels/messages" and method == "POST":
+            return 200, _ingest_channel_message(db_path, payload)
         if path == "/buyer/ask" and method == "POST":
             return 200, _buyer_ask(db_path, payload)
         if path == "/conversations" and method == "POST":
@@ -714,6 +734,10 @@ def create_app(db_path: str | Path = "mai-cli.sqlite") -> Any:
     @app.get("/search/merchants")
     def search_merchants(query: str = "", city: str = "") -> dict[str, Any]:
         return _search_merchants(db_path, {"query": query, "city": city})
+
+    @app.post("/channels/messages")
+    def ingest_channel_message(payload: dict[str, Any]) -> dict[str, Any]:
+        return _ingest_channel_message(db_path, payload)
 
     @app.post("/buyer/ask")
     def buyer_ask(payload: dict[str, Any]) -> dict[str, Any]:
