@@ -6,6 +6,9 @@ import os
 from pathlib import Path
 from typing import Iterable
 
+from mai_cli.adapters.diagnostics import doctor_from_inspection, inspect_host as inspect_adapter_host
+from mai_cli.adapters.diagnostics import install_command as adapter_install_command
+
 DEFAULT_SKILL_ROOT = Path.home() / ".hermes" / "skills" / "commerce" / "mai"
 
 
@@ -85,11 +88,41 @@ def buyer_summarize_command(
     )
 
 
+def inspect_host(
+    db_path: str | Path | None = None,
+    project_root: str | Path | None = None,
+    skill_root: str | Path | None = None,
+) -> dict:
+    return inspect_adapter_host(
+        "Hermes",
+        "hermes",
+        DEFAULT_SKILL_ROOT,
+        project_root=project_root,
+        skill_root=skill_root,
+        db_path=db_path,
+    )
+
+
+def doctor(
+    db_path: str | Path | None = None,
+    project_root: str | Path | None = None,
+    skill_root: str | Path | None = None,
+) -> dict:
+    return doctor_from_inspection(inspect_host(db_path=db_path, project_root=project_root, skill_root=skill_root))
+
+
+def install_command(project_root: str | Path | None = None, dry_run: bool = False, force: bool = False) -> list[str]:
+    return adapter_install_command("--hermes", project_root=project_root, dry_run=dry_run, force=force)
+
+
 __all__ = [
     "DEFAULT_SKILL_ROOT",
     "build_mai_command",
     "buyer_ask_command",
     "buyer_summarize_command",
+    "doctor",
+    "inspect_host",
+    "install_command",
     "record_intent_command",
     "resolve_project_root",
 ]
