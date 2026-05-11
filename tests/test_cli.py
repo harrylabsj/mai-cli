@@ -286,6 +286,44 @@ class MaiCliTest(unittest.TestCase):
 
             self.assertEqual(constructed[0]["base_url"], "http://127.0.0.1:8765")
 
+    def test_agent_run_can_loop_with_http_marketplace_tools_until_stop_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            stop_file = Path(tmp) / "agent.stop"
+            stop_file.write_text("stop", encoding="utf-8")
+            calls = []
+
+            class FakeHTTPMerchantAgentTools:
+                def __init__(self, base_url, merchant_id, merchant_token):
+                    calls.append(("init", base_url, merchant_id, merchant_token))
+
+                def heartbeat(self, merchant_id, status="online", **kwargs):
+                    calls.append(("heartbeat", merchant_id, status, kwargs))
+                    return {"id": f"mai-cli-merchant-agent:{merchant_id}", "owner_id": merchant_id, "status": status}
+
+            with (
+                patch("mai_cli.cli.HTTPMerchantAgentTools", FakeHTTPMerchantAgentTools),
+            ):
+                self.run_cli(
+                    db_file,
+                    "agent",
+                    "run",
+                    "--merchant",
+                    "seller-a",
+                    "--api-url",
+                    "http://127.0.0.1:8765",
+                    "--agent-token",
+                    "agent_tok_seller_a",
+                    "--stop-file",
+                    str(stop_file),
+                    "--format",
+                    "json",
+                )
+
+            self.assertIn(("init", "http://127.0.0.1:8765", "seller-a", "agent_tok_seller_a"), calls)
+            self.assertIn(("heartbeat", "seller-a", "away", {}), calls)
+            self.assertFalse(stop_file.exists())
+
     def test_agent_token_command_issues_scoped_agent_token(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"

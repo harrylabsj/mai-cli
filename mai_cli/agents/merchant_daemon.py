@@ -9,7 +9,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from mai_cli.agents import merchant_agent
 from mai_cli.db.session import db_session, decode_json, now_iso
@@ -313,9 +313,10 @@ def logs_agent(merchant_id: str, tail: int = 20, state_dir: str | Path | None = 
     return {"ok": True, "merchant_id": merchant_id, "log_file": str(paths["log_file"]), "entries": entries}
 
 
-def run_forever(
-    db_path: str | Path,
+def _run_process_loop(
     merchant_id: str,
+    process_once: Callable[[], dict[str, Any]],
+    mark_away: Callable[[], Any],
     interval: float = 3.0,
     state_file: str | Path | None = None,
     stop_file: str | Path | None = None,
@@ -337,8 +338,7 @@ def run_forever(
     try:
         while not stop_requested and not (stop_path and stop_path.exists()):
             try:
-                with db_session(db_path) as conn:
-                    result = merchant_agent.process_once(conn, merchant_id)
+                result = process_once()
                 checked = int(result.get("checked") or 0)
                 replied_count = len(result.get("replied") or [])
                 counters["checked"] += checked
@@ -371,8 +371,7 @@ def run_forever(
                 time.sleep(min(0.1, max(deadline - time.time(), 0.01)))
     finally:
         try:
-            with db_session(db_path) as conn:
-                merchant_agent.heartbeat(conn, merchant_id, status="away")
+            mark_away()
         finally:
             if state_path:
                 write_state(
@@ -388,3 +387,51 @@ def run_forever(
                 stop_path.unlink()
             signal.signal(signal.SIGTERM, previous_term)
             signal.signal(signal.SIGINT, previous_int)
+
+
+def run_forever(
+    db_path: str | Path,
+    merchant_id: str,
+    interval: float = 3.0,
+    state_file: str | Path | None = None,
+    stop_file: str | Path | None = None,
+) -> None:
+    def process_once() -> dict[str, Any]:
+        with db_session(db_path) as conn:
+            return merchant_agent.process_once(conn, merchant_id)
+
+    def mark_away() -> None:
+        with db_session(db_path) as conn:
+            merchant_agent.heartbeat(conn, merchant_id, status="away")
+
+    _run_process_loop(
+        merchant_id,
+        process_once,
+        mark_away,
+        interval=interval,
+        state_file=state_file,
+        stop_file=stop_file,
+    )
+
+
+def run_tools_forever(
+    tools: Any,
+    merchant_id: str,
+    interval: float = 3.0,
+    state_file: str | Path | None = None,
+    stop_file: str | Path | None = None,
+) -> None:
+    def process_once() -> dict[str, Any]:
+        return merchant_agent.process_once_with_tools(tools, merchant_id)
+
+    def mark_away() -> None:
+        tools.heartbeat(merchant_id, status="away")
+
+    _run_process_loop(
+        merchant_id,
+        process_once,
+        mark_away,
+        interval=interval,
+        state_file=state_file,
+        stop_file=stop_file,
+    )

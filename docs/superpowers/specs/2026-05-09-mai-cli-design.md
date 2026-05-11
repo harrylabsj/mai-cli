@@ -324,6 +324,7 @@ Priority order:
    - Keep SQLite tools for local tests, but add an API-backed implementation of `MerchantAgentTools` and buyer/LLM tools.
    - Long-running agents should mutate trusted state through Marketplace API contracts rather than direct database access.
    - First implementation slice: add `HTTPMerchantAgentTools`, agent message process API routes, merchant ownership checks, and `agent run --once --api-url --agent-token` with merchant-token compatibility.
+   - Daemon slice: allow `agent run --api-url --agent-token` without `--once` so resident merchant agents can keep polling through the Marketplace API boundary instead of direct SQLite access.
 
 3. Channel ingress idempotency.
    - `external_message_id` should become an enforcement key, not only payload metadata.
@@ -554,7 +555,7 @@ Build the smallest runnable vertical slice:
 4. Deterministic merchant agent tools for catalog, inventory, delivery, and human-review flags.
 5. Complete conversations, heartbeat, and human-review API surfaces with matching CLI commands.
 6. MVP multi-agent orchestration harness for conversation assignment, `next_actor`, idempotent message processing, retry/error tracking, and audit events.
-7. Long-running merchant agent daemon with `start`, `stop`, `status`, `logs`, and `run --once` lifecycle commands.
+7. Long-running merchant agent daemon with `start`, `stop`, `status`, `logs`, `run --once`, and API-backed `run --api-url` lifecycle commands.
 8. Simple buyer CLI tools for search, merchant conversation, and response summary.
 9. End-to-end demo test for the Hangzhou Longjing gift box consultation scenario, including conversation APIs, heartbeat, human review, harness routing, and daemon start/status/stop.
 

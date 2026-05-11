@@ -40,6 +40,7 @@ Merchant agents can run as one-shot workers or resident local daemons:
 
 ```bash
 python3 scripts/mai.py --db ./mai-cli.sqlite agent run --merchant seller-a --once --format json
+python3 scripts/mai.py agent run --merchant seller-a --api-url http://127.0.0.1:8765 --agent-token "$MAI_AGENT_TOKEN" --interval 3
 python3 scripts/mai.py agent start --merchant seller-a --db ./mai-cli.sqlite --interval 3 --format json
 python3 scripts/mai.py agent status --merchant seller-a --db ./mai-cli.sqlite --format json
 python3 scripts/mai.py agent logs --merchant seller-a --tail 20 --format json
@@ -47,3 +48,4 @@ python3 scripts/mai.py agent stop --merchant seller-a --db ./mai-cli.sqlite --fo
 ```
 
 The daemon writes pid and state files under `~/.local/state/mai-cli/agents/` and JSON-line logs under `~/.local/state/mai-cli/logs/`. Set `MAI_CLI_STATE_DIR` to isolate state for tests or demos.
+When `--api-url` is present, the same resident loop uses `HTTPMerchantAgentTools` and scoped `--agent-token` or `MAI_AGENT_TOKEN` credentials.
