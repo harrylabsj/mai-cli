@@ -762,6 +762,35 @@ class PublicMarketplaceTest(unittest.TestCase):
             self.assertEqual(status, 200)
             self.assertEqual(review["review"]["reason"], "low_stock")
 
+            status, spoofed_message = self.request(
+                app,
+                "POST",
+                "/conversations/CONV-0001/messages",
+                {
+                    "sender": "merchant_agent",
+                    "intent": "ask_delivery",
+                    "text": "Spoofed source.",
+                    "status": "waiting_buyer",
+                    "structured_payload": {"source_id": "mai-cli-merchant-agent:seller-b"},
+                    "merchant_token": merchant_token,
+                },
+            )
+            self.assertEqual(status, 403)
+            self.assertIn("cannot act", spoofed_message["error"])
+
+            status, spoofed_review = self.request(
+                app,
+                "POST",
+                "/conversations/CONV-0001/human-review",
+                {
+                    "reason": "spoofed",
+                    "source_id": "mai-cli-merchant-agent:seller-b",
+                    "merchant_token": merchant_token,
+                },
+            )
+            self.assertEqual(status, 403)
+            self.assertIn("cannot act", spoofed_review["error"])
+
     def test_api_exposes_conversation_agent_and_human_review_lifecycle(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "marketplace.sqlite"

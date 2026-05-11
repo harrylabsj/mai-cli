@@ -204,6 +204,8 @@ def _require_merchant_token(conn: Any, merchant_id: str, payload: dict[str, Any]
 
 
 def _require_agent_or_merchant_token(conn: Any, merchant_id: str, agent_id: str, payload: dict[str, Any]) -> None:
+    if agent_id != _default_merchant_agent_id(merchant_id):
+        raise AuthError(f"Agent {agent_id} cannot act for merchant {merchant_id}")
     token = _payload_token(payload)
     if not token:
         raise AuthError("agent or merchant token required")
@@ -483,8 +485,6 @@ def _create_agent_token(db_path: str | Path, payload: dict[str, Any]) -> dict[st
 def _require_agent_payload(conn: Any, payload: dict[str, Any]) -> tuple[str, str]:
     merchant_id = str(payload["merchant_id"])
     agent_id = str(payload.get("agent_id") or _default_merchant_agent_id(merchant_id))
-    if agent_id != _default_merchant_agent_id(merchant_id):
-        raise AuthError(f"Agent {agent_id} cannot act for merchant {merchant_id}")
     _require_agent_or_merchant_token(conn, merchant_id, agent_id, payload)
     return merchant_id, agent_id
 
