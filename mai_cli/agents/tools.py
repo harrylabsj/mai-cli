@@ -8,7 +8,7 @@ from typing import Any, Protocol
 from mai_cli import VERSION
 from mai_cli.core.catalog import product_summary, require_merchant
 from mai_cli.core.conversations import add_flag, append_message, waiting_merchant_conversations
-from mai_cli.core.harness import claim_agent_message, complete_agent_message, fail_agent_message
+from mai_cli.core.harness import abandon_agent_message, claim_agent_message, complete_agent_message, fail_agent_message
 from mai_cli.db.session import encode_json, now_iso
 
 DEFAULT_CAPABILITIES = ["catalog", "inventory", "delivery", "consultation"]
@@ -52,6 +52,9 @@ class MerchantAgentTools(Protocol):
         ...
 
     def fail_message(self, agent_id: str, message_id: int, error: str) -> dict[str, Any]:
+        ...
+
+    def abandon_message(self, agent_id: str, message_id: int, error: str) -> dict[str, Any]:
         ...
 
 
@@ -171,3 +174,6 @@ class SQLiteMerchantAgentTools:
 
     def fail_message(self, agent_id: str, message_id: int, error: str) -> dict[str, Any]:
         return fail_agent_message(self.conn, agent_id, message_id, error)
+
+    def abandon_message(self, agent_id: str, message_id: int, error: str) -> dict[str, Any]:
+        return abandon_agent_message(self.conn, agent_id, message_id, error)

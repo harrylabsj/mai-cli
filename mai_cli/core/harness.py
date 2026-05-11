@@ -68,6 +68,13 @@ def message_idempotency_key(agent_id: str, message_id: int) -> str:
     return f"{agent_id}:{message_id}"
 
 
+PROCESSING_STATUS = "processing"
+PROCESSED_STATUS = "processed"
+FAILED_STATUS = "failed"
+ABANDONED_STATUS = "abandoned"
+RETRYABLE_PROCESS_STATUSES = {FAILED_STATUS, ABANDONED_STATUS}
+
+
 def claim_agent_message(
     conn: sqlite3.Connection,
     agent_id: str,
@@ -80,7 +87,7 @@ def claim_agent_message(
         "select * from agent_message_processes where agent_id = ? and message_id = ?",
         (agent_id, message_id),
     ).fetchone()
-    if row is not None and row["status"] != "failed":
+    if row is not None and row["status"] not in RETRYABLE_PROCESS_STATUSES:
         return {
             "claimed": False,
             "status": row["status"],
@@ -97,9 +104,9 @@ def claim_agent_message(
                     agent_id, message_id, conversation_id, idempotency_key, status,
                     attempts, last_error, created_at, updated_at, processed_at
                 )
-                values (?, ?, ?, ?, 'processing', ?, '', ?, ?, '')
+                values (?, ?, ?, ?, ?, ?, '', ?, ?, '')
                 """,
-                (agent_id, message_id, conversation_id, idempotency_key, attempts, now, now),
+                (agent_id, message_id, conversation_id, idempotency_key, PROCESSING_STATUS, attempts, now, now),
             )
         except sqlite3.IntegrityError:
             current = agent_message_process_summary(conn, agent_id, message_id)
@@ -116,14 +123,23 @@ def claim_agent_message(
             update agent_message_processes
             set conversation_id = ?,
                 idempotency_key = ?,
-                status = 'processing',
+                status = ?,
                 attempts = attempts + 1,
                 last_error = '',
                 updated_at = ?,
                 processed_at = ''
-            where agent_id = ? and message_id = ? and status = 'failed'
+            where agent_id = ? and message_id = ? and status in (?, ?)
             """,
-            (conversation_id, idempotency_key, now, agent_id, message_id),
+            (
+                conversation_id,
+                idempotency_key,
+                PROCESSING_STATUS,
+                now,
+                agent_id,
+                message_id,
+                FAILED_STATUS,
+                ABANDONED_STATUS,
+            ),
         )
         if cursor.rowcount != 1:
             current = agent_message_process_summary(conn, agent_id, message_id)
@@ -140,48 +156,72 @@ def claim_agent_message(
         "agent_message_claimed",
         {"message_id": message_id, "idempotency_key": idempotency_key, "attempts": attempts},
     )
-    return {"claimed": True, "status": "processing", "attempts": attempts, "idempotency_key": idempotency_key}
+    return {"claimed": True, "status": PROCESSING_STATUS, "attempts": attempts, "idempotency_key": idempotency_key}
 
 
 def complete_agent_message(conn: sqlite3.Connection, agent_id: str, message_id: int) -> dict[str, Any]:
     now = now_iso()
-    conn.execute(
+    cursor = conn.execute(
         """
         update agent_message_processes
-        set status = 'processed', last_error = '', updated_at = ?, processed_at = ?
-        where agent_id = ? and message_id = ?
+        set status = ?, last_error = '', updated_at = ?, processed_at = ?
+        where agent_id = ? and message_id = ? and status = ?
         """,
-        (now, now, agent_id, message_id),
+        (PROCESSED_STATUS, now, now, agent_id, message_id, PROCESSING_STATUS),
     )
     process = agent_message_process_summary(conn, agent_id, message_id)
-    append_audit_event(
-        conn,
-        process["conversation_id"],
-        agent_id,
-        "agent_message_processed",
-        {"message_id": message_id, "idempotency_key": process["idempotency_key"], "attempts": process["attempts"]},
+    if cursor.rowcount == 1:
+        append_audit_event(
+            conn,
+            process["conversation_id"],
+            agent_id,
+            "agent_message_processed",
+            {"message_id": message_id, "idempotency_key": process["idempotency_key"], "attempts": process["attempts"]},
+        )
+    return process
+
+
+def abandon_agent_message(conn: sqlite3.Connection, agent_id: str, message_id: int, error: str) -> dict[str, Any]:
+    now = now_iso()
+    cursor = conn.execute(
+        """
+        update agent_message_processes
+        set status = ?, last_error = ?, updated_at = ?
+        where agent_id = ? and message_id = ? and status = ?
+        """,
+        (ABANDONED_STATUS, error, now, agent_id, message_id, PROCESSING_STATUS),
     )
+    process = agent_message_process_summary(conn, agent_id, message_id)
+    if cursor.rowcount == 1:
+        append_audit_event(
+            conn,
+            process["conversation_id"],
+            agent_id,
+            "agent_message_abandoned",
+            {"message_id": message_id, "idempotency_key": process["idempotency_key"], "error": error},
+        )
     return process
 
 
 def fail_agent_message(conn: sqlite3.Connection, agent_id: str, message_id: int, error: str) -> dict[str, Any]:
     now = now_iso()
-    conn.execute(
+    cursor = conn.execute(
         """
         update agent_message_processes
-        set status = 'failed', last_error = ?, updated_at = ?
-        where agent_id = ? and message_id = ?
+        set status = ?, last_error = ?, updated_at = ?
+        where agent_id = ? and message_id = ? and status = ?
         """,
-        (error, now, agent_id, message_id),
+        (FAILED_STATUS, error, now, agent_id, message_id, PROCESSING_STATUS),
     )
     process = agent_message_process_summary(conn, agent_id, message_id)
-    append_audit_event(
-        conn,
-        process["conversation_id"],
-        agent_id,
-        "agent_message_failed",
-        {"message_id": message_id, "idempotency_key": process["idempotency_key"], "attempts": process["attempts"], "error": error},
-    )
+    if cursor.rowcount == 1:
+        append_audit_event(
+            conn,
+            process["conversation_id"],
+            agent_id,
+            "agent_message_failed",
+            {"message_id": message_id, "idempotency_key": process["idempotency_key"], "attempts": process["attempts"], "error": error},
+        )
     return process
 
 
