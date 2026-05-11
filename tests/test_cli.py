@@ -226,6 +226,11 @@ class MaiCliTest(unittest.TestCase):
             self.assertEqual(issued["agent_id"], "mai-cli-merchant-agent:seller-a")
             self.assertTrue(issued["agent_token"].startswith("mai_agent_seller-a_"))
 
+            text_output = self.run_cli(db_file, "agent", "token", "--merchant", "seller-a")
+            self.assertIn("Agent token issued for mai-cli-merchant-agent:seller-a", text_output)
+            self.assertIn("mai_agent_seller-a_", text_output)
+            self.assertNotIn('"agent_token"', text_output)
+
 
 if __name__ == "__main__":
     unittest.main()

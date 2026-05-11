@@ -537,7 +537,16 @@ def cmd_agent_token(args: argparse.Namespace) -> None:
             _require_merchant_token(conn, args.merchant, {"merchant_token": args.merchant_token})
         agent_id = _default_merchant_agent_id(args.merchant)
         token = _issue_agent_token(conn, args.merchant, agent_id)
-    emit({"ok": True, "merchant_id": args.merchant, "agent_id": agent_id, "agent_token": token}, args.format)
+    emit(
+        {
+            "ok": True,
+            "merchant_id": args.merchant,
+            "agent_id": agent_id,
+            "agent_token": token,
+            "message": f"Agent token issued for {agent_id}: {token}",
+        },
+        args.format,
+    )
 
 
 def _agent_summary(row: Any) -> dict[str, Any]:
