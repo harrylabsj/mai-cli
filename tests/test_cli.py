@@ -398,6 +398,68 @@ class MaiCliTest(unittest.TestCase):
             self.assertEqual(run_loop.call_args.kwargs["max_tool_calls"], 2)
             self.assertEqual(run_loop.call_args.kwargs["provider_retries"], 1)
 
+    def test_llm_run_cli_can_include_owned_conversation_context(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.run_cli(db_file, "merchant", "create", "--id", "seller-a", "--name", "West Lake Tea")
+            self.run_cli(
+                db_file,
+                "conversation",
+                "create",
+                "--buyer",
+                "alice",
+                "--merchant",
+                "seller-a",
+                "--text",
+                "Can this deliver today?",
+            )
+
+            dispatcher = object()
+            with (
+                patch("mai_cli.cli.provider_from_env", return_value="provider", create=True),
+                patch("mai_cli.cli.MarketplaceToolDispatcher", return_value=dispatcher, create=True),
+                patch(
+                    "mai_cli.cli.run_marketplace_tool_loop",
+                    return_value={"ok": True, "content": "LLM answer.", "error": "", "tool_results": []},
+                    create=True,
+                ) as run_loop,
+            ):
+                self.run_cli(
+                    db_file,
+                    "llm",
+                    "run",
+                    "--role",
+                    "buyer",
+                    "--actor",
+                    "alice",
+                    "--conversation",
+                    "CONV-0001",
+                    "--text",
+                    "Continue this consultation.",
+                    "--format",
+                    "json",
+                )
+
+            user_message = run_loop.call_args.args[2][1]["content"]
+            self.assertIn("Continue this consultation.", user_message)
+            self.assertIn("CONV-0001", user_message)
+            self.assertIn("Can this deliver today?", user_message)
+
+            with self.assertRaises(SystemExit):
+                self.run_cli(
+                    db_file,
+                    "llm",
+                    "run",
+                    "--role",
+                    "buyer",
+                    "--actor",
+                    "bob",
+                    "--conversation",
+                    "CONV-0001",
+                    "--text",
+                    "Continue this consultation.",
+                )
+
     def test_agent_token_command_issues_scoped_agent_token(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"

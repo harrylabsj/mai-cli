@@ -153,9 +153,10 @@ python3 scripts/mai.py --db ./mai-cli.sqlite api serve --host 127.0.0.1 --port 8
 export MAI_LLM_API_KEY=...
 export MAI_LLM_MODEL=gpt-4.1-mini
 python3 scripts/mai.py --db ./mai-cli.sqlite llm run --role buyer --actor alice --text "Find longjing near Hangzhou" --max-tool-calls 4 --provider-retries 1 --format json
+python3 scripts/mai.py --db ./mai-cli.sqlite llm run --role buyer --actor alice --conversation CONV-0001 --text "Continue this consultation" --max-tool-calls 4 --format json
 ```
 
-Set `MAI_LLM_BASE_URL`, `MAI_LLM_MODEL`, `MAI_LLM_TIMEOUT_SECONDS`, and `MAI_LLM_MAX_TOKENS` to target another OpenAI-compatible provider. The runner enforces scoped marketplace tools, bounded provider retries, `max_steps`, and `max_tool_calls`; tool or provider failures return deterministic fallback content for human review.
+Set `MAI_LLM_BASE_URL`, `MAI_LLM_MODEL`, `MAI_LLM_TIMEOUT_SECONDS`, and `MAI_LLM_MAX_TOKENS` to target another OpenAI-compatible provider. Add `--conversation` to inject owned conversation context into the prompt; buyer actors must own the buyer side and merchant actors must own the merchant side unless using a privileged local/operator scope. The runner enforces scoped marketplace tools, bounded provider retries, `max_steps`, and `max_tool_calls`; tool or provider failures return deterministic fallback content for human review.
 
 ## Legacy Import
 

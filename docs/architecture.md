@@ -10,6 +10,6 @@ Trusted state lives in SQLite tables for merchants, products, delivery rules, co
 
 The merchant agent core runs against a typed marketplace tools boundary (`MerchantAgentTools`). The local MVP provides a SQLite-backed implementation and an HTTP API-backed implementation, while the deterministic agent logic itself only calls tool methods for heartbeat, waiting conversations, product summaries, message replies, human-review flags, idempotent message claims, completion records, and retry failures. This keeps the agent worker separate from host-specific OpenClaw/Hermes state, and lets resident agents run against the Marketplace API without owning business state directly.
 
-The optional LLM path uses `llm run` and `run_marketplace_tool_loop()` to route model tool calls through `MarketplaceToolDispatcher`. The dispatcher enforces token scope and conversation ownership before any trusted state mutation, while runner budgets cap model steps, tool calls, and provider retries.
+The optional LLM path uses `llm run` and `run_marketplace_tool_loop()` to route model tool calls through `MarketplaceToolDispatcher`. `llm run --conversation` injects owned conversation context before the model call; the dispatcher still enforces token scope and conversation ownership before any trusted state mutation. Runner budgets cap model steps, tool calls, and provider retries.
 
 The MVP intentionally has no transaction tables. Buyer `quote_request` and `purchase_intent` are message intents only.

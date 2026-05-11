@@ -554,6 +554,32 @@ def cmd_llm_run(args: argparse.Namespace) -> None:
     actor = str(args.actor)
     source_id = args.source_id or f"mai-cli-{role}-llm:{actor}"
     token_scope = args.token_scope or ("merchant_agent" if role == "merchant" else "buyer")
+    user_text = str(args.text)
+    if args.conversation:
+        with db_session(db_path_from_args(args)) as conn:
+            conversation = conversation_summary(conn, args.conversation)
+        if token_scope not in {"local_trusted", "operator"}:
+            owner_key = "merchant_id" if role == "merchant" else "buyer_id"
+            if str(conversation.get(owner_key) or "") != actor:
+                raise SystemExit(f"conversation {args.conversation} is not owned by {role} actor {actor}")
+        context = {
+            "conversation_id": conversation["id"],
+            "buyer_id": conversation["buyer_id"],
+            "merchant_id": conversation["merchant_id"],
+            "sku": conversation.get("sku") or "",
+            "status": conversation["status"],
+            "next_actor": conversation["next_actor"],
+            "messages": [
+                {
+                    "sender": message["sender"],
+                    "intent": message["intent"],
+                    "text": message["text"],
+                }
+                for message in conversation["messages"]
+            ],
+            "flags": conversation.get("flags") or [],
+        }
+        user_text = f"{user_text}\n\nConversation context:\n{json.dumps(context, ensure_ascii=False, sort_keys=True)}"
     if role == "merchant":
         automation_boundaries = ""
         with db_session(db_path_from_args(args)) as conn:
@@ -576,7 +602,7 @@ def cmd_llm_run(args: argparse.Namespace) -> None:
         dispatcher,
         [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": args.text},
+            {"role": "user", "content": user_text},
         ],
         max_steps=args.max_steps,
         max_tool_calls=args.max_tool_calls,
@@ -973,6 +999,7 @@ def build_parser() -> argparse.ArgumentParser:
     llm_run.add_argument("--role", choices=["buyer", "merchant"], default="buyer")
     llm_run.add_argument("--actor", required=True)
     llm_run.add_argument("--text", required=True)
+    llm_run.add_argument("--conversation", default="")
     llm_run.add_argument("--source-id", default="")
     llm_run.add_argument("--host", default="mai-cli")
     llm_run.add_argument("--session-id", default="")
