@@ -32,12 +32,14 @@ class OpenAICompatibleProvider:
         api_key: str,
         model: str,
         timeout: int = 30,
+        max_tokens: int | None = None,
         transport: Transport | None = None,
     ):
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.model = model
         self.timeout = int(timeout or 30)
+        self.max_tokens = int(max_tokens) if max_tokens is not None else None
         self.transport = transport or _default_transport
 
     def complete(
@@ -50,6 +52,8 @@ class OpenAICompatibleProvider:
             "messages": messages,
             "temperature": 0,
         }
+        if self.max_tokens is not None:
+            payload["max_tokens"] = self.max_tokens
         if tools:
             payload["tools"] = tools
         headers = {
@@ -68,10 +72,16 @@ def provider_from_env(transport: Transport | None = None) -> OpenAICompatiblePro
         timeout = int(timeout_raw)
     except ValueError:
         timeout = 30
+    max_tokens_raw = os.environ.get("MAI_LLM_MAX_TOKENS") or ""
+    try:
+        max_tokens = int(max_tokens_raw) if max_tokens_raw else None
+    except ValueError:
+        max_tokens = None
     return OpenAICompatibleProvider(
         base_url=os.environ.get("MAI_LLM_BASE_URL") or "https://api.openai.com/v1",
         api_key=os.environ.get("MAI_LLM_API_KEY") or "",
         model=os.environ.get("MAI_LLM_MODEL") or "gpt-4.1-mini",
         timeout=timeout,
+        max_tokens=max_tokens,
         transport=transport,
     )
