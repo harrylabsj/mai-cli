@@ -120,7 +120,7 @@ python3 scripts/mai.py --db ./mai-cli.sqlite agent token --merchant seller-a --f
 python3 scripts/mai.py agent run --merchant seller-a --once --api-url http://127.0.0.1:8765 --agent-token "$MAI_AGENT_TOKEN" --format json
 ```
 
-Use `agent token` locally, or `POST /agents/tokens` with a merchant token over the API, to issue a narrower token for the default merchant agent. API-backed agent runs accept `--agent-token` for that scoped token, while `--merchant-token` remains available for local demos.
+Use `agent token` locally, or `POST /agents/tokens` with a merchant token over the API, to issue a narrower token for the default merchant agent. API-backed agent runs accept `--agent-token` or `MAI_AGENT_TOKEN` for that scoped token, while `--merchant-token` and `MAI_MERCHANT_TOKEN` remain available for local demos.
 
 ## Marketplace API
 

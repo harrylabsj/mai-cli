@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -473,7 +474,7 @@ def cmd_agent_run(args: argparse.Namespace) -> None:
     if args.api_url:
         if not args.once:
             raise SystemExit("API-backed agent run currently supports --once")
-        token = args.agent_token or args.merchant_token
+        token = args.agent_token or os.environ.get("MAI_AGENT_TOKEN") or args.merchant_token or os.environ.get("MAI_MERCHANT_TOKEN")
         if not token:
             raise SystemExit("--merchant-token or --agent-token is required with --api-url")
         tools = HTTPMerchantAgentTools(args.api_url, args.merchant, token)
