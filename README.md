@@ -84,6 +84,18 @@ python3 scripts/mai.py --db ./mai-cli.sqlite channel ingest \
 
 The buyer id is always derived as `<channel>:<external-user>` for public channel ingress. Message payloads preserve `source_id`, `channel`, `external_user_id`, and optional `external_message_id`. When `external_message_id` is provided, retries with the same `(channel, external_user_id, external_message_id)` return the original message instead of appending a duplicate.
 
+## Host Adapter Diagnostics
+
+OpenClaw and Hermes remain optional hosts. Use `adapter` diagnostics to inspect local setup before running demos:
+
+```bash
+python3 scripts/mai.py adapter inspect --host openclaw --format json
+python3 scripts/mai.py adapter doctor --host hermes --format json
+python3 scripts/mai.py adapter install-command --host openclaw --dry-run --format json
+```
+
+`inspect` reports host command availability, project root validity, skill root status, and DB path. `doctor` turns those checks into actionable issues. `install-command` prints the install command without executing it.
+
 ## Conversation CLI
 
 The raw conversation lifecycle is available without the API server:

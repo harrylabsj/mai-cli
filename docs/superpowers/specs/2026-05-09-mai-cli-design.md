@@ -620,6 +620,7 @@ After the first vertical slice, development should proceed in small, shippable i
 - Add adapter tests that prove OpenClaw/Hermes can share the same marketplace database/API.
 - Add a real end-to-end demo where OpenClaw runs the merchant side and Hermes runs the buyer side against the same marketplace state.
 - Add adapter lifecycle commands or helpers for `doctor`, `install`, and `inspect` so host setup failures are explicit and debuggable.
+  - First CLI slice: expose `adapter inspect`, `adapter doctor`, and `adapter install-command` for OpenClaw/Hermes diagnostics without executing installer side effects.
 
 ### Stage 7: Hosted-readiness, not production payments
 
@@ -644,5 +645,6 @@ If choosing the next concrete engineering task, prefer this order:
 1. Broaden the LLM tool loop into a buyer/merchant runtime entrypoint with budgets, retries, and API-backed tools as the default trusted state boundary.
 2. Add a real OpenClaw merchant + Hermes buyer end-to-end demo/test that proves both hosts can share one `mai-cli` marketplace database/API and complete a consultation without owning business state.
 3. Add adapter setup and inspection helpers such as `doctor`, `install`, and `inspect` for OpenClaw/Hermes so missing host paths, stale skills, bad DB paths, and version mismatches are visible.
+   - First implementation slice: expose existing helpers through `mai-cli adapter inspect|doctor|install-command`.
 4. Add scoped agent tokens, tool permission checks, and audit records for every host-visible tool call, including `host`, `session_id`, `actor`, `token_scope`, and result status.
 5. Add crash/TTL recovery for in-flight agent claims: stale `processing` rows should become explicit `abandoned` rows with audit events, then retry through the existing retryable claim path.

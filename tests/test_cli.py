@@ -460,6 +460,56 @@ class MaiCliTest(unittest.TestCase):
                     "Continue this consultation.",
                 )
 
+    def test_adapter_cli_exposes_inspect_doctor_and_install_command_helpers(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            skill_root = Path(tmp) / "skill"
+
+            inspect_output = self.run_cli(
+                db_file,
+                "adapter",
+                "inspect",
+                "--host",
+                "openclaw",
+                "--project-root",
+                str(ROOT),
+                "--skill-root",
+                str(skill_root),
+                "--format",
+                "json",
+            )
+            doctor_output = self.run_cli(
+                db_file,
+                "adapter",
+                "doctor",
+                "--host",
+                "openclaw",
+                "--project-root",
+                str(ROOT),
+                "--skill-root",
+                str(skill_root),
+                "--format",
+                "json",
+            )
+            install_output = self.run_cli(
+                db_file,
+                "adapter",
+                "install-command",
+                "--host",
+                "openclaw",
+                "--project-root",
+                str(ROOT),
+                "--dry-run",
+                "--format",
+                "json",
+            )
+
+            self.assertEqual(json.loads(inspect_output)["host"], "OpenClaw")
+            self.assertIn("issues", json.loads(doctor_output))
+            self.assertEqual(json.loads(install_output)["command"][-1], "--dry-run")
+            self.assertEqual(json.loads(inspect_output)["project_root"], str(ROOT))
+            self.assertEqual(json.loads(inspect_output)["skill_root"], str(skill_root))
+
     def test_agent_token_command_issues_scoped_agent_token(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"

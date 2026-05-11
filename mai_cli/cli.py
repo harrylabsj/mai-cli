@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from mai_cli import VERSION
+from mai_cli.adapters import hermes, openclaw
 from mai_cli.adapters.mai_legacy import import_json_store
 from mai_cli.agents import buyer_cli, merchant_agent, merchant_daemon
 from mai_cli.agents.tools import HTTPMerchantAgentTools
@@ -55,6 +56,14 @@ def emit(value: Any, fmt: str) -> None:
 
 def db_path_from_args(args: argparse.Namespace) -> Path:
     return Path(getattr(args, "agent_db", None) or args.db or args.data or DEFAULT_DB_PATH).expanduser()
+
+
+def adapter_for_host(host: str) -> Any:
+    if host == "openclaw":
+        return openclaw
+    if host == "hermes":
+        return hermes
+    raise SystemExit(f"Unknown adapter host: {host}")
 
 
 def cmd_merchant_create(args: argparse.Namespace) -> None:
@@ -612,6 +621,40 @@ def cmd_llm_run(args: argparse.Namespace) -> None:
     emit(result, args.format)
 
 
+def cmd_adapter_inspect(args: argparse.Namespace) -> None:
+    adapter = adapter_for_host(args.host)
+    result = adapter.inspect_host(
+        db_path=db_path_from_args(args),
+        project_root=args.project_root or None,
+        skill_root=args.skill_root or None,
+    )
+    emit(result, args.format)
+
+
+def cmd_adapter_doctor(args: argparse.Namespace) -> None:
+    adapter = adapter_for_host(args.host)
+    result = adapter.doctor(
+        db_path=db_path_from_args(args),
+        project_root=args.project_root or None,
+        skill_root=args.skill_root or None,
+    )
+    emit(result, args.format)
+
+
+def cmd_adapter_install_command(args: argparse.Namespace) -> None:
+    adapter = adapter_for_host(args.host)
+    command = adapter.install_command(project_root=args.project_root or None, dry_run=args.dry_run, force=args.force)
+    emit(
+        {
+            "ok": True,
+            "host": args.host,
+            "command": command,
+            "message": " ".join(command),
+        },
+        args.format,
+    )
+
+
 def cmd_agent_token(args: argparse.Namespace) -> None:
     with db_session(db_path_from_args(args)) as conn:
         require_merchant(conn, args.merchant)
@@ -1014,6 +1057,28 @@ def build_parser() -> argparse.ArgumentParser:
     llm_run.add_argument("--provider-retry-delay-seconds", type=float, default=0.0)
     llm_run.add_argument("--format", choices=["text", "json"], default="text")
     llm_run.set_defaults(func=cmd_llm_run)
+
+    adapter = subparsers.add_parser("adapter", help="Inspect optional OpenClaw/Hermes adapters")
+    adapter_sub = adapter.add_subparsers(dest="adapter_command", required=True)
+    adapter_inspect = adapter_sub.add_parser("inspect", help="Inspect host adapter paths and commands")
+    adapter_inspect.add_argument("--host", required=True, choices=["openclaw", "hermes"])
+    adapter_inspect.add_argument("--project-root", default="")
+    adapter_inspect.add_argument("--skill-root", default="")
+    adapter_inspect.add_argument("--format", choices=["text", "json"], default="text")
+    adapter_inspect.set_defaults(func=cmd_adapter_inspect)
+    adapter_doctor = adapter_sub.add_parser("doctor", help="Report host adapter setup issues")
+    adapter_doctor.add_argument("--host", required=True, choices=["openclaw", "hermes"])
+    adapter_doctor.add_argument("--project-root", default="")
+    adapter_doctor.add_argument("--skill-root", default="")
+    adapter_doctor.add_argument("--format", choices=["text", "json"], default="text")
+    adapter_doctor.set_defaults(func=cmd_adapter_doctor)
+    adapter_install = adapter_sub.add_parser("install-command", help="Print the adapter install command")
+    adapter_install.add_argument("--host", required=True, choices=["openclaw", "hermes"])
+    adapter_install.add_argument("--project-root", default="")
+    adapter_install.add_argument("--dry-run", action="store_true")
+    adapter_install.add_argument("--force", action="store_true")
+    adapter_install.add_argument("--format", choices=["text", "json"], default="text")
+    adapter_install.set_defaults(func=cmd_adapter_install_command)
 
     legacy = subparsers.add_parser("legacy", help="Import existing Mai catalog data")
     legacy_sub = legacy.add_subparsers(dest="legacy_command", required=True)
