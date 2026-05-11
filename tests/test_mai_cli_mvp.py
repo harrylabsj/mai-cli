@@ -658,6 +658,85 @@ class MaiCliMvpTest(unittest.TestCase):
             self.assertEqual(payloads[1]["source_id"], "buyer-chat")
             self.assertEqual(payloads[2]["source_id"], "buyer-chat")
 
+    def test_buyer_chat_history_exports_multiturn_conversation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai-cli.sqlite"
+            self.seed_longjing_shop(db_file)
+
+            output = self.run_cli_with_input(
+                db_file,
+                "我想买龙井礼盒，今天能送吗？\n还有库存吗？\n/history\n/summary\n/quit\n",
+                "buyer",
+                "chat",
+                "--buyer",
+                "alice",
+                "--city",
+                "Hangzhou",
+                "--format",
+                "json",
+            )
+
+            events = [json.loads(line) for line in output.splitlines() if line.strip()]
+            self.assertEqual([event["event"] for event in events], ["ask", "message", "history", "summary", "quit"])
+            history = events[2]
+            self.assertEqual(history["conversation"]["id"], "CONV-0001")
+            self.assertEqual([message["sender"] for message in history["messages"]], ["buyer", "buyer"])
+            self.assertEqual([message["intent"] for message in history["messages"]], ["ask_delivery", "ask_stock"])
+            self.assertEqual(events[3]["summary"]["conversation"]["messages"], history["messages"])
+
+    def test_buyer_chat_summary_and_history_cover_human_review_flow(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai-cli.sqlite"
+            self.seed_longjing_shop(db_file)
+
+            output = self.run_cli_with_input(
+                db_file,
+                "龙井礼盒两盒能便宜一点吗？可以私下优惠吗？\n/quit\n",
+                "buyer",
+                "chat",
+                "--buyer",
+                "alice",
+                "--city",
+                "Hangzhou",
+                "--format",
+                "json",
+            )
+            events = [json.loads(line) for line in output.splitlines() if line.strip()]
+            conversation_id = events[0]["conversation"]["id"]
+            agent = json.loads(
+                self.run_cli(
+                    db_file,
+                    "agent",
+                    "run",
+                    "--merchant",
+                    "seller-a",
+                    "--once",
+                    "--format",
+                    "json",
+                )
+            )
+            self.assertTrue(agent["replied"][0]["human_required"])
+
+            output = self.run_cli_with_input(
+                db_file,
+                "/summary\n/history\n/quit\n",
+                "buyer",
+                "chat",
+                "--buyer",
+                "alice",
+                "--conversation",
+                conversation_id,
+                "--format",
+                "json",
+            )
+            events = [json.loads(line) for line in output.splitlines() if line.strip()]
+            self.assertEqual([event["event"] for event in events], ["summary", "history", "quit"])
+            self.assertEqual(events[0]["summary"]["conversation"]["status"], "human_required")
+            self.assertEqual(events[0]["summary"]["next_action"], "Wait for merchant human review.")
+            self.assertTrue(any("Human review flag: bargaining" == warning for warning in events[0]["summary"]["warnings"]))
+            self.assertEqual(events[1]["conversation"]["status"], "human_required")
+            self.assertEqual([message["sender"] for message in events[1]["messages"]], ["buyer", "merchant_agent"])
+
     def test_mvp_cli_does_not_expose_order_or_payment_commands(self):
         help_text = self.run_cli(Path(tempfile.gettempdir()) / "unused-mai-cli.sqlite", "--help")
         self.assertNotIn(" order ", help_text)

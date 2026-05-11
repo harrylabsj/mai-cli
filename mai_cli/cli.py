@@ -228,6 +228,17 @@ def cmd_buyer_chat(args: argparse.Namespace) -> None:
                 summary = buyer_cli.summarize(conn, conversation_id)
             emit_chat_event({"ok": True, "event": "summary", "summary": summary}, args.format)
             continue
+        if text == "/history":
+            if not conversation_id:
+                emit_chat_event({"ok": False, "event": "error", "error": "No active conversation."}, args.format)
+                continue
+            with db_session(db_path) as conn:
+                conversation = conversation_summary(conn, conversation_id)
+            emit_chat_event(
+                {"ok": True, "event": "history", "conversation": conversation, "messages": conversation["messages"]},
+                args.format,
+            )
+            continue
         if text.startswith("/intent "):
             if not conversation_id:
                 emit_chat_event({"ok": False, "event": "error", "error": "No active conversation."}, args.format)
