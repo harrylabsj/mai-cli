@@ -73,4 +73,23 @@ def record_intent_command(
     )
 
 
-__all__ = ["DEFAULT_SKILL_ROOT", "build_mai_command", "buyer_ask_command", "record_intent_command", "resolve_project_root"]
+def buyer_summarize_command(
+    conversation_id: str,
+    db_path: str | Path | None = None,
+    project_root: str | Path | None = None,
+) -> list[str]:
+    return build_mai_command(
+        ["buyer", "summarize", "--conversation", conversation_id, "--format", "json"],
+        db_path=db_path,
+        project_root=project_root,
+    )
+
+
+__all__ = [
+    "DEFAULT_SKILL_ROOT",
+    "build_mai_command",
+    "buyer_ask_command",
+    "buyer_summarize_command",
+    "record_intent_command",
+    "resolve_project_root",
+]

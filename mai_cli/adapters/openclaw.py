@@ -47,4 +47,62 @@ def merchant_agent_command(
     return build_mai_command(args, db_path=db_path, project_root=project_root)
 
 
-__all__ = ["DEFAULT_SKILL_ROOT", "build_mai_command", "merchant_agent_command", "resolve_project_root"]
+def merchant_create_command(
+    merchant_id: str,
+    name: str,
+    db_path: str | Path | None = None,
+    project_root: str | Path | None = None,
+    city: str = "",
+    service_area: str = "",
+    delivery_eta_minutes: int = 0,
+) -> list[str]:
+    args: list[object] = ["merchant", "create", "--id", merchant_id, "--name", name, "--format", "json"]
+    if city:
+        args.extend(["--city", city])
+    if service_area:
+        args.extend(["--service-area", service_area])
+    if delivery_eta_minutes:
+        args.extend(["--delivery-eta-minutes", delivery_eta_minutes])
+    return build_mai_command(args, db_path=db_path, project_root=project_root)
+
+
+def product_add_command(
+    merchant_id: str,
+    sku: str,
+    title: str,
+    price: float,
+    stock: int,
+    db_path: str | Path | None = None,
+    project_root: str | Path | None = None,
+    tags: Iterable[str] | str = (),
+) -> list[str]:
+    tag_value = ",".join(str(tag) for tag in tags) if not isinstance(tags, str) else tags
+    args: list[object] = [
+        "product",
+        "add",
+        "--merchant",
+        merchant_id,
+        "--sku",
+        sku,
+        "--title",
+        title,
+        "--price",
+        price,
+        "--stock",
+        stock,
+        "--format",
+        "json",
+    ]
+    if tag_value:
+        args.extend(["--tags", tag_value])
+    return build_mai_command(args, db_path=db_path, project_root=project_root)
+
+
+__all__ = [
+    "DEFAULT_SKILL_ROOT",
+    "build_mai_command",
+    "merchant_agent_command",
+    "merchant_create_command",
+    "product_add_command",
+    "resolve_project_root",
+]
