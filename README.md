@@ -94,7 +94,7 @@ python3 scripts/mai.py adapter doctor --host hermes --format json
 python3 scripts/mai.py adapter install-command --host openclaw --dry-run --format json
 ```
 
-`inspect` reports host command availability, project root validity, skill root status, and DB path. `doctor` turns those checks into actionable issues. `install-command` prints the install command without executing it.
+`inspect` reports host command availability, project root validity, skill root status, symlink target, stale skill detection, and DB path. `doctor` turns those checks into actionable issues. `install-command` prints the install command without executing it.
 
 ## Conversation CLI
 

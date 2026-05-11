@@ -646,5 +646,6 @@ If choosing the next concrete engineering task, prefer this order:
 2. Add a real OpenClaw merchant + Hermes buyer end-to-end demo/test that proves both hosts can share one `mai-cli` marketplace database/API and complete a consultation without owning business state.
 3. Add adapter setup and inspection helpers such as `doctor`, `install`, and `inspect` for OpenClaw/Hermes so missing host paths, stale skills, bad DB paths, and version mismatches are visible.
    - First implementation slice: expose existing helpers through `mai-cli adapter inspect|doctor|install-command`.
+   - Stale skill slice: report adapter skill symlink targets and flag skills that point to a different project root.
 4. Add scoped agent tokens, tool permission checks, and audit records for every host-visible tool call, including `host`, `session_id`, `actor`, `token_scope`, and result status.
 5. Add crash/TTL recovery for in-flight agent claims: stale `processing` rows should become explicit `abandoned` rows with audit events, then retry through the existing retryable claim path.

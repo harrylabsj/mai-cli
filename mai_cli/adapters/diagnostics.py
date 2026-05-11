@@ -18,17 +18,24 @@ def inspect_host(
     root = Path(project_root).expanduser() if project_root is not None else Path(__file__).resolve().parents[2]
     skill = Path(skill_root).expanduser() if skill_root is not None else default_skill_root.expanduser()
     command_path = shutil.which(command_name)
+    project_root_valid = (root / "scripts" / "mai.py").exists()
+    skill_installed = skill.exists()
+    skill_is_symlink = skill.is_symlink()
+    skill_target = str(skill.resolve()) if skill_installed or skill_is_symlink else ""
+    skill_points_to_project = bool(skill_target and Path(skill_target) == root.resolve())
     return {
-        "ok": bool(command_path and (root / "scripts" / "mai.py").exists() and skill.exists()),
+        "ok": bool(command_path and project_root_valid and skill_installed and (not skill_is_symlink or skill_points_to_project)),
         "host": host,
         "command": command_name,
         "command_path": command_path or "",
         "command_available": command_path is not None,
         "project_root": str(root),
-        "project_root_valid": (root / "scripts" / "mai.py").exists(),
+        "project_root_valid": project_root_valid,
         "skill_root": str(skill),
-        "skill_installed": skill.exists(),
-        "skill_is_symlink": skill.is_symlink(),
+        "skill_installed": skill_installed,
+        "skill_is_symlink": skill_is_symlink,
+        "skill_target": skill_target,
+        "skill_points_to_project": skill_points_to_project,
         "db_path": str(Path(db_path).expanduser()) if db_path is not None else "",
     }
 
@@ -41,6 +48,8 @@ def doctor_from_inspection(info: dict[str, Any]) -> dict[str, Any]:
         issues.append("mai-cli project root is invalid")
     if not info["skill_installed"]:
         issues.append(f"{info['host']} skill is not installed")
+    elif info["skill_is_symlink"] and not info["skill_points_to_project"]:
+        issues.append(f"{info['host']} skill points to a different project root")
     return {"ok": not issues, "host": info["host"], "issues": issues, "inspection": info}
 
 

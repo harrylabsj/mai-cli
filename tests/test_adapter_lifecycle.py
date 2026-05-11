@@ -31,10 +31,33 @@ class AdapterLifecycleTest(unittest.TestCase):
             self.assertTrue(info["command_available"])
             self.assertTrue(info["project_root_valid"])
             self.assertTrue(info["skill_installed"])
+            self.assertEqual(info["skill_target"], str(Path.cwd().resolve()))
+            self.assertTrue(info["skill_points_to_project"])
             self.assertEqual(info["db_path"], str(db_file))
             self.assertTrue(doctor["ok"])
             install = openclaw.install_command(project_root=Path.cwd(), dry_run=True, force=True)
             self.assertEqual(install[-3:], ["--openclaw", "--dry-run", "--force"])
+
+    def test_doctor_reports_stale_skill_symlink_target(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            bin_dir = tmp_path / "bin"
+            bin_dir.mkdir()
+            self.make_fake_command(bin_dir, "openclaw")
+            stale_root = tmp_path / "old-mai"
+            stale_root.mkdir()
+            skill_root = tmp_path / ".openclaw" / "workspace" / "skills" / "mai"
+            skill_root.parent.mkdir(parents=True)
+            skill_root.symlink_to(stale_root, target_is_directory=True)
+
+            with patch.dict(os.environ, {"PATH": f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}"}):
+                info = openclaw.inspect_host(project_root=Path.cwd(), skill_root=skill_root)
+                doctor = openclaw.doctor(project_root=Path.cwd(), skill_root=skill_root)
+
+            self.assertEqual(info["skill_target"], str(stale_root.resolve()))
+            self.assertFalse(info["skill_points_to_project"])
+            self.assertFalse(doctor["ok"])
+            self.assertIn("OpenClaw skill points to a different project root", doctor["issues"])
 
     def test_hermes_inspect_reports_missing_host_or_skill(self):
         with tempfile.TemporaryDirectory() as tmp:
