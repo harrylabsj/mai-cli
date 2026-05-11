@@ -500,6 +500,7 @@ After the first vertical slice, development should proceed in small, shippable i
 - Add retry policy for transient agent failures.
 - Add dead-letter/human-review fallback for repeated failures.
 - Add audit log entries for routing decisions.
+- Add crash and TTL recovery that marks stale in-flight message claims as `abandoned` so they can be retried explicitly.
 
 ### Stage 4: Better buyer-side experience
 
@@ -512,6 +513,7 @@ After the first vertical slice, development should proceed in small, shippable i
 
 - Add provider abstraction for OpenAI-compatible APIs first.
 - Define typed tool schemas for catalog search, conversation send, summarize, human-review flag, and merchant reply.
+- Add a tool-call dispatcher that maps those schemas to real `mai-cli` API/CLI actions without letting the LLM mutate trusted state directly.
 - Add prompt templates for buyer assistant and merchant assistant.
 - Add guardrails: no payment claims, no binding merchant commitment, no private rule leakage.
 - Add token/time budgets, retries, and deterministic fallback when the model is unavailable.
@@ -522,12 +524,15 @@ After the first vertical slice, development should proceed in small, shippable i
 - Map OpenClaw tools to SQLite-backed `mai-cli` commands.
 - Add Hermes skill instructions for buyer/merchant workflows.
 - Add adapter tests that prove OpenClaw/Hermes can share the same marketplace database/API.
+- Add a real end-to-end demo where OpenClaw runs the merchant side and Hermes runs the buyer side against the same marketplace state.
+- Add adapter lifecycle commands or helpers for `doctor`, `install`, and `inspect` so host setup failures are explicit and debuggable.
 
 ### Stage 7: Hosted-readiness, not production payments
 
 - Add Postgres support only after SQLite local flows are stable.
 - Add migration scripts and data export/import.
 - Add scoped buyer, merchant, agent, and operator tokens.
+- Add tool permission scopes and audit records for each agent-visible tool call, including host, session, actor, and token scope.
 - Add rate limits, request logs, and moderation dashboards/API.
 - Keep real payment, escrow, refund, and courier dispatch out of scope until a separate transaction design is approved.
 
@@ -542,9 +547,8 @@ After the first vertical slice, development should proceed in small, shippable i
 
 If choosing the next concrete engineering task, prefer this order:
 
-1. Make merchant-agent message claims atomic and add a concurrent-claim regression test.
-2. Add FastAPI/fallback ASGI parity tests for auth failures, malformed payloads, and route metadata.
-3. Fix nested CLI help and add CLI contract tests for all public subcommands.
-4. Harden daemon retry semantics: failed, abandoned, and processed message states should have explicit transitions.
-5. Expand buyer `chat` history and summary coverage for multi-turn and human-review flows.
-6. Add LLM provider abstraction and typed tools only after the deterministic runtime contract is stable.
+1. Add a tool-call dispatcher that connects LLM tool schemas to real marketplace operations (`catalog_search`, `conversation_send`, `conversation_summarize`, `human_review_flag`, and `merchant_reply`) while preserving the API as the trusted state boundary.
+2. Add a real OpenClaw merchant + Hermes buyer end-to-end demo/test that proves both hosts can share one `mai-cli` marketplace database/API and complete a consultation without owning business state.
+3. Add adapter setup and inspection helpers such as `doctor`, `install`, and `inspect` for OpenClaw/Hermes so missing host paths, stale skills, bad DB paths, and version mismatches are visible.
+4. Add scoped agent tokens, tool permission checks, and audit records for every host-visible tool call, including `host`, `session_id`, `actor`, `token_scope`, and result status.
+5. Add crash/TTL recovery for in-flight agent claims: stale `processing` rows should become explicit `abandoned` rows with audit events, then retry through the existing retryable claim path.
