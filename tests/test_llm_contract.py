@@ -1,13 +1,41 @@
 import os
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
+from mai_cli.core.catalog import create_merchant, create_product
+from mai_cli.core.conversations import append_message, conversation_summary, ensure_conversation
+from mai_cli.db.session import db_session
+from mai_cli.llm.dispatcher import MarketplaceToolDispatcher, dispatch_marketplace_tool
 from mai_cli.llm.prompts import buyer_system_prompt, merchant_system_prompt
 from mai_cli.llm.providers import OpenAICompatibleProvider, provider_from_env
 from mai_cli.llm.tools import marketplace_tool_schemas
 
 
 class LlmContractTest(unittest.TestCase):
+    def seed_consultation(self, db_file: Path) -> None:
+        with db_session(db_file) as conn:
+            create_merchant(
+                conn,
+                merchant_id="seller-a",
+                name="West Lake Tea",
+                city="Hangzhou",
+                service_area="West Lake",
+                delivery_eta_minutes=45,
+            )
+            create_product(
+                conn,
+                merchant_id="seller-a",
+                sku="tea-a",
+                title="Longjing Gift Box",
+                price=88,
+                stock=5,
+                tags=["longjing", "gift"],
+            )
+            conversation = ensure_conversation(conn, "alice", "seller-a", "tea-a")
+            append_message(conn, conversation["id"], "buyer", "ask_delivery", "Can this deliver today?")
+
     def test_marketplace_tool_schemas_are_openai_function_tools(self):
         tools = marketplace_tool_schemas()
         names = [tool["function"]["name"] for tool in tools]
@@ -95,6 +123,85 @@ class LlmContractTest(unittest.TestCase):
         self.assertIn("refund", combined)
         self.assertIn("human review", combined)
         self.assertIn("catalog and delivery only", merchant_prompt.lower())
+
+    def test_marketplace_tool_dispatcher_executes_catalog_conversation_and_summary_tools(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.seed_consultation(db_file)
+            dispatcher = MarketplaceToolDispatcher(db_file, source_id="llm-test")
+
+            catalog = dispatcher.dispatch("catalog_search", {"query": "longjing", "city": "Hangzhou"})
+            self.assertEqual(catalog["tool"], "catalog_search")
+            self.assertEqual(catalog["result"]["results"][0]["sku"], "tea-a")
+
+            sent = dispatcher.dispatch(
+                "conversation_send",
+                {
+                    "conversation_id": "CONV-0001",
+                    "sender": "buyer_cli",
+                    "intent": "ask_stock",
+                    "text": "How many are available?",
+                },
+            )
+            self.assertEqual(sent["result"]["message"]["sender"], "buyer_cli")
+            self.assertEqual(sent["result"]["conversation"]["status"], "waiting_merchant")
+            self.assertEqual(sent["result"]["message"]["structured_payload"]["source_id"], "llm-test")
+
+            summary = dispatcher.dispatch("conversation_summarize", {"conversation_id": "CONV-0001"})
+            self.assertEqual(summary["result"]["summary"]["conversation"]["id"], "CONV-0001")
+            self.assertTrue(summary["result"]["summary"]["no_order_created"])
+
+    def test_marketplace_tool_dispatcher_handles_human_review_and_merchant_reply(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.seed_consultation(db_file)
+
+            review = dispatch_marketplace_tool(
+                db_file,
+                "human_review_flag",
+                {"conversation_id": "CONV-0001", "reason": "bargaining", "severity": "review"},
+                source_id="llm-merchant",
+            )
+            self.assertEqual(review["result"]["conversation"]["status"], "human_required")
+            self.assertEqual(review["result"]["review"]["reason"], "bargaining")
+
+            reply = dispatch_marketplace_tool(
+                db_file,
+                "merchant_reply",
+                {
+                    "conversation_id": "CONV-0001",
+                    "intent": "ask_delivery",
+                    "text": "A merchant human must confirm this request.",
+                    "human_required": True,
+                    "reason": "low_stock",
+                },
+                source_id="llm-merchant",
+            )
+            self.assertEqual(reply["result"]["message"]["sender"], "merchant_agent")
+            self.assertEqual(reply["result"]["conversation"]["status"], "human_required")
+            self.assertTrue(any(flag["reason"] == "low_stock" for flag in reply["result"]["conversation"]["flags"]))
+
+    def test_marketplace_tool_dispatcher_rejects_unknown_or_disallowed_tools(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.seed_consultation(db_file)
+            with self.assertRaises(SystemExit):
+                dispatch_marketplace_tool(db_file, "create_order", {"conversation_id": "CONV-0001"})
+            with self.assertRaises(SystemExit):
+                dispatch_marketplace_tool(
+                    db_file,
+                    "conversation_send",
+                    {
+                        "conversation_id": "CONV-0001",
+                        "sender": "merchant_agent",
+                        "intent": "ask_stock",
+                        "text": "Not allowed through buyer send tool.",
+                    },
+                )
+
+            with db_session(db_file) as conn:
+                conversation = conversation_summary(conn, "CONV-0001")
+            self.assertEqual([message["sender"] for message in conversation["messages"]], ["buyer"])
 
 
 if __name__ == "__main__":
