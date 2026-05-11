@@ -243,6 +243,49 @@ class MaiCliTest(unittest.TestCase):
 
             self.assertEqual(constructed[0]["merchant_token"], "env_agent_tok_seller_a")
 
+    def test_agent_run_once_can_read_api_url_from_env(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            constructed = []
+
+            class FakeHTTPMerchantAgentTools:
+                def __init__(self, base_url, merchant_id, merchant_token):
+                    constructed.append(
+                        {
+                            "base_url": base_url,
+                            "merchant_id": merchant_id,
+                            "merchant_token": merchant_token,
+                        }
+                    )
+
+            with (
+                patch.dict(
+                    os.environ,
+                    {
+                        "MAI_MARKETPLACE_API_URL": "http://127.0.0.1:8765",
+                        "MAI_AGENT_TOKEN": "env_agent_tok_seller_a",
+                    },
+                    clear=False,
+                ),
+                patch("mai_cli.cli.HTTPMerchantAgentTools", FakeHTTPMerchantAgentTools),
+                patch(
+                    "mai_cli.cli.merchant_agent.process_once_with_tools",
+                    return_value={"ok": True, "merchant_id": "seller-a", "checked": 0, "replied": []},
+                ),
+            ):
+                self.run_cli(
+                    db_file,
+                    "agent",
+                    "run",
+                    "--merchant",
+                    "seller-a",
+                    "--once",
+                    "--format",
+                    "json",
+                )
+
+            self.assertEqual(constructed[0]["base_url"], "http://127.0.0.1:8765")
+
     def test_agent_token_command_issues_scoped_agent_token(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"

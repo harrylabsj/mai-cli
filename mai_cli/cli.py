@@ -471,13 +471,14 @@ def cmd_conversation_resolve_review(args: argparse.Namespace) -> None:
 
 
 def cmd_agent_run(args: argparse.Namespace) -> None:
-    if args.api_url:
+    api_url = args.api_url or os.environ.get("MAI_MARKETPLACE_API_URL") or os.environ.get("MAI_API_URL") or ""
+    if api_url:
         if not args.once:
             raise SystemExit("API-backed agent run currently supports --once")
         token = args.agent_token or os.environ.get("MAI_AGENT_TOKEN") or args.merchant_token or os.environ.get("MAI_MERCHANT_TOKEN")
         if not token:
             raise SystemExit("--merchant-token or --agent-token is required with --api-url")
-        tools = HTTPMerchantAgentTools(args.api_url, args.merchant, token)
+        tools = HTTPMerchantAgentTools(api_url, args.merchant, token)
         result = merchant_agent.process_once_with_tools(tools, args.merchant)
         emit(result, args.format)
         return
