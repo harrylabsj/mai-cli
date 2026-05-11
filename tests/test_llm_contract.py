@@ -203,6 +203,71 @@ class LlmContractTest(unittest.TestCase):
                 conversation = conversation_summary(conn, "CONV-0001")
             self.assertEqual([message["sender"] for message in conversation["messages"]], ["buyer"])
 
+    def test_marketplace_tool_dispatcher_enforces_scope_and_audits_tool_calls(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.seed_consultation(db_file)
+
+            buyer_dispatcher = MarketplaceToolDispatcher(
+                db_file,
+                source_id="hermes-buyer",
+                host="hermes",
+                session_id="sess-buyer",
+                actor="alice",
+                token_scope="buyer",
+            )
+            sent = buyer_dispatcher.dispatch(
+                "conversation_send",
+                {
+                    "conversation_id": "CONV-0001",
+                    "sender": "buyer",
+                    "intent": "ask_stock",
+                    "text": "Any stock left?",
+                },
+            )
+            self.assertEqual(sent["result"]["message"]["sender"], "buyer")
+
+            with self.assertRaises(SystemExit):
+                buyer_dispatcher.dispatch(
+                    "merchant_reply",
+                    {
+                        "conversation_id": "CONV-0001",
+                        "intent": "ask_stock",
+                        "text": "Buyer scope should not reply as merchant.",
+                    },
+                )
+
+            merchant_dispatcher = MarketplaceToolDispatcher(
+                db_file,
+                source_id="openclaw-merchant",
+                host="openclaw",
+                session_id="sess-merchant",
+                actor="seller-a",
+                token_scope="merchant_agent",
+            )
+            reply = merchant_dispatcher.dispatch(
+                "merchant_reply",
+                {
+                    "conversation_id": "CONV-0001",
+                    "intent": "ask_stock",
+                    "text": "Stock is 5.",
+                },
+            )
+            self.assertEqual(reply["result"]["conversation"]["status"], "waiting_buyer")
+
+            with db_session(db_file) as conn:
+                events = conversation_summary(conn, "CONV-0001")["audit_events"]
+            tool_events = [event for event in events if event["event"] == "llm_tool_call"]
+            self.assertEqual([event["details"]["status"] for event in tool_events], ["ok", "denied", "ok"])
+            self.assertEqual(tool_events[0]["details"]["host"], "hermes")
+            self.assertEqual(tool_events[0]["details"]["session_id"], "sess-buyer")
+            self.assertEqual(tool_events[0]["details"]["actor"], "alice")
+            self.assertEqual(tool_events[0]["details"]["token_scope"], "buyer")
+            self.assertEqual(tool_events[1]["details"]["tool"], "merchant_reply")
+            self.assertIn("not allowed", tool_events[1]["details"]["error"])
+            self.assertEqual(tool_events[2]["details"]["host"], "openclaw")
+            self.assertEqual(tool_events[2]["details"]["token_scope"], "merchant_agent")
+
 
 if __name__ == "__main__":
     unittest.main()

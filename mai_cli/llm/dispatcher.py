@@ -15,18 +15,71 @@ from mai_cli.llm.tools import marketplace_tool_schema_objects
 
 ToolHandler = Callable[[dict[str, Any]], dict[str, Any]]
 
+TOOL_SCOPE_ALLOWLIST = {
+    "catalog_search": {"local_trusted", "buyer", "buyer_cli", "merchant", "merchant_agent", "operator"},
+    "conversation_send": {"local_trusted", "buyer", "buyer_cli"},
+    "conversation_summarize": {"local_trusted", "buyer", "buyer_cli", "merchant", "merchant_agent", "operator"},
+    "human_review_flag": {"local_trusted", "merchant", "merchant_agent", "operator"},
+    "merchant_reply": {"local_trusted", "merchant", "merchant_agent"},
+}
+
 
 class MarketplaceToolDispatcher:
-    def __init__(self, db_path: str | Path, source_id: str = "llm-tool"):
+    def __init__(
+        self,
+        db_path: str | Path,
+        source_id: str = "llm-tool",
+        host: str = "local",
+        session_id: str = "",
+        actor: str = "",
+        token_scope: str = "local_trusted",
+    ):
         self.db_path = Path(db_path).expanduser()
         self.source_id = source_id
+        self.host = host
+        self.session_id = session_id
+        self.actor = actor
+        self.token_scope = token_scope
         self.allowed_tools = {tool.name for tool in marketplace_tool_schema_objects()}
 
     def dispatch(self, tool_name: str, arguments: dict[str, Any] | None = None) -> dict[str, Any]:
+        arguments = arguments or {}
         if tool_name not in self.allowed_tools:
+            self._audit_tool_call(tool_name, arguments, "denied", f"Unknown or disallowed marketplace tool: {tool_name}")
             raise SystemExit(f"Unknown or disallowed marketplace tool: {tool_name}")
+        allowed_scopes = TOOL_SCOPE_ALLOWLIST.get(tool_name, set())
+        if self.token_scope not in allowed_scopes:
+            error = f"tool {tool_name} is not allowed for token scope {self.token_scope}"
+            self._audit_tool_call(tool_name, arguments, "denied", error)
+            raise SystemExit(error)
         handler = getattr(self, f"_dispatch_{tool_name}")
-        return {"ok": True, "tool": tool_name, "result": handler(arguments or {})}
+        try:
+            result = handler(arguments)
+        except Exception as exc:
+            self._audit_tool_call(tool_name, arguments, "error", str(exc))
+            raise
+        self._audit_tool_call(tool_name, arguments, "ok", "")
+        return {"ok": True, "tool": tool_name, "result": result}
+
+    def _audit_tool_call(self, tool_name: str, arguments: dict[str, Any], status: str, error: str = "") -> None:
+        conversation_id = str(arguments.get("conversation_id") or "")
+        with db_session(self.db_path) as conn:
+            append_audit_event(
+                conn,
+                conversation_id,
+                self.actor or self.source_id,
+                "llm_tool_call",
+                {
+                    "tool": tool_name,
+                    "status": status,
+                    "host": self.host,
+                    "session_id": self.session_id,
+                    "actor": self.actor,
+                    "source_id": self.source_id,
+                    "token_scope": self.token_scope,
+                    "error": error,
+                },
+            )
 
     def _dispatch_catalog_search(self, arguments: dict[str, Any]) -> dict[str, Any]:
         with db_session(self.db_path) as conn:
