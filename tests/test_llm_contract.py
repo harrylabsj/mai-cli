@@ -166,6 +166,91 @@ class LlmContractTest(unittest.TestCase):
             self.assertEqual(tool_message["tool_call_id"], "call_catalog")
             self.assertIn("tea-a", tool_message["content"])
 
+    def test_llm_tool_loop_retries_transient_provider_failures_before_fallback(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.seed_consultation(db_file)
+            calls = []
+
+            def flaky_transport(_url, _headers, payload, _timeout):
+                calls.append(payload)
+                if len(calls) == 1:
+                    raise TimeoutError("temporary provider timeout")
+                return {"choices": [{"message": {"role": "assistant", "content": "Recovered response."}}]}
+
+            provider = OpenAICompatibleProvider(
+                base_url="https://llm.example/v1",
+                api_key="secret-token",
+                model="mai-test-model",
+                transport=flaky_transport,
+            )
+            dispatcher = MarketplaceToolDispatcher(db_file, source_id="llm-loop", actor="alice", token_scope="buyer")
+
+            result = run_marketplace_tool_loop(
+                provider,
+                dispatcher,
+                [{"role": "user", "content": "Find longjing near Hangzhou."}],
+                provider_retries=1,
+            )
+
+            self.assertTrue(result["ok"])
+            self.assertEqual(result["content"], "Recovered response.")
+            self.assertEqual(len(calls), 2)
+
+    def test_llm_tool_loop_stops_before_exceeding_tool_call_budget(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.seed_consultation(db_file)
+
+            def fake_transport(_url, _headers, _payload, _timeout):
+                return {
+                    "choices": [
+                        {
+                            "message": {
+                                "role": "assistant",
+                                "content": "",
+                                "tool_calls": [
+                                    {
+                                        "id": "call_catalog_1",
+                                        "type": "function",
+                                        "function": {
+                                            "name": "catalog_search",
+                                            "arguments": "{\"query\":\"longjing\",\"city\":\"Hangzhou\"}",
+                                        },
+                                    },
+                                    {
+                                        "id": "call_catalog_2",
+                                        "type": "function",
+                                        "function": {
+                                            "name": "catalog_search",
+                                            "arguments": "{\"query\":\"gift\",\"city\":\"Hangzhou\"}",
+                                        },
+                                    },
+                                ],
+                            }
+                        }
+                    ]
+                }
+
+            provider = OpenAICompatibleProvider(
+                base_url="https://llm.example/v1",
+                api_key="secret-token",
+                model="mai-test-model",
+                transport=fake_transport,
+            )
+            dispatcher = MarketplaceToolDispatcher(db_file, source_id="llm-loop", actor="alice", token_scope="buyer")
+
+            result = run_marketplace_tool_loop(
+                provider,
+                dispatcher,
+                [{"role": "user", "content": "Find longjing near Hangzhou."}],
+                max_tool_calls=1,
+            )
+
+            self.assertFalse(result["ok"])
+            self.assertIn("tool call budget", result["error"])
+            self.assertEqual(len(result["tool_results"]), 1)
+
     def test_llm_tool_loop_returns_deterministic_fallback_on_tool_error(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"

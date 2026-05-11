@@ -337,6 +337,7 @@ Priority order:
    - Current provider, prompt, schema, and dispatcher pieces are only the tool substrate.
    - Add the loop: model response -> tool calls -> scoped dispatcher -> tool results -> final answer, with deterministic fallback when the model or tool call fails.
    - First implementation slice: add `run_marketplace_tool_loop()` for OpenAI-compatible tool calls, scoped dispatcher execution, tool result messages, and deterministic fallback on provider/tool errors.
+   - Stability slice: add bounded provider retries and `max_tool_calls` so transient model failures can recover without letting one response run unbounded tools.
 
 5. Central policy layer.
    - Consolidate tool permission, scope ownership, human-review triggers, and forbidden transaction claims outside prompts.
@@ -605,6 +606,7 @@ After the first vertical slice, development should proceed in small, shippable i
 - Define typed tool schemas for catalog search, conversation send, summarize, human-review flag, and merchant reply.
 - Add a tool-call dispatcher that maps those schemas to real `mai-cli` API/CLI actions without letting the LLM mutate trusted state directly.
 - Add a tool-call loop that feeds model tool calls through the scoped dispatcher and returns deterministic fallback content on provider or tool failure.
+- Add bounded provider retries and a tool-call budget to keep optional LLM runs recoverable and finite.
 - Add prompt templates for buyer assistant and merchant assistant.
 - Add guardrails: no payment claims, no binding merchant commitment, no private rule leakage.
 - Add token/time budgets, retries, and deterministic fallback when the model is unavailable.

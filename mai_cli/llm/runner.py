@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 from typing import Any
 
 from mai_cli.llm.dispatcher import MarketplaceToolDispatcher
@@ -50,16 +51,31 @@ def run_marketplace_tool_loop(
     dispatcher: MarketplaceToolDispatcher,
     messages: list[dict[str, Any]],
     max_steps: int = 4,
+    max_tool_calls: int | None = None,
+    provider_retries: int = 0,
+    provider_retry_delay_seconds: float = 0.0,
 ) -> dict[str, Any]:
     conversation_messages = [dict(message) for message in messages]
     tool_results: list[dict[str, Any]] = []
     tools = marketplace_tool_schemas()
+    retries = max(0, int(provider_retries or 0))
+    tool_call_budget = None if max_tool_calls is None else max(0, int(max_tool_calls))
 
     for _step in range(max(1, int(max_steps or 1))):
-        try:
-            response = provider.complete(conversation_messages, tools=tools)
-        except (Exception, SystemExit) as exc:
-            return _fallback(conversation_messages, tool_results, f"{type(exc).__name__}: {exc}")
+        response: LLMResponse | None = None
+        for attempt in range(retries + 1):
+            try:
+                response = provider.complete(conversation_messages, tools=tools)
+                break
+            except SystemExit as exc:
+                return _fallback(conversation_messages, tool_results, f"{type(exc).__name__}: {exc}")
+            except Exception as exc:
+                if attempt >= retries:
+                    return _fallback(conversation_messages, tool_results, f"{type(exc).__name__}: {exc}")
+                if provider_retry_delay_seconds:
+                    time.sleep(max(float(provider_retry_delay_seconds), 0.0))
+        if response is None:  # pragma: no cover - defensive guard
+            return _fallback(conversation_messages, tool_results, "provider returned no response")
 
         assistant = _assistant_message(response)
         tool_calls = assistant.get("tool_calls") or []
@@ -74,6 +90,12 @@ def run_marketplace_tool_loop(
 
         conversation_messages.append(assistant)
         for tool_call in tool_calls:
+            if tool_call_budget is not None and len(tool_results) >= tool_call_budget:
+                return _fallback(
+                    conversation_messages,
+                    tool_results,
+                    f"LLM tool call budget exceeded: {tool_call_budget}",
+                )
             try:
                 name, arguments = _tool_call_name_and_arguments(tool_call)
                 dispatched = dispatcher.dispatch(name, arguments)
