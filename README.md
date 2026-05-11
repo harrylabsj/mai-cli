@@ -109,6 +109,7 @@ python3 scripts/mai.py agent start --merchant seller-a --db ./mai-cli.sqlite --i
 python3 scripts/mai.py agent status --merchant seller-a --db ./mai-cli.sqlite --format json
 python3 scripts/mai.py agent logs --merchant seller-a --tail 20 --format json
 python3 scripts/mai.py agent stop --merchant seller-a --db ./mai-cli.sqlite --format json
+python3 scripts/mai.py agent start --merchant seller-a --api-url http://127.0.0.1:8765 --agent-token "$MAI_AGENT_TOKEN" --interval 3 --format json
 ```
 
 Pid, state, and log files are written under `~/.local/state/mai-cli/` by default. Set `MAI_CLI_STATE_DIR` to use a different state directory for tests or demos.
@@ -122,7 +123,7 @@ python3 scripts/mai.py agent run --merchant seller-a --api-url http://127.0.0.1:
 ```
 
 Use `agent token` locally, or `POST /agents/tokens` with a merchant token over the API, to issue a narrower token for the default merchant agent. API-backed agent runs accept `--agent-token` or `MAI_AGENT_TOKEN` for that scoped token, while `--merchant-token` and `MAI_MERCHANT_TOKEN` remain available for local demos.
-Set `MAI_MARKETPLACE_API_URL` or `MAI_API_URL` to omit `--api-url` from repeated agent runs.
+Set `MAI_MARKETPLACE_API_URL` or `MAI_API_URL` to omit `--api-url` from repeated agent runs or background starts. `agent start --api-url` passes credentials to the child process through environment variables and keeps tokens out of the recorded pid command.
 
 ## Marketplace API
 

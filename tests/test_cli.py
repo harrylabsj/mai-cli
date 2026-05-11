@@ -324,6 +324,38 @@ class MaiCliTest(unittest.TestCase):
             self.assertIn(("heartbeat", "seller-a", "away", {}), calls)
             self.assertFalse(stop_file.exists())
 
+    def test_agent_start_can_use_api_backed_runtime_credentials(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            state_dir = Path(tmp) / "state"
+            calls = []
+
+            def fake_start(db_path, merchant_id, **kwargs):
+                calls.append({"db_path": db_path, "merchant_id": merchant_id, **kwargs})
+                return {"ok": True, "merchant_id": merchant_id, "mode": "api", "message": "started"}
+
+            with patch("mai_cli.cli.merchant_daemon.start_agent", side_effect=fake_start):
+                self.run_cli(
+                    db_file,
+                    "agent",
+                    "start",
+                    "--merchant",
+                    "seller-a",
+                    "--api-url",
+                    "http://127.0.0.1:8765",
+                    "--agent-token",
+                    "agent_secret",
+                    "--state-dir",
+                    str(state_dir),
+                    "--format",
+                    "json",
+                )
+
+            self.assertEqual(calls[0]["merchant_id"], "seller-a")
+            self.assertEqual(calls[0]["api_url"], "http://127.0.0.1:8765")
+            self.assertEqual(calls[0]["agent_token"], "agent_secret")
+            self.assertEqual(calls[0]["merchant_token"], "")
+
     def test_agent_token_command_issues_scoped_agent_token(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"

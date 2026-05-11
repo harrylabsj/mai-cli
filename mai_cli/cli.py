@@ -504,11 +504,17 @@ def cmd_agent_run(args: argparse.Namespace) -> None:
 
 
 def cmd_agent_start(args: argparse.Namespace) -> None:
+    api_url = args.api_url or os.environ.get("MAI_MARKETPLACE_API_URL") or os.environ.get("MAI_API_URL") or ""
+    agent_token = args.agent_token or os.environ.get("MAI_AGENT_TOKEN") or ""
+    merchant_token = args.merchant_token or os.environ.get("MAI_MERCHANT_TOKEN") or ""
     result = merchant_daemon.start_agent(
         db_path_from_args(args),
         args.merchant,
         interval=args.interval,
         state_dir=args.state_dir,
+        api_url=api_url,
+        agent_token=agent_token,
+        merchant_token=merchant_token,
     )
     emit(result, args.format)
 
@@ -858,6 +864,9 @@ def build_parser() -> argparse.ArgumentParser:
     agent_start = agent_sub.add_parser("start", help="Start a background merchant agent daemon")
     agent_start.add_argument("--merchant", required=True)
     agent_start.add_argument("--interval", type=float, default=3.0)
+    agent_start.add_argument("--api-url", default="", help="Start a background agent through the marketplace API")
+    agent_start.add_argument("--merchant-token", default="", help="Merchant API token for --api-url")
+    agent_start.add_argument("--agent-token", default="", help="Scoped agent API token for --api-url")
     agent_start.add_argument("--format", choices=["text", "json"], default="text")
     add_agent_runtime_options(agent_start)
     agent_start.set_defaults(func=cmd_agent_start)

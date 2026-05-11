@@ -6,10 +6,12 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
 MAI = ROOT / "scripts" / "mai.py"
+from mai_cli.agents import merchant_daemon  # noqa: E402
 
 
 class AgentDaemonLifecycleTest(unittest.TestCase):
@@ -197,6 +199,48 @@ class AgentDaemonLifecycleTest(unittest.TestCase):
 
             stopped = self.wait_for_status(db_file, state_dir, lambda value: not value["running"])
             self.assertEqual(stopped["heartbeat"]["status"], "away")
+
+    def test_api_backed_agent_start_does_not_require_local_merchant_or_leak_token(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            db_file = tmp_path / "mai-cli.sqlite"
+            state_dir = tmp_path / "state"
+
+            class FakeProcess:
+                pid = 12345
+
+            with (
+                patch.dict(os.environ, {"MAI_MERCHANT_TOKEN": "stale_merchant_secret"}, clear=False),
+                patch("mai_cli.agents.merchant_daemon.subprocess.Popen", return_value=FakeProcess()) as popen,
+            ):
+                started = merchant_daemon.start_agent(
+                    db_file,
+                    "seller-a",
+                    interval=0.1,
+                    state_dir=state_dir,
+                    api_url="http://127.0.0.1:8765",
+                    agent_token="agent_secret",
+                )
+
+            self.assertEqual(started["mode"], "api")
+            pid_record = json.loads(Path(started["pid_file"]).read_text(encoding="utf-8"))
+            command_text = " ".join(pid_record["command"])
+            self.assertIn("--state-file", command_text)
+            self.assertNotIn("agent_secret", command_text)
+            self.assertEqual(pid_record["api_url"], "http://127.0.0.1:8765")
+
+            child_env = popen.call_args.kwargs["env"]
+            self.assertEqual(child_env["MAI_MARKETPLACE_API_URL"], "http://127.0.0.1:8765")
+            self.assertEqual(child_env["MAI_AGENT_TOKEN"], "agent_secret")
+            self.assertNotIn("MAI_MERCHANT_TOKEN", child_env)
+
+            stopped = merchant_daemon.stop_agent(db_file, "seller-a", state_dir=state_dir, timeout=0)
+            self.assertTrue(stopped["ok"])
+            self.assertEqual(stopped["mode"], "api")
+
+            status = merchant_daemon.status_agent(db_file, "seller-a", state_dir=state_dir)
+            self.assertFalse(status["running"])
+            self.assertEqual(status["mode"], "api")
 
 
 if __name__ == "__main__":

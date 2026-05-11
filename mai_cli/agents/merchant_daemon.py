@@ -132,7 +132,17 @@ def start_agent(
     merchant_id: str,
     interval: float = 3.0,
     state_dir: str | Path | None = None,
+    api_url: str = "",
+    agent_token: str = "",
+    merchant_token: str = "",
 ) -> dict[str, Any]:
+    api_url = str(api_url or "").strip()
+    agent_token = str(agent_token or "").strip()
+    merchant_token = str(merchant_token or "").strip()
+    mode = "api" if api_url else "sqlite"
+    if api_url and not (agent_token or merchant_token):
+        raise SystemExit("--merchant-token or --agent-token is required with --api-url")
+
     paths = agent_paths(merchant_id, state_dir)
     ensure_agent_dirs(paths)
     pid_record = read_json(paths["pid_file"], {})
@@ -143,8 +153,9 @@ def start_agent(
     if paths["stop_file"].exists():
         paths["stop_file"].unlink()
 
-    with db_session(db_path) as conn:
-        merchant_agent.heartbeat(conn, merchant_id, status="online")
+    if not api_url:
+        with db_session(db_path) as conn:
+            merchant_agent.heartbeat(conn, merchant_id, status="online")
 
     repo_root = Path(__file__).resolve().parents[2]
     command = [
@@ -168,6 +179,14 @@ def start_agent(
     ]
     env = os.environ.copy()
     env["MAI_CLI_STATE_DIR"] = str(paths["state_dir"])
+    if api_url:
+        env["MAI_MARKETPLACE_API_URL"] = api_url
+        if agent_token:
+            env["MAI_AGENT_TOKEN"] = agent_token
+            env.pop("MAI_MERCHANT_TOKEN", None)
+        elif merchant_token:
+            env["MAI_MERCHANT_TOKEN"] = merchant_token
+            env.pop("MAI_AGENT_TOKEN", None)
     with paths["log_file"].open("ab", buffering=0) as log:
         process = subprocess.Popen(
             command,
@@ -185,6 +204,8 @@ def start_agent(
         "merchant_id": merchant_id,
         "db_path": str(Path(db_path).expanduser()),
         "interval": interval,
+        "mode": mode,
+        "api_url": api_url,
         "started_at": started_at,
         "command": command,
         "log_file": str(paths["log_file"]),
@@ -198,13 +219,15 @@ def start_agent(
         running=True,
         counters={"checked": 0, "replied": 0},
         pid=process.pid,
-        extra={"started_at": started_at},
+        extra={"started_at": started_at, "mode": mode, "api_url": api_url},
     )
     return {
         "ok": True,
         "merchant_id": merchant_id,
         "pid": process.pid,
         "running": True,
+        "mode": mode,
+        "api_url": api_url,
         "stale_replaced": stale_replaced,
         "pid_file": str(paths["pid_file"]),
         "state_file": str(paths["state_file"]),
@@ -222,6 +245,7 @@ def stop_agent(
     paths = agent_paths(merchant_id, state_dir)
     pid_record = read_json(paths["pid_file"], {})
     pid = int(pid_record.get("pid") or 0)
+    mode = str(pid_record.get("mode") or "sqlite")
     was_running = is_process_running(pid)
     paths["stop_file"].parent.mkdir(parents=True, exist_ok=True)
     paths["stop_file"].write_text(now_iso(), encoding="utf-8")
@@ -241,8 +265,9 @@ def stop_agent(
     if not running and paths["pid_file"].exists():
         paths["pid_file"].unlink()
 
-    with db_session(db_path) as conn:
-        merchant_agent.heartbeat(conn, merchant_id, status="away")
+    if mode != "api":
+        with db_session(db_path) as conn:
+            merchant_agent.heartbeat(conn, merchant_id, status="away")
 
     previous = read_json(paths["state_file"], {})
     counters = previous.get("counters") or {"checked": 0, "replied": 0}
@@ -253,12 +278,19 @@ def stop_agent(
         counters=counters,
         last_error=previous.get("last_error"),
         pid=pid or None,
-        extra={"stopped_at": now_iso(), "stop_timeout": running},
+        extra={
+            "stopped_at": now_iso(),
+            "stop_timeout": running,
+            "mode": mode,
+            "api_url": str(pid_record.get("api_url") or ""),
+        },
     )
     return {
         "ok": not running,
         "merchant_id": merchant_id,
         "pid": pid or None,
+        "mode": mode,
+        "api_url": str(pid_record.get("api_url") or ""),
         "was_running": was_running,
         "running": running,
         "pid_file": str(paths["pid_file"]),
@@ -273,12 +305,15 @@ def status_agent(db_path: str | Path, merchant_id: str, state_dir: str | Path | 
     pid_record = read_json(paths["pid_file"], {})
     pid = int(pid_record.get("pid") or 0)
     state = read_json(paths["state_file"], {})
+    mode = str(pid_record.get("mode") or state.get("mode") or "sqlite")
     running = is_process_running(pid) and state.get("running") is not False
     counters = state.get("counters") or {"checked": 0, "replied": 0}
     return {
         "ok": True,
         "merchant_id": merchant_id,
         "pid": pid or None,
+        "mode": mode,
+        "api_url": str(pid_record.get("api_url") or state.get("api_url") or ""),
         "running": running,
         "stale_pid": bool(pid and not running),
         "pid_file": str(paths["pid_file"]),
@@ -320,6 +355,7 @@ def _run_process_loop(
     interval: float = 3.0,
     state_file: str | Path | None = None,
     stop_file: str | Path | None = None,
+    state_extra: dict[str, Any] | None = None,
 ) -> None:
     stop_requested = False
     counters = {"checked": 0, "replied": 0}
@@ -364,7 +400,15 @@ def _run_process_loop(
                 }
             print(json.dumps(event, ensure_ascii=False, sort_keys=True), flush=True)
             if state_path:
-                write_state(state_path, merchant_id, running=True, counters=counters, last_error=last_error, pid=os.getpid())
+                write_state(
+                    state_path,
+                    merchant_id,
+                    running=True,
+                    counters=counters,
+                    last_error=last_error,
+                    pid=os.getpid(),
+                    extra=state_extra,
+                )
 
             deadline = time.time() + max(interval, 0.05)
             while not stop_requested and not (stop_path and stop_path.exists()) and time.time() < deadline:
@@ -374,6 +418,8 @@ def _run_process_loop(
             mark_away()
         finally:
             if state_path:
+                stopped_extra = dict(state_extra or {})
+                stopped_extra["stopped_at"] = now_iso()
                 write_state(
                     state_path,
                     merchant_id,
@@ -381,7 +427,7 @@ def _run_process_loop(
                     counters=counters,
                     last_error=last_error,
                     pid=os.getpid(),
-                    extra={"stopped_at": now_iso()},
+                    extra=stopped_extra,
                 )
             if stop_path and stop_path.exists():
                 stop_path.unlink()
@@ -411,6 +457,7 @@ def run_forever(
         interval=interval,
         state_file=state_file,
         stop_file=stop_file,
+        state_extra={"mode": "sqlite", "api_url": ""},
     )
 
 
@@ -434,4 +481,8 @@ def run_tools_forever(
         interval=interval,
         state_file=state_file,
         stop_file=stop_file,
+        state_extra={
+            "mode": "api",
+            "api_url": str(getattr(tools, "base_url", "") or ""),
+        },
     )
