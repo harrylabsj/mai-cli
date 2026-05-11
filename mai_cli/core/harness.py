@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+from datetime import datetime, timedelta
 from typing import Any
 
 from mai_cli.db.session import decode_json, encode_json, now_iso
@@ -181,7 +182,13 @@ def complete_agent_message(conn: sqlite3.Connection, agent_id: str, message_id: 
     return process
 
 
-def abandon_agent_message(conn: sqlite3.Connection, agent_id: str, message_id: int, error: str) -> dict[str, Any]:
+def abandon_agent_message(
+    conn: sqlite3.Connection,
+    agent_id: str,
+    message_id: int,
+    error: str,
+    reason: str = "explicit_abandon",
+) -> dict[str, Any]:
     now = now_iso()
     cursor = conn.execute(
         """
@@ -198,9 +205,34 @@ def abandon_agent_message(conn: sqlite3.Connection, agent_id: str, message_id: i
             process["conversation_id"],
             agent_id,
             "agent_message_abandoned",
-            {"message_id": message_id, "idempotency_key": process["idempotency_key"], "error": error},
+            {"message_id": message_id, "idempotency_key": process["idempotency_key"], "error": error, "reason": reason},
         )
     return process
+
+
+def abandon_stale_agent_messages(
+    conn: sqlite3.Connection,
+    agent_id: str,
+    stale_after_seconds: int = 300,
+    now: str | datetime | None = None,
+) -> list[dict[str, Any]]:
+    current = datetime.fromisoformat(now) if isinstance(now, str) else now or datetime.fromisoformat(now_iso())
+    cutoff = current - timedelta(seconds=max(1, int(stale_after_seconds or 300)))
+    rows = conn.execute(
+        """
+        select message_id from agent_message_processes
+        where agent_id = ? and status = ? and updated_at < ?
+        order by updated_at, message_id
+        """,
+        (agent_id, PROCESSING_STATUS, cutoff.isoformat(timespec="seconds")),
+    ).fetchall()
+    abandoned: list[dict[str, Any]] = []
+    for row in rows:
+        message_id = int(row["message_id"])
+        error = f"stale processing claim abandoned after {stale_after_seconds} seconds"
+        abandoned_process = abandon_agent_message(conn, agent_id, message_id, error, reason="stale_processing_claim")
+        abandoned.append(abandoned_process)
+    return abandoned
 
 
 def fail_agent_message(conn: sqlite3.Connection, agent_id: str, message_id: int, error: str) -> dict[str, Any]:

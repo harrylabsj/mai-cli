@@ -6,7 +6,7 @@ from pathlib import Path
 from mai_cli.agents import buyer_cli, merchant_agent
 from mai_cli.core.catalog import create_merchant, create_product
 from mai_cli.core.conversations import conversation_summary
-from mai_cli.core.harness import abandon_agent_message, claim_agent_message, complete_agent_message, fail_agent_message
+from mai_cli.core.harness import abandon_agent_message, abandon_stale_agent_messages, claim_agent_message, complete_agent_message, fail_agent_message
 from mai_cli.db.session import db_session, decode_json
 
 
@@ -148,6 +148,77 @@ class OrchestrationHarnessTest(unittest.TestCase):
                 self.assertEqual(int(process["attempts"]), 2)
                 self.assertEqual(process["status"], "processed")
                 self.assertEqual(process["last_error"], "")
+
+    def test_stale_processing_claims_are_abandoned_and_retryable(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.seed_conversation(db_file)
+
+            with db_session(db_file) as conn:
+                claim_agent_message(conn, "merchant-agent", "CONV-0001", 1, "merchant-agent:1")
+                conn.execute(
+                    """
+                    update agent_message_processes
+                    set updated_at = '2026-05-11T00:00:00'
+                    where agent_id = ? and message_id = ?
+                    """,
+                    ("merchant-agent", 1),
+                )
+                abandoned = abandon_stale_agent_messages(
+                    conn,
+                    "merchant-agent",
+                    stale_after_seconds=60,
+                    now="2026-05-11T00:02:01",
+                )
+                retry = claim_agent_message(conn, "merchant-agent", "CONV-0001", 1, "merchant-agent:1")
+
+                self.assertEqual(len(abandoned), 1)
+                self.assertEqual(abandoned[0]["status"], "abandoned")
+                self.assertIn("stale processing claim", abandoned[0]["last_error"])
+                self.assertTrue(retry["claimed"])
+                self.assertEqual(retry["attempts"], 2)
+
+                events = conversation_summary(conn, "CONV-0001")["audit_events"]
+                self.assertTrue(
+                    any(
+                        event["event"] == "agent_message_abandoned"
+                        and event["details"]["reason"] == "stale_processing_claim"
+                        for event in events
+                    )
+                )
+
+    def test_fresh_processing_claims_are_not_abandoned_by_ttl_recovery(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.seed_conversation(db_file)
+
+            with db_session(db_file) as conn:
+                claim_agent_message(conn, "merchant-agent", "CONV-0001", 1, "merchant-agent:1")
+                conn.execute(
+                    """
+                    update agent_message_processes
+                    set updated_at = '2026-05-11T00:01:30'
+                    where agent_id = ? and message_id = ?
+                    """,
+                    ("merchant-agent", 1),
+                )
+                abandoned = abandon_stale_agent_messages(
+                    conn,
+                    "merchant-agent",
+                    stale_after_seconds=60,
+                    now="2026-05-11T00:02:01",
+                )
+
+                self.assertEqual(abandoned, [])
+                process = conn.execute(
+                    """
+                    select attempts, status from agent_message_processes
+                    where agent_id = ? and message_id = ?
+                    """,
+                    ("merchant-agent", 1),
+                ).fetchone()
+                self.assertEqual(int(process["attempts"]), 1)
+                self.assertEqual(process["status"], "processing")
 
     def test_schema_migration_adds_harness_tables_to_existing_database(self):
         with tempfile.TemporaryDirectory() as tmp:

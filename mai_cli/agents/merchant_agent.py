@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sqlite3
 from typing import Any
 
@@ -90,6 +91,10 @@ def generate_reply(
 
 def process_once_with_tools(tools: MerchantAgentTools, merchant_id: str) -> dict[str, Any]:
     agent = tools.heartbeat(merchant_id)
+    abandoned: list[dict[str, Any]] = []
+    if hasattr(tools, "abandon_stale_messages"):
+        stale_after = int(os.environ.get("MAI_AGENT_CLAIM_TTL_SECONDS") or "300")
+        abandoned = tools.abandon_stale_messages(agent["id"], stale_after_seconds=stale_after)
     conversations = tools.waiting_merchant_conversations(merchant_id)
     replied: list[dict[str, Any]] = []
     failed: list[dict[str, Any]] = []
@@ -150,6 +155,7 @@ def process_once_with_tools(tools: MerchantAgentTools, merchant_id: str) -> dict
         "checked": len(conversations),
         "replied": replied,
         "failed": failed,
+        "abandoned": abandoned,
     }
 
 
