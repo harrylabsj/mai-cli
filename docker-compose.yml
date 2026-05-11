@@ -1,0 +1,21 @@
+services:
+  mai-api:
+    build: .
+    image: mai-api:2.0.0
+    command:
+      - python3
+      - scripts/mai_api.py
+      - --db
+      - /data/mai-cli.sqlite
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8765"
+    ports:
+      - "${MAI_API_PORT:-8765}:8765"
+    volumes:
+      - mai_api_data:/data
+    restart: unless-stopped
+
+volumes:
+  mai_api_data:

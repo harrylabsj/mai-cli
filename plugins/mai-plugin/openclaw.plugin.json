@@ -1,0 +1,24 @@
+{
+  "id": "mai-plugin",
+  "name": "mai-cli Plugin",
+  "version": "2.0.0",
+  "description": "Lightweight OpenClaw native bridge for mai-cli consultation tools.",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "projectRoot": {
+        "type": "string",
+        "description": "Absolute path to a mai-cli skill checkout. Defaults to MAI_ROOT, ~/.openclaw/workspace/skills/mai, or ~/.hermes/skills/commerce/mai."
+      },
+      "dbPath": {
+        "type": "string",
+        "description": "Optional local mai-cli SQLite database path. Defaults to MAI_DB or ~/.local/share/mai-cli/mai-cli.sqlite."
+      },
+      "dataPath": {
+        "type": "string",
+        "description": "Deprecated alias for dbPath."
+      }
+    }
+  }
+}

@@ -1,0 +1,245 @@
+"""Conversation and message state transitions."""
+
+from __future__ import annotations
+
+import sqlite3
+from typing import Any
+
+from mai_cli.core.catalog import product_summary, require_merchant, require_product
+from mai_cli.core.harness import append_audit_event, conversation_audit_events, next_actor_for_status
+from mai_cli.db.session import decode_json, encode_json, now_iso
+
+
+def next_conversation_id(conn: sqlite3.Connection) -> str:
+    rows = conn.execute("select id from conversations where id like 'CONV-%'").fetchall()
+    max_id = 0
+    for row in rows:
+        try:
+            max_id = max(max_id, int(str(row["id"]).split("-", 1)[1]))
+        except (IndexError, ValueError):
+            continue
+    return f"CONV-{max_id + 1:04d}"
+
+
+def ensure_conversation(
+    conn: sqlite3.Connection,
+    buyer_id: str,
+    merchant_id: str,
+    sku: str = "",
+) -> dict[str, Any]:
+    require_merchant(conn, merchant_id)
+    if sku:
+        product = require_product(conn, sku)
+        if product["merchant_id"] != merchant_id:
+            raise SystemExit(f"Product {sku} does not belong to merchant {merchant_id}")
+    row = conn.execute(
+        """
+        select * from conversations
+        where buyer_id = ? and merchant_id = ? and sku = ? and status != 'closed'
+        order by created_at desc
+        limit 1
+        """,
+        (buyer_id, merchant_id, sku),
+    ).fetchone()
+    if row is not None:
+        return conversation_summary(conn, row["id"])
+    now = now_iso()
+    conversation_id = next_conversation_id(conn)
+    conn.execute(
+        """
+        insert into conversations(id, buyer_id, merchant_id, sku, status, next_actor, created_at, updated_at, last_sender)
+        values (?, ?, ?, ?, 'open', 'buyer', ?, ?, '')
+        """,
+        (conversation_id, buyer_id, merchant_id, sku, now, now),
+    )
+    append_audit_event(
+        conn,
+        conversation_id,
+        "system",
+        "conversation_created",
+        {"buyer_id": buyer_id, "merchant_id": merchant_id, "sku": sku, "next_actor": "buyer"},
+    )
+    return conversation_summary(conn, conversation_id)
+
+
+def require_conversation(conn: sqlite3.Connection, conversation_id: str) -> sqlite3.Row:
+    row = conn.execute("select * from conversations where id = ?", (conversation_id,)).fetchone()
+    if row is None:
+        raise SystemExit(f"Unknown conversation: {conversation_id}")
+    return row
+
+
+def append_message(
+    conn: sqlite3.Connection,
+    conversation_id: str,
+    sender: str,
+    intent: str,
+    text: str,
+    structured_payload: dict[str, Any] | None = None,
+    status: str | None = None,
+) -> dict[str, Any]:
+    conversation = require_conversation(conn, conversation_id)
+    if not text.strip():
+        raise SystemExit("message text is required")
+    now = now_iso()
+    if status is None:
+        if sender == "buyer":
+            status = "waiting_merchant"
+        elif sender in {"merchant_agent", "merchant"}:
+            status = "waiting_buyer"
+        else:
+            status = conversation["status"]
+    next_actor = next_actor_for_status(status, str((structured_payload or {}).get("reason") or ""))
+    cursor = conn.execute(
+        """
+        insert into messages(conversation_id, sender, intent, text, structured_payload_json, created_at)
+        values (?, ?, ?, ?, ?, ?)
+        """,
+        (
+            conversation_id,
+            sender,
+            intent,
+            text,
+            encode_json(structured_payload or {}),
+            now,
+        ),
+    )
+    conn.execute(
+        "update conversations set status = ?, next_actor = ?, updated_at = ?, last_sender = ? where id = ?",
+        (status, next_actor, now, sender, conversation_id),
+    )
+    append_audit_event(
+        conn,
+        conversation_id,
+        sender,
+        "message_appended",
+        {
+            "message_id": int(cursor.lastrowid),
+            "intent": intent,
+            "status": status,
+            "next_actor": next_actor,
+            "source_id": (structured_payload or {}).get("source_id", ""),
+        },
+    )
+    return message_summary(conn, int(cursor.lastrowid))
+
+
+def add_flag(
+    conn: sqlite3.Connection,
+    conversation_id: str,
+    reason: str,
+    severity: str = "review",
+    sku: str = "",
+) -> dict[str, Any]:
+    now = now_iso()
+    cursor = conn.execute(
+        """
+        insert into moderation_flags(conversation_id, sku, reason, severity, created_at)
+        values (?, ?, ?, ?, ?)
+        """,
+        (conversation_id, sku, reason, severity, now),
+    )
+    append_audit_event(
+        conn,
+        conversation_id,
+        "system",
+        "human_review_flagged",
+        {"reason": reason, "severity": severity, "sku": sku, "next_actor": next_actor_for_status("human_required", reason)},
+    )
+    return flag_summary(conn, int(cursor.lastrowid))
+
+
+def message_summary(conn: sqlite3.Connection, message_id: int) -> dict[str, Any]:
+    row = conn.execute("select * from messages where id = ?", (message_id,)).fetchone()
+    if row is None:
+        raise SystemExit(f"Unknown message: {message_id}")
+    return {
+        "id": row["id"],
+        "conversation_id": row["conversation_id"],
+        "sender": row["sender"],
+        "intent": row["intent"],
+        "text": row["text"],
+        "structured_payload": decode_json(row["structured_payload_json"], {}),
+        "created_at": row["created_at"],
+    }
+
+
+def flag_summary(conn: sqlite3.Connection, flag_id: int) -> dict[str, Any]:
+    row = conn.execute("select * from moderation_flags where id = ?", (flag_id,)).fetchone()
+    if row is None:
+        raise SystemExit(f"Unknown moderation flag: {flag_id}")
+    return {
+        "id": row["id"],
+        "conversation_id": row["conversation_id"],
+        "sku": row["sku"],
+        "reason": row["reason"],
+        "severity": row["severity"],
+        "created_at": row["created_at"],
+        "resolved_at": row["resolved_at"],
+        "resolution": row["resolution"],
+        "resolved_by": row["resolved_by"],
+    }
+
+
+def conversation_messages(conn: sqlite3.Connection, conversation_id: str) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        "select id from messages where conversation_id = ? order by id",
+        (conversation_id,),
+    ).fetchall()
+    return [message_summary(conn, row["id"]) for row in rows]
+
+
+def conversation_flags(conn: sqlite3.Connection, conversation_id: str) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        "select id from moderation_flags where conversation_id = ? order by id",
+        (conversation_id,),
+    ).fetchall()
+    return [flag_summary(conn, row["id"]) for row in rows]
+
+
+def conversation_summary(conn: sqlite3.Connection, conversation_id: str) -> dict[str, Any]:
+    row = require_conversation(conn, conversation_id)
+    summary: dict[str, Any] = {
+        "id": row["id"],
+        "buyer_id": row["buyer_id"],
+        "merchant_id": row["merchant_id"],
+        "sku": row["sku"],
+        "status": row["status"],
+        "next_actor": row["next_actor"],
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+        "last_sender": row["last_sender"],
+        "messages": conversation_messages(conn, conversation_id),
+        "flags": conversation_flags(conn, conversation_id),
+        "audit_events": conversation_audit_events(conn, conversation_id),
+    }
+    if row["sku"]:
+        summary["product"] = product_summary(conn, row["sku"])
+    return summary
+
+
+def merchant_conversations(
+    conn: sqlite3.Connection,
+    merchant_id: str,
+    status: str = "",
+) -> list[dict[str, Any]]:
+    require_merchant(conn, merchant_id)
+    if status:
+        rows = conn.execute(
+            """
+            select id from conversations
+            where merchant_id = ? and status = ?
+            order by updated_at desc
+            """,
+            (merchant_id, status),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "select id from conversations where merchant_id = ? order by updated_at desc",
+            (merchant_id,),
+        ).fetchall()
+    return [conversation_summary(conn, row["id"]) for row in rows]
+
+
+def waiting_merchant_conversations(conn: sqlite3.Connection, merchant_id: str) -> list[dict[str, Any]]:
+    return merchant_conversations(conn, merchant_id, "waiting_merchant")

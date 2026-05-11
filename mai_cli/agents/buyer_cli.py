@@ -1,0 +1,102 @@
+"""Deterministic buyer-side consultation helpers."""
+
+from __future__ import annotations
+
+import sqlite3
+from typing import Any
+
+from mai_cli.core.catalog import product_summary, search_products
+from mai_cli.core.conversations import append_message, conversation_summary, ensure_conversation
+from mai_cli.core.risk import infer_intent
+
+MVP_WARNINGS = [
+    "MVP records consultation only; no order is created.",
+    "No stock is reserved by mai-cli.",
+    "Payment, refund, escrow, and delivery-success handling are outside this version.",
+]
+
+
+def ask(
+    conn: sqlite3.Connection,
+    buyer_id: str,
+    text: str,
+    city: str = "",
+    area: str = "",
+    limit: int = 3,
+) -> dict[str, Any]:
+    candidates = search_products(conn, query=text, city=city, area=area, limit=limit)
+    if not candidates:
+        return {
+            "ok": True,
+            "buyer_id": buyer_id,
+            "candidates": [],
+            "conversation": None,
+            "warnings": ["No matching merchant or product found.", *MVP_WARNINGS],
+            "missing_facts": ["merchant", "product"],
+        }
+    selected = candidates[0]
+    conversation = ensure_conversation(conn, buyer_id, selected["merchant_id"], selected["sku"])
+    message = append_message(
+        conn,
+        conversation["id"],
+        "buyer",
+        infer_intent(text),
+        text,
+        structured_payload={"city": city, "area": area, "selected_sku": selected["sku"], "source_id": "buyer-cli"},
+    )
+    return {
+        "ok": True,
+        "buyer_id": buyer_id,
+        "candidates": candidates,
+        "selected": selected,
+        "conversation": conversation_summary(conn, conversation["id"]),
+        "message": message,
+        "warnings": MVP_WARNINGS,
+    }
+
+
+def summarize(conn: sqlite3.Connection, conversation_id: str) -> dict[str, Any]:
+    conversation = conversation_summary(conn, conversation_id)
+    option = product_summary(conn, conversation["sku"]) if conversation.get("sku") else None
+    missing_facts: list[str] = []
+    warnings = list(MVP_WARNINGS)
+    if option is None:
+        missing_facts.append("product")
+    else:
+        if not option["merchant"].get("contact"):
+            missing_facts.append("merchant contact")
+        if not option["delivery"].get("service_area"):
+            missing_facts.append("delivery rule")
+        if option["stock"] <= 0:
+            warnings.append("Product is out of stock.")
+    if conversation["status"] == "human_required":
+        warnings.append("Merchant human review is required before any commitment.")
+    for flag in conversation["flags"]:
+        warnings.append(f"Human review flag: {flag['reason']}")
+    next_action = (
+        "Wait for merchant human review."
+        if conversation["status"] == "human_required"
+        else "Use purchase_intent only to record interest; confirm order and payment outside this MVP."
+    )
+    return {
+        "ok": True,
+        "conversation": conversation,
+        "option": option,
+        "missing_facts": missing_facts,
+        "warnings": warnings,
+        "next_action": next_action,
+        "no_order_created": True,
+        "no_stock_reserved": True,
+    }
+
+
+def record_intent(conn: sqlite3.Connection, conversation_id: str, intent: str, text: str) -> dict[str, Any]:
+    if intent not in {"purchase_intent", "quote_request"}:
+        raise SystemExit("--intent must be purchase_intent or quote_request")
+    message = append_message(conn, conversation_id, "buyer", intent, text, structured_payload={"source_id": "buyer-cli"})
+    return {
+        "ok": True,
+        "message": message,
+        "conversation": conversation_summary(conn, conversation_id),
+        "warnings": MVP_WARNINGS,
+    }

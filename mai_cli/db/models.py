@@ -1,0 +1,163 @@
+"""SQLite schema for the mai-cli MVP."""
+
+SCHEMA = [
+    """
+    create table if not exists meta (
+        key text primary key,
+        value text not null
+    )
+    """,
+    """
+    create table if not exists merchants (
+        id text primary key,
+        name text not null,
+        city text not null default '',
+        service_area text not null default '',
+        contact text not null default '',
+        hours text not null default '',
+        automation_boundaries text not null default '',
+        tags_json text not null default '[]',
+        created_at text not null,
+        updated_at text not null
+    )
+    """,
+    """
+    create table if not exists products (
+        sku text primary key,
+        merchant_id text not null,
+        title text not null,
+        description text not null default '',
+        category text not null default '',
+        tags_json text not null default '[]',
+        price real not null,
+        currency text not null default 'CNY',
+        stock integer not null,
+        delivery_attributes_json text not null default '[]',
+        active integer not null default 1,
+        created_at text not null,
+        updated_at text not null,
+        foreign key (merchant_id) references merchants(id)
+    )
+    """,
+    """
+    create table if not exists delivery_rules (
+        merchant_id text primary key,
+        service_area text not null default '',
+        fee real not null default 0,
+        currency text not null default 'CNY',
+        eta_minutes integer not null default 0,
+        radius_km real not null default 0,
+        notes text not null default '',
+        created_at text not null,
+        updated_at text not null,
+        foreign key (merchant_id) references merchants(id)
+    )
+    """,
+    """
+    create table if not exists conversations (
+        id text primary key,
+        buyer_id text not null,
+        merchant_id text not null,
+        sku text not null default '',
+        status text not null,
+        next_actor text not null default '',
+        created_at text not null,
+        updated_at text not null,
+        last_sender text not null default '',
+        foreign key (merchant_id) references merchants(id)
+    )
+    """,
+    """
+    create table if not exists messages (
+        id integer primary key autoincrement,
+        conversation_id text not null,
+        sender text not null,
+        intent text not null,
+        text text not null,
+        structured_payload_json text not null default '{}',
+        created_at text not null,
+        foreign key (conversation_id) references conversations(id)
+    )
+    """,
+    """
+    create table if not exists agents (
+        id text primary key,
+        type text not null,
+        owner_id text not null,
+        status text not null,
+        capabilities_json text not null default '[]',
+        last_seen_at text not null,
+        pid integer not null default 0,
+        version text not null default '',
+        last_error text not null default '',
+        checked_count integer not null default 0,
+        replied_count integer not null default 0
+    )
+    """,
+    """
+    create table if not exists moderation_flags (
+        id integer primary key autoincrement,
+        conversation_id text not null default '',
+        sku text not null default '',
+        reason text not null,
+        severity text not null default 'review',
+        created_at text not null,
+        resolved_at text not null default '',
+        resolution text not null default '',
+        resolved_by text not null default ''
+    )
+    """,
+    """
+    create table if not exists api_tokens (
+        token text primary key,
+        role text not null,
+        merchant_id text not null default '',
+        buyer_id text not null default '',
+        created_at text not null
+    )
+    """,
+    """
+    create table if not exists audit_events (
+        id integer primary key autoincrement,
+        conversation_id text not null default '',
+        actor text not null,
+        event text not null,
+        details_json text not null default '{}',
+        created_at text not null
+    )
+    """,
+    """
+    create table if not exists agent_message_processes (
+        agent_id text not null,
+        message_id integer not null,
+        conversation_id text not null,
+        idempotency_key text not null,
+        status text not null,
+        attempts integer not null default 0,
+        last_error text not null default '',
+        created_at text not null,
+        updated_at text not null,
+        processed_at text not null default '',
+        primary key (agent_id, message_id),
+        foreign key (message_id) references messages(id)
+    )
+    """,
+]
+
+EXTRA_COLUMNS = {
+    "conversations": [
+        ("next_actor", "text not null default ''"),
+    ],
+    "agents": [
+        ("pid", "integer not null default 0"),
+        ("version", "text not null default ''"),
+        ("last_error", "text not null default ''"),
+        ("checked_count", "integer not null default 0"),
+        ("replied_count", "integer not null default 0"),
+    ],
+    "moderation_flags": [
+        ("resolved_at", "text not null default ''"),
+        ("resolution", "text not null default ''"),
+        ("resolved_by", "text not null default ''"),
+    ],
+}

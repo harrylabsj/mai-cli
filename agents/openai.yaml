@@ -1,0 +1,4 @@
+interface:
+  display_name: "mai-cli"
+  short_description: "AI local commerce consultation agent"
+  default_prompt: "Use $mai-cli to help merchants publish products and delivery rules, run resident merchant agents, and help buyers search, ask consultations, summarize replies, and record purchase intent only as conversation context."

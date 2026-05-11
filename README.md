@@ -1,0 +1,119 @@
+# mai-cli
+
+mai-cli is a standalone, SQLite-backed AI consultation runtime for local commerce. Merchants publish shop profiles, products, stock, and delivery rules; buyers search nearby supply, open consultations, and receive deterministic merchant-agent replies.
+
+The MVP is not a transaction system. It does not create commitments, reserve stock, process payment, record payment state, custody funds, handle refunds, dispatch couriers, or claim delivery success. Buyer intent is recorded only as `quote_request` or `purchase_intent` messages in a conversation.
+
+## Install and Verify
+
+```bash
+bash scripts/verify.sh
+```
+
+Optional API dependencies are declared in `pyproject.toml` for the FastAPI marketplace service:
+
+```bash
+pip install -e '.[api]'
+```
+
+## Quick Start
+
+```bash
+python3 scripts/mai.py --db ./mai-cli.sqlite merchant create \
+  --id seller-a \
+  --name "West Lake Tea" \
+  --city Hangzhou \
+  --service-area "West Lake" \
+  --contact "wechat:westlake" \
+  --hours "09:00-21:00" \
+  --delivery-fee 12 \
+  --delivery-eta-minutes 45 \
+  --tags "tea,gift,longjing"
+
+python3 scripts/mai.py --db ./mai-cli.sqlite product add \
+  --merchant seller-a \
+  --sku tea-a \
+  --title "Longjing Gift Box" \
+  --price 88 \
+  --stock 5 \
+  --category tea \
+  --tags "longjing,gift" \
+  --delivery-attributes "same-city,courier"
+
+python3 scripts/mai.py --db ./mai-cli.sqlite merchant update --id seller-a --hours "10:00-20:00"
+python3 scripts/mai.py --db ./mai-cli.sqlite product update --merchant seller-a --sku tea-a --stock 4 --price 92
+python3 scripts/mai.py --db ./mai-cli.sqlite search merchants --query "west lake" --city Hangzhou --format json
+
+python3 scripts/mai.py --db ./mai-cli.sqlite buyer ask \
+  --buyer alice \
+  --text "longjing gift delivery today" \
+  --city Hangzhou \
+  --area "West Lake" \
+  --format json
+
+python3 scripts/mai.py --db ./mai-cli.sqlite agent run --merchant seller-a --once --format json
+python3 scripts/mai.py --db ./mai-cli.sqlite buyer summarize --conversation CONV-0001 --format json
+python3 scripts/mai.py --db ./mai-cli.sqlite buyer intent --conversation CONV-0001 --intent purchase_intent --text "Buyer wants merchant confirmation." --format json
+
+printf 'longjing gift delivery today\n/summary\n/quit\n' | \
+  python3 scripts/mai.py --db ./mai-cli.sqlite buyer chat --buyer alice --city Hangzhou --area "West Lake" --format json
+```
+
+Default database path: `~/.local/share/mai-cli/mai-cli.sqlite`.
+
+## Conversation CLI
+
+The raw conversation lifecycle is available without the API server:
+
+```bash
+python3 scripts/mai.py --db ./mai-cli.sqlite conversation create --buyer alice --merchant seller-a --sku tea-a --intent ask_stock --text "Is this available?" --format json
+python3 scripts/mai.py --db ./mai-cli.sqlite conversation message --conversation CONV-0001 --sender merchant_agent --intent ask_stock --text "Stock is 5." --status waiting_buyer --format json
+python3 scripts/mai.py --db ./mai-cli.sqlite conversation human-review --conversation CONV-0001 --reason low_confidence --format json
+python3 scripts/mai.py --db ./mai-cli.sqlite conversation resolve-review --conversation CONV-0001 --action reply --sender merchant --text "Human reviewed." --format json
+python3 scripts/mai.py --db ./mai-cli.sqlite conversation close --conversation CONV-0001 --sender operator --text "Closed." --format json
+python3 scripts/mai.py --db ./mai-cli.sqlite conversation list --buyer alice --status waiting_buyer --format json
+python3 scripts/mai.py --db ./mai-cli.sqlite human-review queue --format json
+python3 scripts/mai.py --db ./mai-cli.sqlite agent list --format json
+python3 scripts/mai.py --db ./mai-cli.sqlite agent show --agent mai-cli-merchant-agent:seller-a --format json
+```
+
+## Resident Agent Daemon
+
+Use `agent run --once` for a single deterministic polling pass. Use the daemon lifecycle commands when a merchant agent should keep polling in the background:
+
+```bash
+python3 scripts/mai.py agent start --merchant seller-a --db ./mai-cli.sqlite --interval 3 --format json
+python3 scripts/mai.py agent status --merchant seller-a --db ./mai-cli.sqlite --format json
+python3 scripts/mai.py agent logs --merchant seller-a --tail 20 --format json
+python3 scripts/mai.py agent stop --merchant seller-a --db ./mai-cli.sqlite --format json
+```
+
+Pid, state, and log files are written under `~/.local/state/mai-cli/` by default. Set `MAI_CLI_STATE_DIR` to use a different state directory for tests or demos.
+
+## Marketplace API
+
+Inspect routes:
+
+```bash
+python3 scripts/mai.py --db ./mai-cli.sqlite api routes --format json
+```
+
+The local API covers catalog, search, conversations, message append/close, agent heartbeats, and human-review queues. In environments without FastAPI installed, `create_app()` still returns a lightweight ASGI app for local tests and demos.
+
+`POST /merchants` returns a local `merchant_token`. Product writes, merchant profile updates, merchant/merchant-agent replies, heartbeats, and human-review write actions require that token in the JSON body as `merchant_token` or as a Bearer token. Buyer search and buyer conversation creation remain tokenless for local demos.
+
+Serve the FastAPI app after installing API dependencies:
+
+```bash
+python3 scripts/mai.py --db ./mai-cli.sqlite api serve --host 127.0.0.1 --port 8765
+```
+
+## Legacy Import
+
+Existing Mai JSON catalogs can be imported:
+
+```bash
+python3 scripts/mai.py --db ./mai-cli.sqlite legacy import --from-json ./mai.json --format json
+```
+
+Only merchants and products are imported. Legacy transaction data is ignored by design.

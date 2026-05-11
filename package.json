@@ -1,0 +1,27 @@
+{
+  "name": "mai-cli",
+  "version": "2.0.0",
+  "description": "Standalone SQLite-backed local commerce AI consultation marketplace runtime.",
+  "bin": {
+    "mai-cli": "scripts/mai.py",
+    "mai-cli-api": "scripts/mai_api.py",
+    "mai-cli-agent": "scripts/mai_agent.py"
+  },
+  "scripts": {
+    "install:agents": "bash scripts/install.sh --both",
+    "test": "python3 -m unittest discover -s tests && node --test tests/mai_plugin.test.mjs && bash scripts/verify.sh",
+    "test:plugin": "node --test tests/mai_plugin.test.mjs",
+    "verify": "bash scripts/verify.sh"
+  },
+  "keywords": [
+    "openclaw",
+    "hermes",
+    "skill",
+    "commerce",
+    "consultation",
+    "marketplace",
+    "agent"
+  ],
+  "author": "harrylabsj",
+  "license": "MIT"
+}

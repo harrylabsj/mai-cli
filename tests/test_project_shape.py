@@ -1,0 +1,58 @@
+import importlib
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+
+class ProjectShapeTest(unittest.TestCase):
+    def test_documented_modules_are_importable(self):
+        module_names = [
+            "mai_cli.config",
+            "mai_cli.core.delivery",
+            "mai_cli.api.routes_merchants",
+            "mai_cli.api.routes_marketplace",
+            "mai_cli.api.routes_conversations",
+            "mai_cli.api.routes_agents",
+            "mai_cli.adapters.openclaw",
+            "mai_cli.adapters.hermes",
+        ]
+
+        for module_name in module_names:
+            with self.subTest(module=module_name):
+                self.assertIsNotNone(importlib.import_module(module_name))
+
+    def test_route_modules_expose_documented_route_groups(self):
+        from mai_cli.api import routes_agents, routes_conversations, routes_marketplace, routes_merchants
+
+        self.assertIn("/merchants", routes_merchants.route_paths())
+        self.assertIn("/products/{sku}", routes_merchants.route_paths())
+        self.assertIn("/buyer/ask", routes_marketplace.route_paths())
+        self.assertIn("/search/products", routes_marketplace.route_paths())
+        self.assertIn("/conversations/{conversation_id}/messages", routes_conversations.route_paths())
+        self.assertIn("/human-review/queue", routes_conversations.route_paths())
+        self.assertIn("/agents/heartbeat", routes_agents.route_paths())
+        self.assertIn("/merchants/{merchant_id}/agents", routes_agents.route_paths())
+
+    def test_config_and_host_adapters_expose_stable_entrypoints(self):
+        from mai_cli import config
+        from mai_cli.adapters import hermes, openclaw
+
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "mai.sqlite"
+            state_dir = Path(tmp) / "state"
+            with patch.dict("os.environ", {"MAI_DB": str(db_path), "MAI_CLI_STATE_DIR": str(state_dir)}):
+                runtime = config.RuntimeConfig.from_env()
+
+            self.assertEqual(runtime.db_path, db_path)
+            self.assertEqual(runtime.state_dir, state_dir)
+
+            merchant_command = openclaw.merchant_agent_command("seller-a", db_path=db_path, once=True)
+            self.assertIn("agent", merchant_command)
+            self.assertIn("run", merchant_command)
+            self.assertIn("--once", merchant_command)
+
+            buyer_command = hermes.buyer_ask_command("alice", "longjing gift", db_path=db_path, city="Hangzhou")
+            self.assertIn("buyer", buyer_command)
+            self.assertIn("ask", buyer_command)
+            self.assertIn("--city", buyer_command)
