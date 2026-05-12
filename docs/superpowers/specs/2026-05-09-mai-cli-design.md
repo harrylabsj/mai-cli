@@ -321,6 +321,7 @@ Priority order:
    - Add agent session id, owner, scope, capabilities, lifecycle state, expiry, and audit trail.
    - Treat `buyer_id`, `merchant_id`, and `source_id` as domain identifiers, not a complete agent identity model.
    - First implementation slice: issue scoped default merchant-agent tokens through `agent token` and `/agents/tokens`; allow those tokens on agent heartbeat, claim/complete/fail/abandon, merchant-agent reply, and merchant-agent human-review flag routes while keeping catalog writes merchant-token-only.
+   - Revocation slice: allow owning merchants to revoke scoped default merchant-agent tokens through `agent revoke-token` and `/agents/tokens/revoke`; revoked tokens must fail before heartbeat, message processing, reply, close, human-review, or API-backed LLM tool actions can run.
 
 2. HTTP-backed marketplace tool boundary.
    - Keep SQLite tools for local tests, but add an API-backed implementation of `MerchantAgentTools` and buyer/LLM tools.
@@ -540,6 +541,7 @@ Upgrade JSON file storage to SQLite, the dependency-free HTTP server to FastAPI,
 - FastAPI and fallback ASGI modes pass the same auth/error contract tests.
 - Public API conversation reads and human-review queues require owner tokens; buyer creation remains tokenless but returns a conversation-scoped buyer token instead of a buyer-wide credential.
 - Public API conversation message appends and close operations require buyer, merchant, or agent owner tokens instead of accepting anonymous conversation writes.
+- Scoped merchant-agent tokens can be issued and revoked by the owning merchant, and revoked tokens cannot be used for future agent/API-backed actions.
 - A merchant can create a shop, product, inventory attributes, and delivery rule.
 - A merchant agent can run as an independent process.
 - Duplicate merchant-agent daemons cannot produce duplicate replies for the same buyer message.
@@ -565,7 +567,7 @@ Build the smallest runnable vertical slice:
 4. Deterministic merchant agent tools for catalog, inventory, delivery, and human-review flags.
 5. Complete conversations, heartbeat, and human-review API surfaces with matching CLI commands, including review queue, detail, and review-id resolution.
 6. MVP multi-agent orchestration harness for conversation assignment, `next_actor`, idempotent message processing, retry/error tracking, and audit events.
-7. Long-running merchant agent daemon with `start`, `stop`, `status`, `logs`, `run --once`, API-backed `run --api-url`, and API-backed background `start --api-url` lifecycle commands.
+7. Long-running merchant agent daemon with `start`, `stop`, `status`, `logs`, `run --once`, API-backed `run --api-url`, API-backed background `start --api-url`, and scoped token revocation commands.
 8. Simple buyer CLI tools for search, merchant conversation, and response summary.
 9. End-to-end demo test for the Hangzhou Longjing gift box consultation scenario, including conversation APIs, heartbeat, human review, harness routing, and daemon start/status/stop.
 
@@ -634,7 +636,7 @@ After the first vertical slice, development should proceed in small, shippable i
 
 - Add Postgres support only after SQLite local flows are stable.
 - Add migration scripts and data export/import.
-- Add scoped buyer, merchant, agent, and operator tokens.
+- Add scoped buyer, merchant, agent, and operator tokens with rotation, expiry, and revocation.
 - Add tool permission scopes and audit records for each agent-visible tool call, including host, session, actor, and token scope.
 - Add rate limits, request logs, and moderation dashboards/API.
 - Keep real payment, escrow, refund, and courier dispatch out of scope until a separate transaction design is approved.

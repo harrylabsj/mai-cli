@@ -581,6 +581,39 @@ class MaiCliTest(unittest.TestCase):
             self.assertIn("mai_agent_seller-a_", text_output)
             self.assertNotIn('"agent_token"', text_output)
 
+    def test_agent_revoke_token_command_revokes_scoped_agent_token(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.run_cli(db_file, "merchant", "create", "--id", "seller-a", "--name", "West Lake Tea")
+            issued = json.loads(
+                self.run_cli(db_file, "agent", "token", "--merchant", "seller-a", "--format", "json")
+            )
+            revoked = json.loads(
+                self.run_cli(
+                    db_file,
+                    "agent",
+                    "revoke-token",
+                    "--merchant",
+                    "seller-a",
+                    "--token",
+                    issued["agent_token"],
+                    "--format",
+                    "json",
+                )
+            )
+
+            self.assertTrue(revoked["revoked"])
+            self.assertEqual(revoked["agent_id"], "mai-cli-merchant-agent:seller-a")
+            conn = sqlite3.connect(db_file)
+            try:
+                row = conn.execute(
+                    "select revoked_at from api_tokens where token = ?",
+                    (issued["agent_token"],),
+                ).fetchone()
+            finally:
+                conn.close()
+            self.assertTrue(row[0])
+
     def test_human_review_workbench_shows_and_resolves_one_review_by_id(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"

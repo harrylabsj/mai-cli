@@ -50,3 +50,11 @@ python3 scripts/mai.py agent stop --merchant seller-a --db ./mai-cli.sqlite --fo
 
 The daemon writes pid and state files under `~/.local/state/mai-cli/agents/` and JSON-line logs under `~/.local/state/mai-cli/logs/`. Set `MAI_CLI_STATE_DIR` to isolate state for tests or demos.
 When `--api-url` is present, the same resident loop uses `HTTPMerchantAgentTools` and scoped `--agent-token` or `MAI_AGENT_TOKEN` credentials. Background API starts pass the credential through child-process environment, not through the recorded command line.
+
+Scoped merchant-agent API tokens can be revoked by the owning merchant:
+
+```bash
+python3 scripts/mai.py --db ./mai-cli.sqlite agent revoke-token --merchant seller-a --token "$MAI_AGENT_TOKEN" --format json
+```
+
+The Marketplace API equivalent is `POST /agents/tokens/revoke` with the merchant token supplied in the request body or Authorization header. Revoked agent tokens are rejected before heartbeat, message processing, reply, close, human-review, or API-backed LLM tool actions can run.

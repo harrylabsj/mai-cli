@@ -138,6 +138,7 @@ class PublicMarketplaceTest(unittest.TestCase):
             self.assertIn("/buyers/{buyer_id}/conversations", route_paths)
             self.assertIn("/agents/heartbeat", route_paths)
             self.assertIn("/agents/tokens", route_paths)
+            self.assertIn("/agents/tokens/revoke", route_paths)
             self.assertIn("/agents/messages/claim", route_paths)
             self.assertIn("/agents/messages/complete", route_paths)
             self.assertIn("/agents/messages/fail", route_paths)
@@ -1479,6 +1480,74 @@ class PublicMarketplaceTest(unittest.TestCase):
             )
             self.assertEqual(status, 403)
             self.assertIn("cannot act", spoofed_review["error"])
+
+    def test_agent_token_revoke_api_blocks_future_agent_access(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "marketplace.sqlite"
+            app = create_app(db_file)
+
+            status, merchant = self.request(app, "POST", "/merchants", {"id": "seller-a", "name": "West Lake Tea"})
+            self.assertEqual(status, 200)
+            merchant_token = merchant["merchant_token"]
+            status, issued = self.request(
+                app,
+                "POST",
+                "/agents/tokens",
+                {"merchant_id": "seller-a", "merchant_token": merchant_token},
+            )
+            self.assertEqual(status, 200)
+            agent_token = issued["agent_token"]
+
+            status, heartbeat = self.request(
+                app,
+                "POST",
+                "/agents/heartbeat",
+                {"merchant_id": "seller-a", "_auth_token": agent_token},
+            )
+            self.assertEqual(status, 200)
+
+            status, other_merchant = self.request(app, "POST", "/merchants", {"id": "seller-b", "name": "Other Tea"})
+            self.assertEqual(status, 200)
+            status, cross_merchant = self.request(
+                app,
+                "POST",
+                "/agents/tokens/revoke",
+                {"merchant_id": "seller-b", "token": agent_token, "merchant_token": other_merchant["merchant_token"]},
+            )
+            self.assertEqual(status, 403)
+            status, still_active = self.request(
+                app,
+                "POST",
+                "/agents/heartbeat",
+                {"merchant_id": "seller-a", "_auth_token": agent_token},
+            )
+            self.assertEqual(status, 200)
+
+            status, anonymous = self.request(
+                app,
+                "POST",
+                "/agents/tokens/revoke",
+                {"merchant_id": "seller-a", "token": agent_token},
+            )
+            self.assertEqual(status, 403)
+            status, revoked = self.request(
+                app,
+                "POST",
+                "/agents/tokens/revoke",
+                {"merchant_id": "seller-a", "token": agent_token, "merchant_token": merchant_token},
+            )
+            self.assertEqual(status, 200)
+            self.assertTrue(revoked["revoked"])
+            self.assertEqual(revoked["token_role"], "agent")
+
+            status, denied = self.request(
+                app,
+                "POST",
+                "/agents/heartbeat",
+                {"merchant_id": "seller-a", "_auth_token": agent_token},
+            )
+            self.assertEqual(status, 403)
+            self.assertIn("revoked", denied["error"])
 
     def test_api_exposes_conversation_agent_and_human_review_lifecycle(self):
         with tempfile.TemporaryDirectory() as tmp:

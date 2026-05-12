@@ -124,6 +124,7 @@ def route_info() -> list[RouteInfo]:
         RouteInfo("/buyers/{buyer_id}/conversations", {"GET"}),
         RouteInfo("/agents/heartbeat", {"POST"}),
         RouteInfo("/agents/tokens", {"POST"}),
+        RouteInfo("/agents/tokens/revoke", {"POST"}),
         RouteInfo("/agents/messages/claim", {"POST"}),
         RouteInfo("/agents/messages/complete", {"POST"}),
         RouteInfo("/agents/messages/fail", {"POST"}),
@@ -227,11 +228,13 @@ def _require_api_token(conn: Any, payload: dict[str, Any], missing_error: str = 
     if not token:
         raise AuthError(missing_error)
     row = conn.execute(
-        "select role, merchant_id, buyer_id, agent_id, conversation_id from api_tokens where token = ?",
+        "select role, merchant_id, buyer_id, agent_id, conversation_id, revoked_at from api_tokens where token = ?",
         (token,),
     ).fetchone()
     if row is None:
         raise AuthError("invalid authorization token")
+    if row["revoked_at"]:
+        raise AuthError("revoked authorization token")
     return row
 
 
@@ -239,9 +242,11 @@ def _require_merchant_token(conn: Any, merchant_id: str, payload: dict[str, Any]
     token = _payload_token(payload)
     if not token:
         raise AuthError("merchant token required")
-    row = conn.execute("select role, merchant_id from api_tokens where token = ?", (token,)).fetchone()
+    row = conn.execute("select role, merchant_id, revoked_at from api_tokens where token = ?", (token,)).fetchone()
     if row is None or row["role"] != "merchant" or row["merchant_id"] != merchant_id:
         raise AuthError("invalid merchant token")
+    if row["revoked_at"]:
+        raise AuthError("revoked merchant token")
 
 
 def _require_agent_or_merchant_token(conn: Any, merchant_id: str, agent_id: str, payload: dict[str, Any]) -> None:
@@ -250,9 +255,11 @@ def _require_agent_or_merchant_token(conn: Any, merchant_id: str, agent_id: str,
     token = _payload_token(payload)
     if not token:
         raise AuthError("agent or merchant token required")
-    row = conn.execute("select role, merchant_id, agent_id from api_tokens where token = ?", (token,)).fetchone()
+    row = conn.execute("select role, merchant_id, agent_id, revoked_at from api_tokens where token = ?", (token,)).fetchone()
     if row is None or row["merchant_id"] != merchant_id:
         raise AuthError("invalid agent or merchant token")
+    if row["revoked_at"]:
+        raise AuthError("revoked agent or merchant token")
     if row["role"] == "merchant":
         return
     if row["role"] == "agent" and row["agent_id"] == agent_id:
@@ -588,6 +595,30 @@ def _create_agent_token(db_path: str | Path, payload: dict[str, Any]) -> dict[st
             raise AuthError(f"Agent {agent_id} cannot act for merchant {merchant_id}")
         token = _issue_agent_token(conn, merchant_id, agent_id)
         return {"ok": True, "merchant_id": merchant_id, "agent_id": agent_id, "agent_token": token}
+
+
+def _revoke_agent_token(db_path: str | Path, payload: dict[str, Any]) -> dict[str, Any]:
+    with db_session(db_path) as conn:
+        merchant_id = str(payload["merchant_id"])
+        _require_merchant_token(conn, merchant_id, payload)
+        token = str(payload["token"])
+        row = conn.execute(
+            "select role, merchant_id, agent_id, revoked_at from api_tokens where token = ?",
+            (token,),
+        ).fetchone()
+        if row is None or row["role"] != "agent" or row["merchant_id"] != merchant_id:
+            raise AuthError("invalid agent token")
+        revoked_at = row["revoked_at"] or now_iso()
+        if not row["revoked_at"]:
+            conn.execute("update api_tokens set revoked_at = ? where token = ?", (revoked_at, token))
+        return {
+            "ok": True,
+            "revoked": True,
+            "merchant_id": merchant_id,
+            "agent_id": row["agent_id"],
+            "token_role": row["role"],
+            "revoked_at": revoked_at,
+        }
 
 
 def _require_agent_payload(conn: Any, payload: dict[str, Any]) -> tuple[str, str]:
@@ -1053,6 +1084,8 @@ def handle_request(
             return 200, _agent_heartbeat(db_path, payload)
         if path == "/agents/tokens" and method == "POST":
             return 200, _create_agent_token(db_path, payload)
+        if path == "/agents/tokens/revoke" and method == "POST":
+            return 200, _revoke_agent_token(db_path, payload)
         if path == "/agents/messages/claim" and method == "POST":
             return 200, _claim_agent_message(db_path, payload)
         if path == "/agents/messages/complete" and method == "POST":
@@ -1254,6 +1287,10 @@ def create_app(db_path: str | Path = "mai-cli.sqlite") -> Any:
     @app.post("/agents/tokens")
     def create_agent_token(payload: dict[str, Any], authorization: str = AUTHORIZATION_HEADER) -> dict[str, Any]:
         return _create_agent_token(db_path, _payload_with_auth(payload, authorization))
+
+    @app.post("/agents/tokens/revoke")
+    def revoke_agent_token(payload: dict[str, Any], authorization: str = AUTHORIZATION_HEADER) -> dict[str, Any]:
+        return _revoke_agent_token(db_path, _payload_with_auth(payload, authorization))
 
     @app.post("/agents/messages/claim")
     def claim_agent_message_route(

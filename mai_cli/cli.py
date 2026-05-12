@@ -701,6 +701,34 @@ def cmd_agent_token(args: argparse.Namespace) -> None:
     )
 
 
+def cmd_agent_revoke_token(args: argparse.Namespace) -> None:
+    with db_session(db_path_from_args(args)) as conn:
+        require_merchant(conn, args.merchant)
+        if args.merchant_token:
+            _require_merchant_token(conn, args.merchant, {"merchant_token": args.merchant_token})
+        row = conn.execute(
+            "select role, merchant_id, agent_id, revoked_at from api_tokens where token = ?",
+            (args.token,),
+        ).fetchone()
+        if row is None or row["role"] != "agent" or row["merchant_id"] != args.merchant:
+            raise SystemExit("Unknown scoped agent token for merchant")
+        revoked_at = row["revoked_at"] or now_iso()
+        if not row["revoked_at"]:
+            conn.execute("update api_tokens set revoked_at = ? where token = ?", (revoked_at, args.token))
+    emit(
+        {
+            "ok": True,
+            "revoked": True,
+            "merchant_id": args.merchant,
+            "agent_id": row["agent_id"],
+            "token_role": row["role"],
+            "revoked_at": revoked_at,
+            "message": f"Agent token revoked for {row['agent_id']}",
+        },
+        args.format,
+    )
+
+
 def _agent_summary(row: Any) -> dict[str, Any]:
     return {
         "id": row["id"],
@@ -1134,6 +1162,12 @@ def build_parser() -> argparse.ArgumentParser:
     agent_token.add_argument("--merchant-token", default="")
     agent_token.add_argument("--format", choices=["text", "json"], default="text")
     agent_token.set_defaults(func=cmd_agent_token)
+    agent_revoke_token = agent_sub.add_parser("revoke-token", help="Revoke a scoped merchant-agent API token")
+    agent_revoke_token.add_argument("--merchant", required=True)
+    agent_revoke_token.add_argument("--token", required=True)
+    agent_revoke_token.add_argument("--merchant-token", default="")
+    agent_revoke_token.add_argument("--format", choices=["text", "json"], default="text")
+    agent_revoke_token.set_defaults(func=cmd_agent_revoke_token)
 
     human_review_cli = subparsers.add_parser("human-review", help="Review flagged conversations")
     human_review_sub = human_review_cli.add_subparsers(dest="human_review_command", required=True)

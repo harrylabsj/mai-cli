@@ -49,6 +49,7 @@ PUBLIC_SUBCOMMANDS = [
     ("agent", "run"),
     ("agent", "heartbeat"),
     ("agent", "token"),
+    ("agent", "revoke-token"),
     ("human-review", "queue"),
     ("human-review", "show"),
     ("human-review", "resolve"),

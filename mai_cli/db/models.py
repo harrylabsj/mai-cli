@@ -115,6 +115,7 @@ SCHEMA = [
         buyer_id text not null default '',
         agent_id text not null default '',
         conversation_id text not null default '',
+        revoked_at text not null default '',
         created_at text not null
     )
     """,
@@ -178,5 +179,6 @@ EXTRA_COLUMNS = {
     "api_tokens": [
         ("agent_id", "text not null default ''"),
         ("conversation_id", "text not null default ''"),
+        ("revoked_at", "text not null default ''"),
     ],
 }
