@@ -28,6 +28,7 @@ PUBLIC_SUBCOMMANDS = [
     ("product", "update"),
     ("search", "products"),
     ("search", "merchants"),
+    ("channel", "ingest"),
     ("buyer", "ask"),
     ("buyer", "summarize"),
     ("buyer", "intent"),
@@ -49,12 +50,18 @@ PUBLIC_SUBCOMMANDS = [
     ("agent", "heartbeat"),
     ("agent", "token"),
     ("human-review", "queue"),
+    ("human-review", "show"),
+    ("human-review", "resolve"),
+    ("llm", "run"),
+    ("adapter", "inspect"),
+    ("adapter", "doctor"),
+    ("adapter", "install-command"),
     ("legacy", "import"),
     ("api", "routes"),
     ("api", "serve"),
 ]
 
-TOP_LEVEL_CHOICES = "{merchant,delivery,product,search,buyer,conversation,agent,human-review,legacy,api}"
+TOP_LEVEL_CHOICES = "{merchant,delivery,product,search,channel,buyer,conversation,agent,human-review,llm,adapter,legacy,api}"
 
 
 class CliContractTest(unittest.TestCase):

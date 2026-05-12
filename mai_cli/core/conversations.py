@@ -175,7 +175,7 @@ def flag_summary(conn: sqlite3.Connection, flag_id: int) -> dict[str, Any]:
         "reason": row["reason"],
         "severity": row["severity"],
         "created_at": row["created_at"],
-        "resolved_at": row["resolved_at"],
+        "resolved_at": row["resolved_at"] or None,
         "resolution": row["resolution"],
         "resolved_by": row["resolved_by"],
     }

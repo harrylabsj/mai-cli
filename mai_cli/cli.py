@@ -405,6 +405,8 @@ def cmd_conversation_close(args: argparse.Namespace) -> None:
 
 def _review_summary(conn: Any, flag_id: int) -> dict[str, Any]:
     row = conn.execute("select * from moderation_flags where id = ?", (flag_id,)).fetchone()
+    if row is None:
+        raise SystemExit(f"Unknown human review: {flag_id}")
     conversation = conversation_summary(conn, row["conversation_id"])
     return {
         "id": row["id"],
@@ -726,6 +728,85 @@ def cmd_human_review_queue(args: argparse.Namespace) -> None:
     emit({"ok": True, "reviews": reviews}, args.format)
 
 
+def cmd_human_review_show(args: argparse.Namespace) -> None:
+    with db_session(db_path_from_args(args)) as conn:
+        review = _review_summary(conn, int(args.review))
+        conversation = conversation_summary(conn, review["conversation_id"])
+    emit({"ok": True, "review": review, "conversation": conversation}, args.format)
+
+
+def cmd_human_review_resolve(args: argparse.Namespace) -> None:
+    review_id = int(args.review)
+    with db_session(db_path_from_args(args)) as conn:
+        row = conn.execute("select * from moderation_flags where id = ?", (review_id,)).fetchone()
+        if row is None:
+            raise SystemExit(f"Unknown human review: {review_id}")
+        if row["resolved_at"]:
+            raise SystemExit(f"Human review already resolved: {review_id}")
+        conversation_id = row["conversation_id"]
+        now = now_iso()
+        conn.execute(
+            """
+            update moderation_flags
+            set resolved_at = ?, resolution = ?, resolved_by = ?
+            where id = ? and resolved_at = ''
+            """,
+            (now, args.action, args.sender, review_id),
+        )
+        remaining_rows = conn.execute(
+            """
+            select reason from moderation_flags
+            where conversation_id = ? and resolved_at = ''
+            order by case when reason = 'suspicious_content' then 0 else 1 end, id
+            """,
+            (conversation_id,),
+        ).fetchall()
+        remaining = len(remaining_rows)
+        remaining_reason = str(remaining_rows[0]["reason"] or "") if remaining_rows else ""
+        status = "human_required" if remaining else ("closed" if args.action == "close" else "waiting_buyer")
+        status_reason = remaining_reason if status == "human_required" else str(row["reason"] or "")
+        next_actor = next_actor_for_status(status, status_reason if status == "human_required" else "")
+        if args.text:
+            append_message(
+                conn,
+                conversation_id,
+                args.sender,
+                args.intent,
+                args.text,
+                structured_payload={
+                    "source_id": args.source_id or args.sender,
+                    "resolution": args.action,
+                    "review_id": review_id,
+                    "reason": status_reason,
+                    "resolved_reason": row["reason"],
+                },
+                status=status,
+            )
+        else:
+            conn.execute(
+                "update conversations set status = ?, next_actor = ?, updated_at = ?, last_sender = ? where id = ?",
+                (status, next_actor, now, args.sender, conversation_id),
+            )
+        append_audit_event(
+            conn,
+            conversation_id,
+            args.source_id or args.sender,
+            "human_review_resolved",
+            {
+                "review_id": review_id,
+                "resolution": args.action,
+                "status": status,
+                "next_actor": next_actor,
+                "remaining_unresolved_reviews": int(remaining or 0),
+            },
+        )
+        review = _review_summary(conn, review_id)
+        rows = conn.execute("select id from moderation_flags where conversation_id = ? order by id", (conversation_id,)).fetchall()
+        reviews = [_review_summary(conn, row["id"]) for row in rows]
+        conversation = conversation_summary(conn, conversation_id)
+    emit({"ok": True, "review": review, "reviews": reviews, "conversation": conversation}, args.format)
+
+
 def cmd_legacy_import(args: argparse.Namespace) -> None:
     with db_session(db_path_from_args(args)) as conn:
         result = import_json_store(conn, args.from_json)
@@ -1035,6 +1116,19 @@ def build_parser() -> argparse.ArgumentParser:
     human_review_queue.add_argument("--merchant", default="")
     human_review_queue.add_argument("--format", choices=["text", "json"], default="text")
     human_review_queue.set_defaults(func=cmd_human_review_queue)
+    human_review_show = human_review_sub.add_parser("show", help="Show one human-review item with conversation context")
+    human_review_show.add_argument("--review", required=True, type=int)
+    human_review_show.add_argument("--format", choices=["text", "json"], default="text")
+    human_review_show.set_defaults(func=cmd_human_review_show)
+    human_review_resolve = human_review_sub.add_parser("resolve", help="Resolve one human-review item by id")
+    human_review_resolve.add_argument("--review", required=True, type=int)
+    human_review_resolve.add_argument("--action", required=True, choices=["reply", "approve_public_answer", "reject", "close"])
+    human_review_resolve.add_argument("--sender", default="merchant")
+    human_review_resolve.add_argument("--intent", default="support")
+    human_review_resolve.add_argument("--text", default="")
+    human_review_resolve.add_argument("--source-id", default="")
+    human_review_resolve.add_argument("--format", choices=["text", "json"], default="text")
+    human_review_resolve.set_defaults(func=cmd_human_review_resolve)
 
     llm = subparsers.add_parser("llm", help="Run optional LLM marketplace tool loops")
     llm_sub = llm.add_subparsers(dest="llm_command", required=True)

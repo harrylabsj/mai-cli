@@ -545,6 +545,7 @@ Upgrade JSON file storage to SQLite, the dependency-free HTTP server to FastAPI,
 - Merchant agent can answer stock, price, and delivery questions from structured shop data.
 - Buyer CLI can summarize options and missing facts.
 - Risky, unsupported, bargaining, or unclear situations are marked for human review.
+- The local human-review workbench can list, show, and resolve individual review items by id without resolving unrelated flags on the same conversation.
 - Nested command help works for every public subcommand.
 - No order, payment, refund, escrow, or delivery-success claim is made in MVP.
 - Existing Mai data can be imported through a legacy adapter.
@@ -557,7 +558,7 @@ Build the smallest runnable vertical slice:
 2. SQLite-backed models for merchants, products, delivery rules, conversations, messages, agents, and moderation flags.
 3. FastAPI marketplace service.
 4. Deterministic merchant agent tools for catalog, inventory, delivery, and human-review flags.
-5. Complete conversations, heartbeat, and human-review API surfaces with matching CLI commands.
+5. Complete conversations, heartbeat, and human-review API surfaces with matching CLI commands, including review queue, detail, and review-id resolution.
 6. MVP multi-agent orchestration harness for conversation assignment, `next_actor`, idempotent message processing, retry/error tracking, and audit events.
 7. Long-running merchant agent daemon with `start`, `stop`, `status`, `logs`, `run --once`, API-backed `run --api-url`, and API-backed background `start --api-url` lifecycle commands.
 8. Simple buyer CLI tools for search, merchant conversation, and response summary.

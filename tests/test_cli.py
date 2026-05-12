@@ -537,6 +537,111 @@ class MaiCliTest(unittest.TestCase):
             self.assertIn("mai_agent_seller-a_", text_output)
             self.assertNotIn('"agent_token"', text_output)
 
+    def test_human_review_workbench_shows_and_resolves_one_review_by_id(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.run_cli(db_file, "merchant", "create", "--id", "seller-a", "--name", "West Lake Tea")
+            self.run_cli(
+                db_file,
+                "conversation",
+                "create",
+                "--buyer",
+                "alice",
+                "--merchant",
+                "seller-a",
+                "--text",
+                "Can I get a private discount?",
+            )
+            first = json.loads(
+                self.run_cli(
+                    db_file,
+                    "conversation",
+                    "human-review",
+                    "--conversation",
+                    "CONV-0001",
+                    "--reason",
+                    "low_confidence",
+                    "--format",
+                    "json",
+                )
+            )
+            second = json.loads(
+                self.run_cli(
+                    db_file,
+                    "conversation",
+                    "human-review",
+                    "--conversation",
+                    "CONV-0001",
+                    "--reason",
+                    "suspicious_content",
+                    "--format",
+                    "json",
+                )
+            )
+            first_review_id = first["review"]["id"]
+            second_review_id = second["review"]["id"]
+
+            shown = json.loads(
+                self.run_cli(
+                    db_file,
+                    "human-review",
+                    "show",
+                    "--review",
+                    str(first_review_id),
+                    "--format",
+                    "json",
+                )
+            )
+            self.assertEqual(shown["review"]["reason"], "low_confidence")
+            self.assertEqual(shown["conversation"]["id"], "CONV-0001")
+
+            resolved = json.loads(
+                self.run_cli(
+                    db_file,
+                    "human-review",
+                    "resolve",
+                    "--review",
+                    str(first_review_id),
+                    "--action",
+                    "reply",
+                    "--sender",
+                    "merchant",
+                    "--text",
+                    "Human checked the low-confidence answer.",
+                    "--format",
+                    "json",
+                )
+            )
+            self.assertIsNotNone(resolved["review"]["resolved_at"])
+            self.assertEqual(resolved["review"]["resolution"], "reply")
+            self.assertEqual(resolved["conversation"]["status"], "human_required")
+            self.assertEqual(resolved["conversation"]["next_actor"], "operator")
+
+            queue = json.loads(self.run_cli(db_file, "human-review", "queue", "--format", "json"))
+            self.assertEqual([review["id"] for review in queue["reviews"]], [second_review_id])
+            remaining = next(flag for flag in resolved["conversation"]["flags"] if flag["id"] == second_review_id)
+            self.assertIsNone(remaining["resolved_at"])
+
+            final = json.loads(
+                self.run_cli(
+                    db_file,
+                    "human-review",
+                    "resolve",
+                    "--review",
+                    str(second_review_id),
+                    "--action",
+                    "reply",
+                    "--sender",
+                    "merchant",
+                    "--text",
+                    "Human checked the bargaining request.",
+                    "--format",
+                    "json",
+                )
+            )
+            self.assertEqual(final["conversation"]["status"], "waiting_buyer")
+            self.assertEqual(final["conversation"]["messages"][-1]["structured_payload"]["review_id"], second_review_id)
+
 
 if __name__ == "__main__":
     unittest.main()
