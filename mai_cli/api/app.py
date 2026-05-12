@@ -132,6 +132,7 @@ def route_info() -> list[RouteInfo]:
         RouteInfo("/agents", {"GET"}),
         RouteInfo("/agents/{agent_id}", {"GET"}),
         RouteInfo("/merchants/{merchant_id}/agents", {"GET"}),
+        RouteInfo("/audit/tool-calls", {"POST"}),
         RouteInfo("/human-review/queue", {"GET"}),
         RouteInfo("/human-review/{review_id}", {"GET"}),
         RouteInfo("/human-review/{review_id}/resolve", {"POST"}),
@@ -790,6 +791,34 @@ def _human_review_queue(db_path: str | Path, payload: dict[str, Any], merchant_i
         return {"ok": True, "reviews": [_review_summary(conn, row) for row in rows]}
 
 
+def _record_tool_call_audit(db_path: str | Path, payload: dict[str, Any]) -> dict[str, Any]:
+    conversation_id = str(payload.get("conversation_id") or "")
+    with db_session(db_path) as conn:
+        if conversation_id:
+            conversation = conversation_summary(conn, conversation_id)
+            _require_conversation_read_token(conn, conversation, payload)
+        else:
+            _require_api_token(conn, payload, "audit token required")
+        actor = str(payload.get("actor") or payload.get("source_id") or "llm-tool")
+        event = append_audit_event(
+            conn,
+            conversation_id,
+            actor,
+            "llm_tool_call",
+            {
+                "tool": str(payload.get("tool") or ""),
+                "status": str(payload.get("status") or ""),
+                "host": str(payload.get("host") or ""),
+                "session_id": str(payload.get("session_id") or ""),
+                "actor": actor,
+                "source_id": str(payload.get("source_id") or ""),
+                "token_scope": str(payload.get("token_scope") or ""),
+                "error": str(payload.get("error") or ""),
+            },
+        )
+        return {"ok": True, "event": event}
+
+
 def _human_review_row(conn: Any, review_id: str | int) -> Any:
     row = conn.execute("select * from moderation_flags where id = ?", (int(review_id),)).fetchone()
     if row is None:
@@ -1040,6 +1069,8 @@ def handle_request(
             return 200, _get_agent(db_path, parts[1])
         if len(parts) == 3 and parts[0] == "merchants" and parts[2] == "agents" and method == "GET":
             return 200, _list_agents(db_path, owner_id=parts[1])
+        if path == "/audit/tool-calls" and method == "POST":
+            return 200, _record_tool_call_audit(db_path, payload)
         if path == "/human-review/queue" and method == "GET":
             return 200, _human_review_queue(db_path, payload, merchant_id=str(query.get("merchant_id") or ""))
         if len(parts) == 2 and parts[0] == "human-review" and method == "GET":
@@ -1270,6 +1301,10 @@ def create_app(db_path: str | Path = "mai-cli.sqlite") -> Any:
     @app.get("/merchants/{merchant_id}/agents")
     def get_merchant_agents(merchant_id: str) -> dict[str, Any]:
         return _list_agents(db_path, owner_id=merchant_id)
+
+    @app.post("/audit/tool-calls")
+    def record_tool_call_audit(payload: dict[str, Any], authorization: str = AUTHORIZATION_HEADER) -> dict[str, Any]:
+        return _record_tool_call_audit(db_path, _payload_with_auth(payload, authorization))
 
     @app.get("/human-review/queue")
     def human_review_queue(merchant_id: str = "", authorization: str = AUTHORIZATION_HEADER) -> dict[str, Any]:

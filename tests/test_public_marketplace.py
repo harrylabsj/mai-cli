@@ -146,6 +146,7 @@ class PublicMarketplaceTest(unittest.TestCase):
             self.assertIn("/agents", route_paths)
             self.assertIn("/agents/{agent_id}", route_paths)
             self.assertIn("/merchants/{merchant_id}/agents", route_paths)
+            self.assertIn("/audit/tool-calls", route_paths)
             self.assertIn("/human-review/queue", route_paths)
             self.assertIn("/human-review/{review_id}", route_paths)
             self.assertIn("/human-review/{review_id}/resolve", route_paths)
@@ -702,6 +703,72 @@ class PublicMarketplaceTest(unittest.TestCase):
             )
             self.assertEqual(status, 200)
             self.assertEqual(agent_queue["reviews"][0]["conversation_id"], "CONV-0001")
+
+    def test_tool_call_audit_api_requires_owner_token_and_records_event(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "marketplace.sqlite"
+            app = create_app(db_file)
+
+            status, merchant = self.request(app, "POST", "/merchants", {"id": "seller-a", "name": "West Lake Tea"})
+            self.assertEqual(status, 200)
+            status, created = self.request(
+                app,
+                "POST",
+                "/conversations",
+                {"buyer_id": "alice", "merchant_id": "seller-a", "text": "Can I get this delivered today?"},
+            )
+            self.assertEqual(status, 200)
+            status, other = self.request(
+                app,
+                "POST",
+                "/conversations",
+                {"buyer_id": "bob", "merchant_id": "seller-a", "text": "Wrong token source."},
+            )
+            self.assertEqual(status, 200)
+
+            payload = {
+                "conversation_id": "CONV-0001",
+                "tool": "conversation_send",
+                "status": "ok",
+                "host": "hermes",
+                "session_id": "sess-buyer",
+                "actor": "alice",
+                "source_id": "hermes-buyer",
+                "token_scope": "buyer",
+                "error": "",
+            }
+            status, anonymous = self.request(app, "POST", "/audit/tool-calls", payload)
+            self.assertEqual(status, 403)
+            status, wrong_buyer = self.request(
+                app,
+                "POST",
+                "/audit/tool-calls",
+                {**payload, "buyer_token": other["buyer_token"]},
+            )
+            self.assertEqual(status, 403)
+            status, audited = self.request(
+                app,
+                "POST",
+                "/audit/tool-calls",
+                {**payload, "buyer_token": created["buyer_token"]},
+            )
+            self.assertEqual(status, 200)
+            self.assertEqual(audited["event"]["event"], "llm_tool_call")
+            self.assertEqual(audited["event"]["details"]["host"], "hermes")
+            self.assertEqual(audited["event"]["details"]["token_scope"], "buyer")
+
+            status, conversation = self.request(
+                app,
+                "GET",
+                "/conversations/CONV-0001",
+                headers={"authorization": f"Bearer {merchant['merchant_token']}"},
+            )
+            self.assertEqual(status, 200)
+            tool_events = [
+                event for event in conversation["conversation"]["audit_events"] if event["event"] == "llm_tool_call"
+            ]
+            self.assertEqual(tool_events[-1]["details"]["tool"], "conversation_send")
+            self.assertEqual(tool_events[-1]["details"]["status"], "ok")
 
     def test_product_search_api_honors_price_and_stock_filters(self):
         with tempfile.TemporaryDirectory() as tmp:

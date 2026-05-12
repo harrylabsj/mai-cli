@@ -545,6 +545,8 @@ class LlmContractTest(unittest.TestCase):
                     "message": {"id": 2, "sender": "buyer", "structured_payload": {"source_id": "hermes-buyer"}},
                     "conversation": {"id": "CONV-0001", "status": "waiting_merchant"},
                 }
+            if path == "/audit/tool-calls":
+                return {"ok": True, "event": {"event": "llm_tool_call", "details": payload}}
             raise AssertionError(f"unexpected API path: {path}")
 
         dispatcher = HTTPMarketplaceToolDispatcher(
@@ -575,9 +577,16 @@ class LlmContractTest(unittest.TestCase):
         self.assertEqual(calls[0]["path"], "/search/products")
         self.assertEqual(calls[0]["query"]["query"], "longjing")
         self.assertEqual(calls[0]["headers"]["Authorization"], "Bearer buyer-token")
-        self.assertEqual(calls[1]["method"], "POST")
-        self.assertEqual(calls[1]["payload"]["source_id"], "hermes-buyer")
-        self.assertEqual(calls[1]["headers"]["Authorization"], "Bearer buyer-token")
+        self.assertEqual(calls[1]["path"], "/audit/tool-calls")
+        self.assertEqual(calls[1]["payload"]["tool"], "catalog_search")
+        self.assertEqual(calls[1]["payload"]["status"], "ok")
+        self.assertEqual(calls[2]["method"], "POST")
+        self.assertEqual(calls[2]["payload"]["source_id"], "hermes-buyer")
+        self.assertEqual(calls[2]["headers"]["Authorization"], "Bearer buyer-token")
+        self.assertEqual(calls[3]["path"], "/audit/tool-calls")
+        self.assertEqual(calls[3]["payload"]["tool"], "conversation_send")
+        self.assertEqual(calls[3]["payload"]["conversation_id"], "CONV-0001")
+        self.assertEqual(calls[3]["payload"]["status"], "ok")
 
     def test_http_marketplace_tool_dispatcher_enforces_scope_before_api_call(self):
         calls = []
@@ -586,7 +595,10 @@ class LlmContractTest(unittest.TestCase):
             auth_token="buyer-token",
             actor="alice",
             token_scope="buyer",
-            transport=lambda *args: calls.append(args) or {"ok": True},
+            transport=lambda method, path, payload, query, headers: calls.append(
+                {"method": method, "path": path, "payload": payload, "query": query, "headers": headers}
+            )
+            or {"ok": True, "event": {"event": "llm_tool_call", "details": payload}},
         )
 
         with self.assertRaises(SystemExit):
@@ -596,7 +608,9 @@ class LlmContractTest(unittest.TestCase):
             )
         with self.assertRaises(SystemExit):
             dispatcher.dispatch("create_order", {})
-        self.assertEqual(calls, [])
+        self.assertEqual([call["path"] for call in calls], ["/audit/tool-calls", "/audit/tool-calls"])
+        self.assertEqual([call["payload"]["tool"] for call in calls], ["merchant_reply", "create_order"])
+        self.assertEqual([call["payload"]["status"] for call in calls], ["denied", "denied"])
 
 
 if __name__ == "__main__":

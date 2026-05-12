@@ -264,13 +264,42 @@ class HTTPMarketplaceToolDispatcher:
     def dispatch(self, tool_name: str, arguments: dict[str, Any] | None = None) -> dict[str, Any]:
         arguments = arguments or {}
         if tool_name not in self.allowed_tools:
-            raise SystemExit(f"Unknown or disallowed marketplace tool: {tool_name}")
+            error = f"Unknown or disallowed marketplace tool: {tool_name}"
+            self._audit_tool_call(tool_name, arguments, "denied", error)
+            raise SystemExit(error)
         allowed_scopes = TOOL_SCOPE_ALLOWLIST.get(tool_name, set())
         if self.token_scope not in allowed_scopes:
-            raise SystemExit(f"tool {tool_name} is not allowed for token scope {self.token_scope}")
+            error = f"tool {tool_name} is not allowed for token scope {self.token_scope}"
+            self._audit_tool_call(tool_name, arguments, "denied", error)
+            raise SystemExit(error)
         handler = getattr(self, f"_dispatch_{tool_name}")
-        result = handler(arguments)
+        try:
+            result = handler(arguments)
+        except SystemExit as exc:
+            self._audit_tool_call(tool_name, arguments, "denied", str(exc))
+            raise
+        except Exception as exc:
+            self._audit_tool_call(tool_name, arguments, "error", str(exc))
+            raise
+        self._audit_tool_call(tool_name, arguments, "ok", "")
         return {"ok": True, "tool": tool_name, "result": result}
+
+    def _audit_tool_call(self, tool_name: str, arguments: dict[str, Any], status: str, error: str = "") -> None:
+        self._request(
+            "POST",
+            "/audit/tool-calls",
+            {
+                "conversation_id": str(arguments.get("conversation_id") or ""),
+                "tool": tool_name,
+                "status": status,
+                "host": self.host,
+                "session_id": self.session_id,
+                "actor": self.actor,
+                "source_id": self.source_id,
+                "token_scope": self.token_scope,
+                "error": error,
+            },
+        )
 
     def _headers(self) -> dict[str, str]:
         return {"Accept": "application/json", "Authorization": f"Bearer {self.auth_token}"}

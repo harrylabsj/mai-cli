@@ -147,7 +147,7 @@ Inspect routes:
 python3 scripts/mai.py --db ./mai-cli.sqlite api routes --format json
 ```
 
-The local API covers catalog, search, conversations, message append/close, agent token issuance, agent heartbeats, agent message claim/complete/fail/abandon, and human-review queue/detail/resolve operations. In environments without FastAPI installed, `create_app()` still returns a lightweight ASGI app for local tests and demos.
+The local API covers catalog, search, conversations, message append/close, agent token issuance, agent heartbeats, agent message claim/complete/fail/abandon, LLM tool-call audit records, and human-review queue/detail/resolve operations. In environments without FastAPI installed, `create_app()` still returns a lightweight ASGI app for local tests and demos.
 
 External channel adapters can use `POST /channels/messages` with `channel`, `external_user_id`, `text`, and optional `conversation_id`, `city`, `area`, and `external_message_id`. The optional `external_message_id` is an idempotency key for webhook retry safety.
 
@@ -171,7 +171,7 @@ python3 scripts/mai.py --db ./mai-cli.sqlite llm run --role buyer --actor alice 
 python3 scripts/mai.py llm run --role buyer --actor alice --api-url http://127.0.0.1:8765 --auth-token "$MAI_BUYER_TOKEN" --conversation CONV-0001 --text "Continue through API" --format json
 ```
 
-Set `MAI_LLM_BASE_URL`, `MAI_LLM_MODEL`, `MAI_LLM_TIMEOUT_SECONDS`, and `MAI_LLM_MAX_TOKENS` to target another OpenAI-compatible provider. Add `--conversation` to inject owned conversation context into the prompt; buyer actors must own the buyer side and merchant actors must own the merchant side unless using a privileged local/operator scope. Add `--api-url --auth-token` to route LLM tools through the Marketplace API and its Bearer-token authorization boundary instead of direct SQLite access. The runner enforces scoped marketplace tools, bounded provider retries, `max_steps`, and `max_tool_calls`; tool or provider failures return deterministic fallback content for human review.
+Set `MAI_LLM_BASE_URL`, `MAI_LLM_MODEL`, `MAI_LLM_TIMEOUT_SECONDS`, and `MAI_LLM_MAX_TOKENS` to target another OpenAI-compatible provider. Add `--conversation` to inject owned conversation context into the prompt; buyer actors must own the buyer side and merchant actors must own the merchant side unless using a privileged local/operator scope. Add `--api-url --auth-token` to route LLM tools through the Marketplace API and its Bearer-token authorization boundary instead of direct SQLite access. API-backed LLM tool calls record `llm_tool_call` audit events with host, session, actor, token scope, tool, status, and error details. The runner enforces scoped marketplace tools, bounded provider retries, `max_steps`, and `max_tool_calls`; tool or provider failures return deterministic fallback content for human review.
 
 ## Legacy Import
 

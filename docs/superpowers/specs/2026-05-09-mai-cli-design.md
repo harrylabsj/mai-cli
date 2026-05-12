@@ -550,6 +550,7 @@ Upgrade JSON file storage to SQLite, the dependency-free HTTP server to FastAPI,
 - Risky, unsupported, bargaining, or unclear situations are marked for human review.
 - The local human-review workbench can list, show, and resolve individual review items by id without resolving unrelated flags on the same conversation.
 - `llm run` can use either direct SQLite tools for local tests or API-backed tools with Bearer tokens for host adapters.
+- API-backed LLM tool calls record audit events with host, session id, actor, token scope, tool name, result status, and error details.
 - Nested command help works for every public subcommand.
 - No order, payment, refund, escrow, or delivery-success claim is made in MVP.
 - Existing Mai data can be imported through a legacy adapter.
