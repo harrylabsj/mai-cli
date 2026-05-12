@@ -130,6 +130,32 @@ class MaiCliTest(unittest.TestCase):
             self.assertIn("5", output)
             self.assertNotIn('"results"', output)
 
+    def test_search_merchants_text_output_lists_matching_merchants(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.run_cli(
+                db_file,
+                "merchant",
+                "create",
+                "--id",
+                "seller-a",
+                "--name",
+                "West Lake Tea",
+                "--city",
+                "Hangzhou",
+                "--service-area",
+                "West Lake",
+            )
+
+            output = self.run_cli(db_file, "search", "merchants", "--query", "west lake", "--city", "Hangzhou")
+
+            self.assertIn("MERCHANT_ID", output)
+            self.assertIn("seller-a", output)
+            self.assertIn("West Lake Tea", output)
+            self.assertIn("Hangzhou", output)
+            self.assertIn("West Lake", output)
+            self.assertNotIn('"results"', output)
+
     def test_merchant_and_product_update_commands(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"

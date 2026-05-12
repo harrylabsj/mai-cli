@@ -229,6 +229,21 @@ def cmd_search_products(args: argparse.Namespace) -> None:
 def cmd_search_merchants(args: argparse.Namespace) -> None:
     with db_session(db_path_from_args(args)) as conn:
         results = search_merchants(conn, query=args.query or "", city=args.city or "")
+    if args.format == "text":
+        if not results:
+            query = args.query or "all merchants"
+            print(f"No merchants found for {query}.")
+            return
+        print(f"{'MERCHANT_ID':<16} {'CITY':<14} {'PRODUCTS':<8} {'SERVICE_AREA':<22} NAME")
+        for merchant in results:
+            print(
+                f"{merchant['id']:<16} "
+                f"{merchant['city'] or '-':<14} "
+                f"{merchant['product_count']:<8} "
+                f"{merchant['service_area'] or '-':<22} "
+                f"{merchant['name']}"
+            )
+        return
     emit({"ok": True, "query": args.query or "", "results": results}, args.format)
 
 
