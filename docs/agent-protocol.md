@@ -56,7 +56,8 @@ Scoped merchant-agent API tokens can be issued with an optional TTL and revoked 
 ```bash
 python3 scripts/mai.py --db ./mai-cli.sqlite agent token --merchant seller-a --ttl-seconds 86400 --format json
 python3 scripts/mai.py --db ./mai-cli.sqlite agent tokens --merchant seller-a --format json
+python3 scripts/mai.py --db ./mai-cli.sqlite agent rotate-token --merchant seller-a --token "$MAI_AGENT_TOKEN" --ttl-seconds 86400 --format json
 python3 scripts/mai.py --db ./mai-cli.sqlite agent revoke-token --merchant seller-a --token "$MAI_AGENT_TOKEN" --format json
 ```
 
-The Marketplace API equivalents are `POST /agents/tokens` with optional `ttl_seconds`, `GET /agents/tokens?merchant_id=...`, and `POST /agents/tokens/revoke`, all authenticated by the owning merchant token. Token list responses expose status and token hints, not full token secrets. Expired or revoked agent tokens are rejected before heartbeat, message processing, reply, close, human-review, or API-backed LLM tool actions can run.
+The Marketplace API equivalents are `POST /agents/tokens` with optional `ttl_seconds`, `GET /agents/tokens?merchant_id=...`, `POST /agents/tokens/rotate`, and `POST /agents/tokens/revoke`, all authenticated by the owning merchant token. Token list and rotation responses expose status and old-token hints, not full old token secrets. Expired or revoked agent tokens are rejected before heartbeat, message processing, reply, close, human-review, or API-backed LLM tool actions can run.

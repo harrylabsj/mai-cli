@@ -714,6 +714,47 @@ class MaiCliTest(unittest.TestCase):
             self.assertTrue(by_prefix[revocable["agent_token"][:24]]["revoked"])
             self.assertEqual(by_prefix[revocable["agent_token"][:24]]["revoked_at"], revoked["revoked_at"])
 
+    def test_agent_rotate_token_command_revokes_old_and_issues_new_token(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.run_cli(db_file, "merchant", "create", "--id", "seller-a", "--name", "West Lake Tea")
+            issued = json.loads(
+                self.run_cli(db_file, "agent", "token", "--merchant", "seller-a", "--format", "json")
+            )
+            old_token = issued["agent_token"]
+
+            output = self.run_cli(
+                db_file,
+                "agent",
+                "rotate-token",
+                "--merchant",
+                "seller-a",
+                "--token",
+                old_token,
+                "--ttl-seconds",
+                "3600",
+                "--format",
+                "json",
+            )
+            rotated = json.loads(output)
+
+            self.assertNotIn(old_token, output)
+            self.assertNotEqual(rotated["agent_token"], old_token)
+            self.assertTrue(rotated["expires_at"])
+            self.assertEqual(rotated["previous_token"]["token_prefix"], old_token[:24])
+            conn = sqlite3.connect(db_file)
+            try:
+                old_row = conn.execute("select revoked_at from api_tokens where token = ?", (old_token,)).fetchone()
+                new_row = conn.execute(
+                    "select expires_at, revoked_at from api_tokens where token = ?",
+                    (rotated["agent_token"],),
+                ).fetchone()
+            finally:
+                conn.close()
+            self.assertTrue(old_row[0])
+            self.assertEqual(new_row[0], rotated["expires_at"])
+            self.assertEqual(new_row[1], "")
+
     def test_human_review_workbench_shows_and_resolves_one_review_by_id(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"

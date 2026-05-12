@@ -727,6 +727,49 @@ def cmd_agent_tokens(args: argparse.Namespace) -> None:
     emit({"ok": True, "merchant_id": args.merchant, "tokens": tokens}, args.format)
 
 
+def cmd_agent_rotate_token(args: argparse.Namespace) -> None:
+    with db_session(db_path_from_args(args)) as conn:
+        require_merchant(conn, args.merchant)
+        if args.merchant_token:
+            _require_merchant_token(conn, args.merchant, {"merchant_token": args.merchant_token})
+        row = conn.execute(
+            """
+            select token, role, merchant_id, agent_id, created_at, expires_at, revoked_at
+            from api_tokens
+            where token = ?
+            """,
+            (args.token,),
+        ).fetchone()
+        if row is None or row["role"] != "agent" or row["merchant_id"] != args.merchant:
+            raise SystemExit("Unknown scoped agent token for merchant")
+        revoked_at = row["revoked_at"] or now_iso()
+        if not row["revoked_at"]:
+            conn.execute("update api_tokens set revoked_at = ? where token = ?", (revoked_at, args.token))
+        new_token, expires_at = _issue_agent_token(conn, args.merchant, row["agent_id"], args.ttl_seconds)
+        previous = conn.execute(
+            """
+            select token, role, merchant_id, agent_id, created_at, expires_at, revoked_at
+            from api_tokens
+            where token = ?
+            """,
+            (args.token,),
+        ).fetchone()
+    emit(
+        {
+            "ok": True,
+            "rotated": True,
+            "merchant_id": args.merchant,
+            "agent_id": row["agent_id"],
+            "agent_token": new_token,
+            "expires_at": expires_at,
+            "revoked_at": revoked_at,
+            "previous_token": _agent_token_summary(previous),
+            "message": f"Agent token rotated for {row['agent_id']}: {new_token}",
+        },
+        args.format,
+    )
+
+
 def cmd_agent_revoke_token(args: argparse.Namespace) -> None:
     with db_session(db_path_from_args(args)) as conn:
         require_merchant(conn, args.merchant)
@@ -1194,6 +1237,13 @@ def build_parser() -> argparse.ArgumentParser:
     agent_tokens.add_argument("--merchant-token", default="")
     agent_tokens.add_argument("--format", choices=["text", "json"], default="text")
     agent_tokens.set_defaults(func=cmd_agent_tokens)
+    agent_rotate_token = agent_sub.add_parser("rotate-token", help="Rotate a scoped merchant-agent API token")
+    agent_rotate_token.add_argument("--merchant", required=True)
+    agent_rotate_token.add_argument("--token", required=True)
+    agent_rotate_token.add_argument("--merchant-token", default="")
+    agent_rotate_token.add_argument("--ttl-seconds", type=positive_seconds, default=None, help="Optional new token lifetime in seconds")
+    agent_rotate_token.add_argument("--format", choices=["text", "json"], default="text")
+    agent_rotate_token.set_defaults(func=cmd_agent_rotate_token)
     agent_revoke_token = agent_sub.add_parser("revoke-token", help="Revoke a scoped merchant-agent API token")
     agent_revoke_token.add_argument("--merchant", required=True)
     agent_revoke_token.add_argument("--token", required=True)

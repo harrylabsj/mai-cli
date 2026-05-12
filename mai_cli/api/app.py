@@ -125,6 +125,7 @@ def route_info() -> list[RouteInfo]:
         RouteInfo("/agents/heartbeat", {"POST"}),
         RouteInfo("/agents/tokens", {"GET", "POST"}),
         RouteInfo("/agents/tokens/revoke", {"POST"}),
+        RouteInfo("/agents/tokens/rotate", {"POST"}),
         RouteInfo("/agents/messages/claim", {"POST"}),
         RouteInfo("/agents/messages/complete", {"POST"}),
         RouteInfo("/agents/messages/fail", {"POST"}),
@@ -678,6 +679,45 @@ def _revoke_agent_token(db_path: str | Path, payload: dict[str, Any]) -> dict[st
         }
 
 
+def _rotate_agent_token(db_path: str | Path, payload: dict[str, Any]) -> dict[str, Any]:
+    with db_session(db_path) as conn:
+        merchant_id = str(payload["merchant_id"])
+        _require_merchant_token(conn, merchant_id, payload)
+        old_token = str(payload["token"])
+        row = conn.execute(
+            """
+            select token, role, merchant_id, agent_id, created_at, expires_at, revoked_at
+            from api_tokens
+            where token = ?
+            """,
+            (old_token,),
+        ).fetchone()
+        if row is None or row["role"] != "agent" or row["merchant_id"] != merchant_id:
+            raise AuthError("invalid agent token")
+        revoked_at = row["revoked_at"] or now_iso()
+        if not row["revoked_at"]:
+            conn.execute("update api_tokens set revoked_at = ? where token = ?", (revoked_at, old_token))
+        new_token, expires_at = _issue_agent_token(conn, merchant_id, row["agent_id"], payload.get("ttl_seconds"))
+        previous = conn.execute(
+            """
+            select token, role, merchant_id, agent_id, created_at, expires_at, revoked_at
+            from api_tokens
+            where token = ?
+            """,
+            (old_token,),
+        ).fetchone()
+        return {
+            "ok": True,
+            "rotated": True,
+            "merchant_id": merchant_id,
+            "agent_id": row["agent_id"],
+            "agent_token": new_token,
+            "expires_at": expires_at,
+            "revoked_at": revoked_at,
+            "previous_token": _agent_token_summary(previous),
+        }
+
+
 def _require_agent_payload(conn: Any, payload: dict[str, Any]) -> tuple[str, str]:
     merchant_id = str(payload["merchant_id"])
     agent_id = str(payload.get("agent_id") or _default_merchant_agent_id(merchant_id))
@@ -1145,6 +1185,8 @@ def handle_request(
             return 200, _create_agent_token(db_path, payload)
         if path == "/agents/tokens/revoke" and method == "POST":
             return 200, _revoke_agent_token(db_path, payload)
+        if path == "/agents/tokens/rotate" and method == "POST":
+            return 200, _rotate_agent_token(db_path, payload)
         if path == "/agents/messages/claim" and method == "POST":
             return 200, _claim_agent_message(db_path, payload)
         if path == "/agents/messages/complete" and method == "POST":
@@ -1354,6 +1396,10 @@ def create_app(db_path: str | Path = "mai-cli.sqlite") -> Any:
     @app.post("/agents/tokens/revoke")
     def revoke_agent_token(payload: dict[str, Any], authorization: str = AUTHORIZATION_HEADER) -> dict[str, Any]:
         return _revoke_agent_token(db_path, _payload_with_auth(payload, authorization))
+
+    @app.post("/agents/tokens/rotate")
+    def rotate_agent_token(payload: dict[str, Any], authorization: str = AUTHORIZATION_HEADER) -> dict[str, Any]:
+        return _rotate_agent_token(db_path, _payload_with_auth(payload, authorization))
 
     @app.post("/agents/messages/claim")
     def claim_agent_message_route(

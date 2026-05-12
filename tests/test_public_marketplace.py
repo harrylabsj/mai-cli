@@ -142,6 +142,7 @@ class PublicMarketplaceTest(unittest.TestCase):
             token_route = next(route for route in routes if route.path == "/agents/tokens")
             self.assertEqual(token_route.methods, {"GET", "POST"})
             self.assertIn("/agents/tokens/revoke", route_paths)
+            self.assertIn("/agents/tokens/rotate", route_paths)
             self.assertIn("/agents/messages/claim", route_paths)
             self.assertIn("/agents/messages/complete", route_paths)
             self.assertIn("/agents/messages/fail", route_paths)
@@ -1655,6 +1656,52 @@ class PublicMarketplaceTest(unittest.TestCase):
             self.assertTrue(revoked_item["revoked"])
             self.assertFalse(revoked_item["active"])
             self.assertEqual(revoked_item["revoked_at"], revoked["revoked_at"])
+
+    def test_agent_token_rotate_api_revokes_old_token_and_returns_new_token(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "marketplace.sqlite"
+            app = create_app(db_file)
+
+            status, merchant = self.request(app, "POST", "/merchants", {"id": "seller-a", "name": "West Lake Tea"})
+            self.assertEqual(status, 200)
+            merchant_token = merchant["merchant_token"]
+            status, issued = self.request(
+                app,
+                "POST",
+                "/agents/tokens",
+                {"merchant_id": "seller-a", "merchant_token": merchant_token},
+            )
+            self.assertEqual(status, 200)
+            old_token = issued["agent_token"]
+
+            status, rotated = self.request(
+                app,
+                "POST",
+                "/agents/tokens/rotate",
+                {"merchant_id": "seller-a", "merchant_token": merchant_token, "token": old_token, "ttl_seconds": 3600},
+            )
+            self.assertEqual(status, 200)
+            new_token = rotated["agent_token"]
+            self.assertNotEqual(new_token, old_token)
+            self.assertTrue(rotated["expires_at"])
+            self.assertEqual(rotated["previous_token"]["token_prefix"], old_token[:24])
+            self.assertNotIn(old_token, json.dumps(rotated, sort_keys=True))
+
+            status, old_denied = self.request(
+                app,
+                "POST",
+                "/agents/heartbeat",
+                {"merchant_id": "seller-a", "_auth_token": old_token},
+            )
+            self.assertEqual(status, 403)
+            self.assertIn("revoked", old_denied["error"])
+            status, new_heartbeat = self.request(
+                app,
+                "POST",
+                "/agents/heartbeat",
+                {"merchant_id": "seller-a", "_auth_token": new_token},
+            )
+            self.assertEqual(status, 200)
 
     def test_api_exposes_conversation_agent_and_human_review_lifecycle(self):
         with tempfile.TemporaryDirectory() as tmp:
