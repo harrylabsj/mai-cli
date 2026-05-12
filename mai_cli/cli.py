@@ -1025,12 +1025,58 @@ def cmd_human_review_resolve(args: argparse.Namespace) -> None:
     emit({"ok": True, "review": review, "reviews": reviews, "conversation": conversation}, args.format)
 
 
+def _audit_details_text(details: dict[str, Any]) -> str:
+    parts: list[str] = []
+    for key in (
+        "agent_id",
+        "review_id",
+        "resolution",
+        "status",
+        "next_actor",
+        "tool",
+        "token_scope",
+        "host",
+        "session_id",
+    ):
+        value = details.get(key)
+        if value not in (None, "", []):
+            parts.append(f"{key}={value}")
+    for key, label in (("token", "token"), ("previous_token", "previous_token"), ("new_token", "new_token")):
+        token = details.get(key)
+        if not isinstance(token, dict):
+            continue
+        prefix = token.get("token_prefix")
+        if prefix:
+            parts.append(f"{label}_prefix={prefix}")
+        if token.get("revoked"):
+            parts.append(f"{label}_status=revoked")
+        elif token.get("expired"):
+            parts.append(f"{label}_status=expired")
+        elif token.get("active"):
+            parts.append(f"{label}_status=active")
+    return " ".join(str(part) for part in parts) or "-"
+
+
 def cmd_audit_events(args: argparse.Namespace) -> None:
     with db_session(db_path_from_args(args)) as conn:
         require_merchant(conn, args.merchant)
         if args.merchant_token:
             _require_merchant_token(conn, args.merchant, {"merchant_token": args.merchant_token})
         events = _merchant_audit_events(conn, args.merchant, event=args.event, limit=args.limit)
+    if args.format == "text":
+        if not events:
+            print(f"No audit events for {args.merchant}.")
+            return
+        print(f"{'ID':<5} {'CREATED_AT':<20} {'EVENT':<28} {'ACTOR':<14} DETAILS")
+        for event in events:
+            print(
+                f"{event['id']:<5} "
+                f"{event['created_at']:<20} "
+                f"{event['event']:<28} "
+                f"{event['actor']:<14} "
+                f"{_audit_details_text(event['details'])}"
+            )
+        return
     emit({"ok": True, "merchant_id": args.merchant, "events": events}, args.format)
 
 
