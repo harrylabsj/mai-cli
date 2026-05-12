@@ -359,6 +359,21 @@ def cmd_conversation_create(args: argparse.Namespace) -> None:
 def cmd_conversation_show(args: argparse.Namespace) -> None:
     with db_session(db_path_from_args(args)) as conn:
         conversation = conversation_summary(conn, args.conversation)
+    if args.format == "text":
+        print(f"Conversation: {conversation['id']}")
+        print(f"Buyer: {conversation['buyer_id']}")
+        print(f"Merchant: {conversation['merchant_id']}")
+        if conversation["sku"]:
+            print(f"SKU: {conversation['sku']}")
+        print(f"Status: {conversation['status']}")
+        print(f"Next actor: {conversation['next_actor']}")
+        if conversation["flags"]:
+            unresolved = [flag for flag in conversation["flags"] if not flag["resolved_at"]]
+            print(f"Human reviews: {len(unresolved)} unresolved / {len(conversation['flags'])} total")
+        print("Messages:")
+        for message in conversation["messages"]:
+            print(f"- {message['sender']}/{message['intent']}: {message['text']}")
+        return
     emit({"ok": True, "conversation": conversation}, args.format)
 
 
