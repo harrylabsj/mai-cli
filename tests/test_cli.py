@@ -873,6 +873,39 @@ class MaiCliTest(unittest.TestCase):
             self.assertIn("Replied: 0", output)
             self.assertNotIn('"agent"', output)
 
+    def test_conversation_list_text_output_is_readable(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.run_cli(db_file, "merchant", "create", "--id", "seller-a", "--name", "West Lake Tea")
+            self.run_cli(
+                db_file,
+                "conversation",
+                "create",
+                "--buyer",
+                "alice",
+                "--merchant",
+                "seller-a",
+                "--text",
+                "Is this available?",
+                "--format",
+                "json",
+            )
+
+            output = self.run_cli(db_file, "conversation", "list", "--buyer", "alice")
+
+            self.assertIn("ID", output)
+            self.assertIn("BUYER", output)
+            self.assertIn("MERCHANT", output)
+            self.assertIn("STATUS", output)
+            self.assertIn("NEXT_ACTOR", output)
+            self.assertIn("UPDATED_AT", output)
+            self.assertIn("CONV-0001", output)
+            self.assertIn("alice", output)
+            self.assertIn("seller-a", output)
+            self.assertIn("waiting_merchant", output)
+            self.assertIn("merchant_agent", output)
+            self.assertNotIn('"conversations"', output)
+
     def test_agent_rotate_token_command_revokes_old_and_issues_new_token(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"

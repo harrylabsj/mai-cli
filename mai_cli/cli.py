@@ -385,6 +385,21 @@ def cmd_conversation_list(args: argparse.Namespace) -> None:
     with db_session(db_path_from_args(args)) as conn:
         rows = conn.execute(sql, values).fetchall()
         conversations = [conversation_summary(conn, row["id"]) for row in rows]
+    if args.format == "text":
+        if not conversations:
+            print("No conversations found.")
+            return
+        print(f"{'ID':<12} {'BUYER':<14} {'MERCHANT':<14} {'STATUS':<18} {'NEXT_ACTOR':<16} UPDATED_AT")
+        for conversation in conversations:
+            print(
+                f"{conversation['id']:<12} "
+                f"{conversation['buyer_id']:<14} "
+                f"{conversation['merchant_id']:<14} "
+                f"{conversation['status']:<18} "
+                f"{conversation['next_actor']:<16} "
+                f"{conversation['updated_at']}"
+            )
+        return
     emit({"ok": True, "conversations": conversations}, args.format)
 
 
