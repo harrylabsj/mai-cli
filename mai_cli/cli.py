@@ -878,6 +878,22 @@ def cmd_agent_list(args: argparse.Namespace) -> None:
         else:
             rows = conn.execute("select * from agents order by id").fetchall()
         agents = [_agent_summary(row) for row in rows]
+    if args.format == "text":
+        if not agents:
+            scope = f" for {args.merchant}" if args.merchant else ""
+            print(f"No marketplace agents{scope}.")
+            return
+        print(f"{'AGENT_ID':<36} {'OWNER':<14} {'STATUS':<14} {'LAST_SEEN':<20} {'CHECKED':<7} REPLIED")
+        for agent in agents:
+            print(
+                f"{agent['id']:<36} "
+                f"{agent['owner_id']:<14} "
+                f"{agent['status']:<14} "
+                f"{agent['last_seen_at']:<20} "
+                f"{agent['checked_count']:<7} "
+                f"{agent['replied_count']}"
+            )
+        return
     emit({"ok": True, "agents": agents}, args.format)
 
 
