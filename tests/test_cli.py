@@ -999,6 +999,50 @@ class MaiCliTest(unittest.TestCase):
             self.assertIn("urgent", output)
             self.assertNotIn('"reviews"', output)
 
+    def test_human_review_show_text_output_includes_context(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.run_cli(db_file, "merchant", "create", "--id", "seller-a", "--name", "West Lake Tea")
+            self.run_cli(
+                db_file,
+                "conversation",
+                "create",
+                "--buyer",
+                "alice",
+                "--merchant",
+                "seller-a",
+                "--text",
+                "Can I get a private discount?",
+            )
+            review = json.loads(
+                self.run_cli(
+                    db_file,
+                    "conversation",
+                    "human-review",
+                    "--conversation",
+                    "CONV-0001",
+                    "--reason",
+                    "low_confidence",
+                    "--severity",
+                    "urgent",
+                    "--format",
+                    "json",
+                )
+            )["review"]
+
+            output = self.run_cli(db_file, "human-review", "show", "--review", str(review["id"]))
+
+            self.assertIn(f"Review {review['id']}", output)
+            self.assertIn("Conversation: CONV-0001", output)
+            self.assertIn("Merchant: seller-a", output)
+            self.assertIn("Buyer: alice", output)
+            self.assertIn("Reason: low_confidence", output)
+            self.assertIn("Severity: urgent", output)
+            self.assertIn("Latest messages:", output)
+            self.assertIn("buyer/ask_product", output)
+            self.assertIn("Can I get a private discount?", output)
+            self.assertNotIn('"conversation"', output)
+
     def test_human_review_workbench_shows_and_resolves_one_review_by_id(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"

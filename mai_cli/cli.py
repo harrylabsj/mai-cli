@@ -926,6 +926,21 @@ def cmd_human_review_show(args: argparse.Namespace) -> None:
     with db_session(db_path_from_args(args)) as conn:
         review = _review_summary(conn, int(args.review))
         conversation = conversation_summary(conn, review["conversation_id"])
+    if args.format == "text":
+        print(f"Review {review['id']}")
+        print(f"Conversation: {review['conversation_id']}")
+        print(f"Merchant: {review['merchant_id']}")
+        print(f"Buyer: {review['buyer_id']}")
+        if review["sku"]:
+            print(f"SKU: {review['sku']}")
+        print(f"Severity: {review['severity']}")
+        print(f"Reason: {review['reason']}")
+        print(f"Status: {conversation['status']}")
+        print(f"Next actor: {conversation['next_actor']}")
+        print("Latest messages:")
+        for message in conversation["messages"][-5:]:
+            print(f"- {message['sender']}/{message['intent']}: {message['text']}")
+        return
     emit({"ok": True, "review": review, "conversation": conversation}, args.format)
 
 
