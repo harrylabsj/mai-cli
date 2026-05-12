@@ -1003,6 +1003,12 @@ def cmd_api_routes(args: argparse.Namespace) -> None:
         {"path": path, "methods": sorted(methods)}
         for path, methods in sorted(route_methods.items())
     ]
+    if args.format == "text":
+        for route in route_details:
+            methods = route["methods"] or ["-"]
+            for method in methods:
+                print(f"{method:<6} {route['path']}")
+        return
     emit(
         {
             "ok": True,

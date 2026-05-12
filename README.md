@@ -149,10 +149,11 @@ Set `MAI_MARKETPLACE_API_URL` or `MAI_API_URL` to omit `--api-url` from repeated
 Inspect routes:
 
 ```bash
+python3 scripts/mai.py --db ./mai-cli.sqlite api routes
 python3 scripts/mai.py --db ./mai-cli.sqlite api routes --format json
 ```
 
-The JSON output keeps a backward-compatible `routes` path list and also includes `route_details` with the HTTP methods available on each path. The local API covers catalog, search, conversations, message append/close, agent token issuance/listing/rotation/revocation, agent heartbeats, agent message claim/complete/fail/abandon, LLM tool-call audit records, merchant audit-event queries, and human-review queue/detail/resolve operations. In environments without FastAPI installed, `create_app()` still returns a lightweight ASGI app for local tests and demos.
+The default text output lists `METHOD /path` rows for quick inspection. The JSON output keeps a backward-compatible `routes` path list and also includes `route_details` with the HTTP methods available on each path. The local API covers catalog, search, conversations, message append/close, agent token issuance/listing/rotation/revocation, agent heartbeats, agent message claim/complete/fail/abandon, LLM tool-call audit records, merchant audit-event queries, and human-review queue/detail/resolve operations. In environments without FastAPI installed, `create_app()` still returns a lightweight ASGI app for local tests and demos.
 
 External channel adapters can use `POST /channels/messages` with `channel`, `external_user_id`, `text`, and optional `conversation_id`, `city`, `area`, and `external_message_id`. The optional `external_message_id` is an idempotency key for webhook retry safety.
 

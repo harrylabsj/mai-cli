@@ -298,6 +298,17 @@ class MaiCliTest(unittest.TestCase):
             self.assertEqual(routes_by_path["/agents/tokens"], ["GET", "POST"])
             self.assertEqual(routes_by_path["/audit/events"], ["GET"])
 
+    def test_api_routes_text_lists_methods_and_paths(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+
+            output = self.run_cli(db_file, "api", "routes")
+
+            self.assertIn("GET    /agents/tokens", output)
+            self.assertIn("POST   /agents/tokens", output)
+            self.assertIn("GET    /audit/events", output)
+            self.assertNotIn('"route_details"', output)
+
     def test_agent_run_can_loop_with_http_marketplace_tools_until_stop_file(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"
