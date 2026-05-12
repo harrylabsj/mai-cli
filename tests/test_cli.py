@@ -791,6 +791,50 @@ class MaiCliTest(unittest.TestCase):
             self.assertTrue(by_prefix[revocable["agent_token"][:24]]["revoked"])
             self.assertEqual(by_prefix[revocable["agent_token"][:24]]["revoked_at"], revoked["revoked_at"])
 
+    def test_agent_tokens_text_output_is_readable_without_secret(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.run_cli(db_file, "merchant", "create", "--id", "seller-a", "--name", "West Lake Tea")
+            expiring = json.loads(
+                self.run_cli(
+                    db_file,
+                    "agent",
+                    "token",
+                    "--merchant",
+                    "seller-a",
+                    "--ttl-seconds",
+                    "3600",
+                    "--format",
+                    "json",
+                )
+            )
+            revocable = json.loads(
+                self.run_cli(db_file, "agent", "token", "--merchant", "seller-a", "--format", "json")
+            )
+            self.run_cli(
+                db_file,
+                "agent",
+                "revoke-token",
+                "--merchant",
+                "seller-a",
+                "--token",
+                revocable["agent_token"],
+                "--format",
+                "json",
+            )
+
+            output = self.run_cli(db_file, "agent", "tokens", "--merchant", "seller-a")
+
+            self.assertIn("TOKEN_PREFIX", output)
+            self.assertIn("STATUS", output)
+            self.assertIn(expiring["agent_token"][:24], output)
+            self.assertIn(revocable["agent_token"][:24], output)
+            self.assertIn("active", output)
+            self.assertIn("revoked", output)
+            self.assertNotIn(expiring["agent_token"], output)
+            self.assertNotIn(revocable["agent_token"], output)
+            self.assertNotIn('"tokens"', output)
+
     def test_agent_rotate_token_command_revokes_old_and_issues_new_token(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"

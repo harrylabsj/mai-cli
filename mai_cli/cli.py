@@ -749,6 +749,22 @@ def cmd_agent_tokens(args: argparse.Namespace) -> None:
             (args.merchant,),
         ).fetchall()
         tokens = [_agent_token_summary(row) for row in rows]
+    if args.format == "text":
+        if not tokens:
+            print(f"No scoped agent tokens for {args.merchant}.")
+            return
+        print(f"{'TOKEN_PREFIX':<26} {'SUFFIX':<8} {'STATUS':<8} {'EXPIRES_AT':<20} AGENT_ID")
+        for token in tokens:
+            status = "revoked" if token["revoked"] else "expired" if token["expired"] else "active"
+            expires_at = token["expires_at"] or "-"
+            print(
+                f"{token['token_prefix']:<26} "
+                f"{token['token_suffix']:<8} "
+                f"{status:<8} "
+                f"{expires_at:<20} "
+                f"{token['agent_id']}"
+            )
+        return
     emit({"ok": True, "merchant_id": args.merchant, "tokens": tokens}, args.format)
 
 
