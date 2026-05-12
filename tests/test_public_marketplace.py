@@ -147,6 +147,8 @@ class PublicMarketplaceTest(unittest.TestCase):
             self.assertIn("/agents/{agent_id}", route_paths)
             self.assertIn("/merchants/{merchant_id}/agents", route_paths)
             self.assertIn("/human-review/queue", route_paths)
+            self.assertIn("/human-review/{review_id}", route_paths)
+            self.assertIn("/human-review/{review_id}/resolve", route_paths)
             self.assertIn("/merchants/{merchant_id}/conversations", route_paths)
             self.assertIn("/merchants/{merchant_id}/human-review", route_paths)
             self.assertIn("/conversations/{conversation_id}/human-review", route_paths)
@@ -239,6 +241,35 @@ class PublicMarketplaceTest(unittest.TestCase):
                 f"Bearer {merchant_token}",
             )
             self.assertEqual(merchant_view[0], 200)
+
+            review = self.fastapi_request(
+                app,
+                "POST",
+                "/conversations/{conversation_id}/human-review",
+                "CONV-0001",
+                {"reason": "low_confidence"},
+                f"Bearer {merchant_token}",
+            )
+            self.assertEqual(review[0], 200)
+            review_id = review[1]["review"]["id"]
+            shown = self.fastapi_request(
+                app,
+                "GET",
+                "/human-review/{review_id}",
+                review_id,
+                f"Bearer {merchant_token}",
+            )
+            self.assertEqual(shown[0], 200)
+            resolved = self.fastapi_request(
+                app,
+                "POST",
+                "/human-review/{review_id}/resolve",
+                review_id,
+                {"action": "reply", "text": "Human checked this answer."},
+                f"Bearer {merchant_token}",
+            )
+            self.assertEqual(resolved[0], 200)
+            self.assertEqual(resolved[1]["conversation"]["status"], "waiting_buyer")
 
     def test_route_metadata_matches_fastapi_and_fallback_apps(self):
         expected = {route.path: set(route.methods) for route in route_info()}
@@ -614,6 +645,141 @@ class PublicMarketplaceTest(unittest.TestCase):
             )
             self.assertEqual(status, 200)
             self.assertEqual(agent_queue["reviews"][0]["conversation_id"], "CONV-0001")
+
+    def test_human_review_api_shows_and_resolves_one_review_by_id_with_owner_token(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "marketplace.sqlite"
+            app = create_app(db_file)
+
+            status, merchant_a = self.request(app, "POST", "/merchants", {"id": "seller-a", "name": "West Lake Tea"})
+            self.assertEqual(status, 200)
+            status, merchant_b = self.request(app, "POST", "/merchants", {"id": "seller-b", "name": "Other Tea"})
+            self.assertEqual(status, 200)
+            status, created = self.request(
+                app,
+                "POST",
+                "/conversations",
+                {
+                    "buyer_id": "alice",
+                    "merchant_id": "seller-a",
+                    "text": "Can I get a private discount?",
+                },
+            )
+            self.assertEqual(status, 200)
+            self.assertEqual(created["conversation"]["id"], "CONV-0001")
+
+            status, first = self.request(
+                app,
+                "POST",
+                "/conversations/CONV-0001/human-review",
+                {
+                    "reason": "low_confidence",
+                    "merchant_token": merchant_a["merchant_token"],
+                },
+            )
+            self.assertEqual(status, 200)
+            status, second = self.request(
+                app,
+                "POST",
+                "/conversations/CONV-0001/human-review",
+                {
+                    "reason": "suspicious_content",
+                    "merchant_token": merchant_a["merchant_token"],
+                },
+            )
+            self.assertEqual(status, 200)
+            first_review_id = first["review"]["id"]
+            second_review_id = second["review"]["id"]
+
+            status, anonymous = self.request(app, "GET", f"/human-review/{first_review_id}")
+            self.assertEqual(status, 403)
+            status, cross_merchant = self.request(
+                app,
+                "GET",
+                f"/human-review/{first_review_id}",
+                headers={"authorization": f"Bearer {merchant_b['merchant_token']}"},
+            )
+            self.assertEqual(status, 403)
+            status, shown = self.request(
+                app,
+                "GET",
+                f"/human-review/{first_review_id}",
+                headers={"authorization": f"Bearer {merchant_a['merchant_token']}"},
+            )
+            self.assertEqual(status, 200)
+            self.assertEqual(shown["review"]["reason"], "low_confidence")
+            self.assertEqual(shown["conversation"]["id"], "CONV-0001")
+
+            status, invalid_action = self.request(
+                app,
+                "POST",
+                f"/human-review/{first_review_id}/resolve",
+                {
+                    "action": "ship_order",
+                    "merchant_token": merchant_a["merchant_token"],
+                },
+            )
+            self.assertEqual(status, 400)
+            self.assertIn("Unknown human-review action", invalid_action["error"])
+
+            status, anonymous_resolve = self.request(
+                app,
+                "POST",
+                f"/human-review/{first_review_id}/resolve",
+                {"action": "reply", "text": "No token should fail."},
+            )
+            self.assertEqual(status, 403)
+            status, cross_resolve = self.request(
+                app,
+                "POST",
+                f"/human-review/{first_review_id}/resolve",
+                {
+                    "action": "reply",
+                    "text": "Wrong merchant should fail.",
+                    "merchant_token": merchant_b["merchant_token"],
+                },
+            )
+            self.assertEqual(status, 403)
+            status, resolved = self.request(
+                app,
+                "POST",
+                f"/human-review/{first_review_id}/resolve",
+                {
+                    "action": "reply",
+                    "sender": "merchant",
+                    "text": "Human checked the low-confidence answer.",
+                    "merchant_token": merchant_a["merchant_token"],
+                },
+            )
+            self.assertEqual(status, 200)
+            self.assertIsNotNone(resolved["review"]["resolved_at"])
+            self.assertEqual(resolved["conversation"]["status"], "human_required")
+            self.assertEqual(resolved["conversation"]["next_actor"], "operator")
+
+            status, queue = self.request(
+                app,
+                "GET",
+                "/human-review/queue",
+                query_string="merchant_id=seller-a",
+                headers={"authorization": f"Bearer {merchant_a['merchant_token']}"},
+            )
+            self.assertEqual(status, 200)
+            self.assertEqual([review["id"] for review in queue["reviews"]], [second_review_id])
+
+            status, final = self.request(
+                app,
+                "POST",
+                f"/human-review/{second_review_id}/resolve",
+                {
+                    "action": "reply",
+                    "sender": "merchant",
+                    "text": "Human checked the suspicious content review.",
+                    "merchant_token": merchant_a["merchant_token"],
+                },
+            )
+            self.assertEqual(status, 200)
+            self.assertEqual(final["conversation"]["status"], "waiting_buyer")
+            self.assertEqual(final["conversation"]["messages"][-1]["structured_payload"]["review_id"], second_review_id)
 
     def test_channel_message_api_ingests_external_buyer_messages(self):
         with tempfile.TemporaryDirectory() as tmp:

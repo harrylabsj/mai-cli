@@ -147,11 +147,11 @@ Inspect routes:
 python3 scripts/mai.py --db ./mai-cli.sqlite api routes --format json
 ```
 
-The local API covers catalog, search, conversations, message append/close, agent token issuance, agent heartbeats, agent message claim/complete/fail/abandon, and human-review queues. In environments without FastAPI installed, `create_app()` still returns a lightweight ASGI app for local tests and demos.
+The local API covers catalog, search, conversations, message append/close, agent token issuance, agent heartbeats, agent message claim/complete/fail/abandon, and human-review queue/detail/resolve operations. In environments without FastAPI installed, `create_app()` still returns a lightweight ASGI app for local tests and demos.
 
 External channel adapters can use `POST /channels/messages` with `channel`, `external_user_id`, `text`, and optional `conversation_id`, `city`, `area`, and `external_message_id`. The optional `external_message_id` is an idempotency key for webhook retry safety.
 
-`POST /merchants` returns a local `merchant_token`. Product writes, merchant profile updates, merchant human replies, and human-review resolution require that merchant token in the JSON body as `merchant_token` or as a Bearer token. Agent heartbeats, agent message processing, merchant-agent replies, and merchant-agent human-review flags may use either the merchant token or a scoped agent token. Buyer search and buyer conversation creation remain tokenless for local demos, but created buyer conversations return a conversation-scoped `buyer_token`. Conversation reads and human-review queues require an owner token: buyer tokens can read only their issued conversation, while merchant and agent tokens can read conversations and review queues for their merchant.
+`POST /merchants` returns a local `merchant_token`. Product writes, merchant profile updates, merchant human replies, and human-review resolution require that merchant token in the JSON body as `merchant_token` or as a Bearer token. Agent heartbeats, agent message processing, merchant-agent replies, and merchant-agent human-review flags may use either the merchant token or a scoped agent token. Buyer search and buyer conversation creation remain tokenless for local demos, but created buyer conversations return a conversation-scoped `buyer_token`. Conversation reads and human-review queue/detail reads require an owner token: buyer tokens can read only their issued conversation, while merchant and agent tokens can read conversations and review queues for their merchant.
 
 Serve the FastAPI app after installing API dependencies:
 

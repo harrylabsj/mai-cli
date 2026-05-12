@@ -118,6 +118,8 @@ Human-review APIs:
 
 ```text
 GET /human-review/queue
+GET /human-review/{review_id}
+POST /human-review/{review_id}/resolve
 GET /merchants/{merchant_id}/human-review
 POST /conversations/{conversation_id}/human-review
 POST /conversations/{conversation_id}/human-review/resolve

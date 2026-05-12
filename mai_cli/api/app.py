@@ -48,6 +48,9 @@ class AuthError(Exception):
     pass
 
 
+HUMAN_REVIEW_ACTIONS = {"reply", "approve_public_answer", "reject", "close"}
+
+
 def _json_error_response(status_code: int, error: str) -> Any:
     payload = {"ok": False, "error": error}
     if JSONResponse is not None:  # pragma: no cover - exercised with fastapi installed
@@ -130,6 +133,8 @@ def route_info() -> list[RouteInfo]:
         RouteInfo("/agents/{agent_id}", {"GET"}),
         RouteInfo("/merchants/{merchant_id}/agents", {"GET"}),
         RouteInfo("/human-review/queue", {"GET"}),
+        RouteInfo("/human-review/{review_id}", {"GET"}),
+        RouteInfo("/human-review/{review_id}/resolve", {"POST"}),
         RouteInfo("/merchants/{merchant_id}/conversations", {"GET"}),
         RouteInfo("/merchants/{merchant_id}/human-review", {"GET"}),
         RouteInfo("/conversations/{conversation_id}/human-review", {"POST"}),
@@ -752,6 +757,21 @@ def _human_review_queue(db_path: str | Path, payload: dict[str, Any], merchant_i
         return {"ok": True, "reviews": [_review_summary(conn, row) for row in rows]}
 
 
+def _human_review_row(conn: Any, review_id: str | int) -> Any:
+    row = conn.execute("select * from moderation_flags where id = ?", (int(review_id),)).fetchone()
+    if row is None:
+        raise SystemExit(f"Unknown human review: {review_id}")
+    return row
+
+
+def _get_human_review(db_path: str | Path, review_id: str | int, payload: dict[str, Any]) -> dict[str, Any]:
+    with db_session(db_path) as conn:
+        row = _human_review_row(conn, review_id)
+        review = _review_summary(conn, row)
+        _require_merchant_read_token(conn, review["merchant_id"], payload)
+        return {"ok": True, "review": review, "conversation": conversation_summary(conn, review["conversation_id"])}
+
+
 def _create_human_review(db_path: str | Path, conversation_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     with db_session(db_path) as conn:
         conversation = conversation_summary(conn, conversation_id)
@@ -787,8 +807,91 @@ def _create_human_review(db_path: str | Path, conversation_id: str, payload: dic
         }
 
 
+def _resolve_human_review_item(db_path: str | Path, review_id: str | int, payload: dict[str, Any]) -> dict[str, Any]:
+    action = str(payload.get("action") or "reply")
+    if action not in HUMAN_REVIEW_ACTIONS:
+        raise SystemExit(f"Unknown human-review action: {action}")
+    sender = str(payload.get("sender") or "merchant")
+    with db_session(db_path) as conn:
+        row = _human_review_row(conn, review_id)
+        if row["resolved_at"]:
+            raise SystemExit(f"Human review already resolved: {review_id}")
+        conversation_id = row["conversation_id"]
+        conversation = conversation_summary(conn, conversation_id)
+        _require_merchant_token(conn, conversation["merchant_id"], payload)
+        now = now_iso()
+        conn.execute(
+            """
+            update moderation_flags
+            set resolved_at = ?, resolution = ?, resolved_by = ?
+            where id = ? and resolved_at = ''
+            """,
+            (now, action, sender, int(review_id)),
+        )
+        remaining_rows = conn.execute(
+            """
+            select reason from moderation_flags
+            where conversation_id = ? and resolved_at = ''
+            order by case when reason = 'suspicious_content' then 0 else 1 end, id
+            """,
+            (conversation_id,),
+        ).fetchall()
+        remaining = len(remaining_rows)
+        remaining_reason = str(remaining_rows[0]["reason"] or "") if remaining_rows else ""
+        status = "human_required" if remaining else ("closed" if action == "close" else "waiting_buyer")
+        status_reason = remaining_reason if status == "human_required" else str(row["reason"] or "")
+        next_actor = next_actor_for_status(status, status_reason if status == "human_required" else "")
+        if payload.get("text"):
+            append_message(
+                conn,
+                conversation_id,
+                sender=sender,
+                intent=str(payload.get("intent") or "support"),
+                text=str(payload["text"]),
+                structured_payload={
+                    "resolution": action,
+                    "source_id": payload.get("source_id") or sender,
+                    "review_id": int(review_id),
+                    "reason": status_reason,
+                    "resolved_reason": row["reason"],
+                },
+                status=status,
+            )
+        else:
+            conn.execute(
+                "update conversations set status = ?, next_actor = ?, updated_at = ?, last_sender = ? where id = ?",
+                (status, next_actor, now, sender, conversation_id),
+            )
+        append_audit_event(
+            conn,
+            conversation_id,
+            payload.get("source_id") or sender,
+            "human_review_resolved",
+            {
+                "review_id": int(review_id),
+                "resolution": action,
+                "status": status,
+                "next_actor": next_actor,
+                "remaining_unresolved_reviews": int(remaining or 0),
+            },
+        )
+        review = _review_summary(conn, _human_review_row(conn, review_id))
+        rows = conn.execute(
+            "select * from moderation_flags where conversation_id = ? order by id",
+            (conversation_id,),
+        ).fetchall()
+        return {
+            "ok": True,
+            "review": review,
+            "reviews": [_review_summary(conn, row) for row in rows],
+            "conversation": conversation_summary(conn, conversation_id),
+        }
+
+
 def _resolve_human_review(db_path: str | Path, conversation_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     action = str(payload.get("action") or "reply")
+    if action not in HUMAN_REVIEW_ACTIONS:
+        raise SystemExit(f"Unknown human-review action: {action}")
     sender = str(payload.get("sender") or "merchant")
     status = "closed" if action == "close" else "waiting_buyer"
     with db_session(db_path) as conn:
@@ -906,6 +1009,10 @@ def handle_request(
             return 200, _list_agents(db_path, owner_id=parts[1])
         if path == "/human-review/queue" and method == "GET":
             return 200, _human_review_queue(db_path, payload, merchant_id=str(query.get("merchant_id") or ""))
+        if len(parts) == 2 and parts[0] == "human-review" and method == "GET":
+            return 200, _get_human_review(db_path, parts[1], payload)
+        if len(parts) == 3 and parts[0] == "human-review" and parts[2] == "resolve" and method == "POST":
+            return 200, _resolve_human_review_item(db_path, parts[1], payload)
         if len(parts) == 3 and parts[0] == "merchants" and parts[2] == "conversations" and method == "GET":
             filters = dict(query)
             filters["merchant_id"] = parts[1]
@@ -1119,6 +1226,18 @@ def create_app(db_path: str | Path = "mai-cli.sqlite") -> Any:
     @app.get("/human-review/queue")
     def human_review_queue(merchant_id: str = "", authorization: str = AUTHORIZATION_HEADER) -> dict[str, Any]:
         return _human_review_queue(db_path, _payload_with_auth({}, authorization), merchant_id=merchant_id)
+
+    @app.get("/human-review/{review_id}")
+    def get_human_review(review_id: int, authorization: str = AUTHORIZATION_HEADER) -> dict[str, Any]:
+        return _get_human_review(db_path, review_id, _payload_with_auth({}, authorization))
+
+    @app.post("/human-review/{review_id}/resolve")
+    def resolve_human_review_item(
+        review_id: int,
+        payload: dict[str, Any],
+        authorization: str = AUTHORIZATION_HEADER,
+    ) -> dict[str, Any]:
+        return _resolve_human_review_item(db_path, review_id, _payload_with_auth(payload, authorization))
 
     @app.get("/merchants/{merchant_id}/conversations")
     def get_merchant_conversations(
