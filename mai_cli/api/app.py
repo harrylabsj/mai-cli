@@ -26,6 +26,7 @@ from mai_cli.core.harness import (
     abandon_stale_agent_messages,
     agent_message_process_summary,
     append_audit_event,
+    audit_event_summary,
     claim_agent_message,
     complete_agent_message,
     fail_agent_message,
@@ -135,6 +136,7 @@ def route_info() -> list[RouteInfo]:
         RouteInfo("/agents/{agent_id}", {"GET"}),
         RouteInfo("/merchants/{merchant_id}/agents", {"GET"}),
         RouteInfo("/audit/tool-calls", {"POST"}),
+        RouteInfo("/audit/events", {"GET"}),
         RouteInfo("/human-review/queue", {"GET"}),
         RouteInfo("/human-review/{review_id}", {"GET"}),
         RouteInfo("/human-review/{review_id}/resolve", {"POST"}),
@@ -233,6 +235,27 @@ def _agent_token_row(conn: Any, token: str) -> Any:
 
 def _append_agent_token_audit(conn: Any, merchant_id: str, event: str, details: dict[str, Any]) -> None:
     append_audit_event(conn, "", merchant_id, event, details)
+
+
+def _audit_event_limit(value: Any) -> int:
+    if value in (None, ""):
+        return 50
+    limit = int(value)
+    if limit <= 0:
+        raise ValueError("limit must be greater than 0")
+    return min(limit, 200)
+
+
+def _merchant_audit_events(conn: Any, merchant_id: str, event: str = "", limit: Any = 50) -> list[dict[str, Any]]:
+    sql = "select id from audit_events where actor = ?"
+    values: list[Any] = [merchant_id]
+    if event:
+        sql += " and event = ?"
+        values.append(event)
+    sql += " order by id desc limit ?"
+    values.append(_audit_event_limit(limit))
+    rows = conn.execute(sql, values).fetchall()
+    return [audit_event_summary(conn, int(row["id"])) for row in rows]
 
 
 def _issue_merchant_token(conn: Any, merchant_id: str) -> str:
@@ -971,6 +994,25 @@ def _record_tool_call_audit(db_path: str | Path, payload: dict[str, Any]) -> dic
         return {"ok": True, "event": event}
 
 
+def _audit_events(
+    db_path: str | Path,
+    payload: dict[str, Any],
+    merchant_id: str = "",
+    event: str = "",
+    limit: Any = 50,
+) -> dict[str, Any]:
+    with db_session(db_path) as conn:
+        merchant_id = str(merchant_id or payload.get("merchant_id") or "")
+        if not merchant_id:
+            raise AuthError("merchant_id is required for audit events")
+        _require_merchant_token(conn, merchant_id, payload)
+        return {
+            "ok": True,
+            "merchant_id": merchant_id,
+            "events": _merchant_audit_events(conn, merchant_id, event=event, limit=limit),
+        }
+
+
 def _human_review_row(conn: Any, review_id: str | int) -> Any:
     row = conn.execute("select * from moderation_flags where id = ?", (int(review_id),)).fetchone()
     if row is None:
@@ -1229,6 +1271,14 @@ def handle_request(
             return 200, _list_agents(db_path, owner_id=parts[1])
         if path == "/audit/tool-calls" and method == "POST":
             return 200, _record_tool_call_audit(db_path, payload)
+        if path == "/audit/events" and method == "GET":
+            return 200, _audit_events(
+                db_path,
+                payload,
+                merchant_id=str(query.get("merchant_id") or ""),
+                event=str(query.get("event") or ""),
+                limit=query.get("limit") or 50,
+            )
         if path == "/human-review/queue" and method == "GET":
             return 200, _human_review_queue(db_path, payload, merchant_id=str(query.get("merchant_id") or ""))
         if len(parts) == 2 and parts[0] == "human-review" and method == "GET":
@@ -1475,6 +1525,21 @@ def create_app(db_path: str | Path = "mai-cli.sqlite") -> Any:
     @app.post("/audit/tool-calls")
     def record_tool_call_audit(payload: dict[str, Any], authorization: str = AUTHORIZATION_HEADER) -> dict[str, Any]:
         return _record_tool_call_audit(db_path, _payload_with_auth(payload, authorization))
+
+    @app.get("/audit/events")
+    def get_audit_events(
+        merchant_id: str = "",
+        event: str = "",
+        limit: int = 50,
+        authorization: str = AUTHORIZATION_HEADER,
+    ) -> dict[str, Any]:
+        return _audit_events(
+            db_path,
+            _payload_with_auth({}, authorization),
+            merchant_id=merchant_id,
+            event=event,
+            limit=limit,
+        )
 
     @app.get("/human-review/queue")
     def human_review_queue(merchant_id: str = "", authorization: str = AUTHORIZATION_HEADER) -> dict[str, Any]:

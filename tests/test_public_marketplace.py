@@ -152,6 +152,7 @@ class PublicMarketplaceTest(unittest.TestCase):
             self.assertIn("/agents/{agent_id}", route_paths)
             self.assertIn("/merchants/{merchant_id}/agents", route_paths)
             self.assertIn("/audit/tool-calls", route_paths)
+            self.assertIn("/audit/events", route_paths)
             self.assertIn("/human-review/queue", route_paths)
             self.assertIn("/human-review/{review_id}", route_paths)
             self.assertIn("/human-review/{review_id}/resolve", route_paths)
@@ -1749,6 +1750,45 @@ class PublicMarketplaceTest(unittest.TestCase):
             self.assertNotIn(new_token, serialized)
             self.assertIn(issued["agent_id"], serialized)
             self.assertIn(revoked["revoked_at"], serialized)
+
+    def test_audit_events_api_requires_merchant_token_and_filters_without_secrets(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "marketplace.sqlite"
+            app = create_app(db_file)
+
+            status, merchant = self.request(app, "POST", "/merchants", {"id": "seller-a", "name": "West Lake Tea"})
+            self.assertEqual(status, 200)
+            merchant_token = merchant["merchant_token"]
+            status, issued = self.request(
+                app,
+                "POST",
+                "/agents/tokens",
+                {"merchant_id": "seller-a", "merchant_token": merchant_token},
+            )
+            self.assertEqual(status, 200)
+
+            status, anonymous = self.request(
+                app,
+                "GET",
+                "/audit/events",
+                query_string="merchant_id=seller-a&event=agent_token_issued",
+            )
+            self.assertEqual(status, 403)
+            status, listed = self.request(
+                app,
+                "GET",
+                "/audit/events",
+                query_string="merchant_id=seller-a&event=agent_token_issued&limit=10",
+                headers={"authorization": f"Bearer {merchant_token}"},
+            )
+            self.assertEqual(status, 200)
+            self.assertEqual(len(listed["events"]), 1)
+            event = listed["events"][0]
+            self.assertEqual(event["actor"], "seller-a")
+            self.assertEqual(event["event"], "agent_token_issued")
+            serialized = json.dumps(listed, sort_keys=True)
+            self.assertNotIn(issued["agent_token"], serialized)
+            self.assertEqual(event["details"]["token"]["token_prefix"], issued["agent_token"][:24])
 
     def test_api_exposes_conversation_agent_and_human_review_lifecycle(self):
         with tempfile.TemporaryDirectory() as tmp:

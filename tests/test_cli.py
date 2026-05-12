@@ -808,6 +808,36 @@ class MaiCliTest(unittest.TestCase):
             self.assertIn(issued["agent_id"], serialized)
             self.assertIn(revoked["revoked_at"], serialized)
 
+    def test_audit_events_command_filters_merchant_events_without_secrets(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.run_cli(db_file, "merchant", "create", "--id", "seller-a", "--name", "West Lake Tea")
+            issued = json.loads(
+                self.run_cli(db_file, "agent", "token", "--merchant", "seller-a", "--format", "json")
+            )
+
+            output = self.run_cli(
+                db_file,
+                "audit",
+                "events",
+                "--merchant",
+                "seller-a",
+                "--event",
+                "agent_token_issued",
+                "--limit",
+                "10",
+                "--format",
+                "json",
+            )
+            listed = json.loads(output)
+
+            self.assertEqual(len(listed["events"]), 1)
+            event = listed["events"][0]
+            self.assertEqual(event["actor"], "seller-a")
+            self.assertEqual(event["event"], "agent_token_issued")
+            self.assertNotIn(issued["agent_token"], output)
+            self.assertEqual(event["details"]["token"]["token_prefix"], issued["agent_token"][:24])
+
     def test_human_review_workbench_shows_and_resolves_one_review_by_id(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"

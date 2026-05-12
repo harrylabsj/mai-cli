@@ -14,7 +14,15 @@ from mai_cli.adapters import hermes, openclaw
 from mai_cli.adapters.mai_legacy import import_json_store
 from mai_cli.agents import buyer_cli, merchant_agent, merchant_daemon
 from mai_cli.agents.tools import HTTPMerchantAgentTools
-from mai_cli.api.app import _agent_token_row, _agent_token_summary, _default_merchant_agent_id, _issue_agent_token, _require_merchant_token, create_app
+from mai_cli.api.app import (
+    _agent_token_row,
+    _agent_token_summary,
+    _default_merchant_agent_id,
+    _issue_agent_token,
+    _merchant_audit_events,
+    _require_merchant_token,
+    create_app,
+)
 from mai_cli.config import DEFAULT_DB_PATH
 from mai_cli.core.catalog import (
     create_merchant,
@@ -951,6 +959,15 @@ def cmd_human_review_resolve(args: argparse.Namespace) -> None:
     emit({"ok": True, "review": review, "reviews": reviews, "conversation": conversation}, args.format)
 
 
+def cmd_audit_events(args: argparse.Namespace) -> None:
+    with db_session(db_path_from_args(args)) as conn:
+        require_merchant(conn, args.merchant)
+        if args.merchant_token:
+            _require_merchant_token(conn, args.merchant, {"merchant_token": args.merchant_token})
+        events = _merchant_audit_events(conn, args.merchant, event=args.event, limit=args.limit)
+    emit({"ok": True, "merchant_id": args.merchant, "events": events}, args.format)
+
+
 def cmd_legacy_import(args: argparse.Namespace) -> None:
     with db_session(db_path_from_args(args)) as conn:
         result = import_json_store(conn, args.from_json)
@@ -1292,6 +1309,16 @@ def build_parser() -> argparse.ArgumentParser:
     human_review_resolve.add_argument("--source-id", default="")
     human_review_resolve.add_argument("--format", choices=["text", "json"], default="text")
     human_review_resolve.set_defaults(func=cmd_human_review_resolve)
+
+    audit = subparsers.add_parser("audit", help="Inspect merchant audit events")
+    audit_sub = audit.add_subparsers(dest="audit_command", required=True)
+    audit_events = audit_sub.add_parser("events", help="List merchant audit events")
+    audit_events.add_argument("--merchant", required=True)
+    audit_events.add_argument("--event", default="")
+    audit_events.add_argument("--limit", type=positive_seconds, default=50)
+    audit_events.add_argument("--merchant-token", default="")
+    audit_events.add_argument("--format", choices=["text", "json"], default="text")
+    audit_events.set_defaults(func=cmd_audit_events)
 
     llm = subparsers.add_parser("llm", help="Run optional LLM marketplace tool loops")
     llm_sub = llm.add_subparsers(dest="llm_command", required=True)

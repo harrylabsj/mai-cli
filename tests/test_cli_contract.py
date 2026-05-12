@@ -55,6 +55,7 @@ PUBLIC_SUBCOMMANDS = [
     ("human-review", "queue"),
     ("human-review", "show"),
     ("human-review", "resolve"),
+    ("audit", "events"),
     ("llm", "run"),
     ("adapter", "inspect"),
     ("adapter", "doctor"),

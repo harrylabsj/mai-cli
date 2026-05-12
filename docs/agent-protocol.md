@@ -57,8 +57,9 @@ Scoped merchant-agent API tokens can be issued with an optional TTL and revoked 
 python3 scripts/mai.py --db ./mai-cli.sqlite agent token --merchant seller-a --ttl-seconds 86400 --format json
 python3 scripts/mai.py --db ./mai-cli.sqlite agent tokens --merchant seller-a --format json
 python3 scripts/mai.py --db ./mai-cli.sqlite agent rotate-token --merchant seller-a --token "$MAI_AGENT_TOKEN" --ttl-seconds 86400 --format json
+python3 scripts/mai.py --db ./mai-cli.sqlite audit events --merchant seller-a --event agent_token_rotated --format json
 python3 scripts/mai.py --db ./mai-cli.sqlite agent revoke-token --merchant seller-a --token "$MAI_AGENT_TOKEN" --format json
 ```
 
-The Marketplace API equivalents are `POST /agents/tokens` with optional `ttl_seconds`, `GET /agents/tokens?merchant_id=...`, `POST /agents/tokens/rotate`, and `POST /agents/tokens/revoke`, all authenticated by the owning merchant token. Token list and rotation responses expose status and old-token hints, not full old token secrets. Expired or revoked agent tokens are rejected before heartbeat, message processing, reply, close, human-review, or API-backed LLM tool actions can run.
-Issue, rotate, and revoke operations append `agent_token_issued`, `agent_token_rotated`, and `agent_token_revoked` audit events under the merchant actor. Audit details include token summaries only, not complete token secrets.
+The Marketplace API equivalents are `POST /agents/tokens` with optional `ttl_seconds`, `GET /agents/tokens?merchant_id=...`, `POST /agents/tokens/rotate`, `POST /agents/tokens/revoke`, and `GET /audit/events?merchant_id=...&event=...`, all authenticated by the owning merchant token. Token list and rotation responses expose status and old-token hints, not full old token secrets. Expired or revoked agent tokens are rejected before heartbeat, message processing, reply, close, human-review, or API-backed LLM tool actions can run.
+Issue, rotate, and revoke operations append `agent_token_issued`, `agent_token_rotated`, and `agent_token_revoked` audit events under the merchant actor. Audit details and audit query responses include token summaries only, not complete token secrets.

@@ -325,7 +325,7 @@ Priority order:
    - Expiry slice: allow optional TTLs for scoped default merchant-agent tokens through `agent token --ttl-seconds` and `/agents/tokens` payload `ttl_seconds`; expired tokens must fail before the same agent/API-backed actions can run.
    - Inventory slice: allow owning merchants to list scoped default merchant-agent token status through `agent tokens` and `GET /agents/tokens?merchant_id=...` without exposing full token secrets.
    - Rotation slice: allow owning merchants to rotate scoped default merchant-agent tokens through `agent rotate-token` and `/agents/tokens/rotate`, revoking the old token and issuing the replacement in one operation without echoing the old token secret.
-   - Audit slice: append secret-safe `agent_token_issued`, `agent_token_rotated`, and `agent_token_revoked` audit events for token lifecycle operations.
+   - Audit slice: append secret-safe `agent_token_issued`, `agent_token_rotated`, and `agent_token_revoked` audit events for token lifecycle operations, and expose merchant-scoped audit search through `audit events` and `GET /audit/events`.
 
 2. HTTP-backed marketplace tool boundary.
    - Keep SQLite tools for local tests, but add an API-backed implementation of `MerchantAgentTools` and buyer/LLM tools.
@@ -545,7 +545,7 @@ Upgrade JSON file storage to SQLite, the dependency-free HTTP server to FastAPI,
 - FastAPI and fallback ASGI modes pass the same auth/error contract tests.
 - Public API conversation reads and human-review queues require owner tokens; buyer creation remains tokenless but returns a conversation-scoped buyer token instead of a buyer-wide credential.
 - Public API conversation message appends and close operations require buyer, merchant, or agent owner tokens instead of accepting anonymous conversation writes.
-- Scoped merchant-agent tokens can be issued with optional TTLs, listed without exposing full token secrets, rotated, revoked, and audited by the owning merchant; expired or revoked tokens cannot be used for future agent/API-backed actions.
+- Scoped merchant-agent tokens can be issued with optional TTLs, listed without exposing full token secrets, rotated, revoked, audited, and queried by the owning merchant; expired or revoked tokens cannot be used for future agent/API-backed actions.
 - A merchant can create a shop, product, inventory attributes, and delivery rule.
 - A merchant agent can run as an independent process.
 - Duplicate merchant-agent daemons cannot produce duplicate replies for the same buyer message.
