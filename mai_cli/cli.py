@@ -471,6 +471,12 @@ def cmd_conversation_close(args: argparse.Namespace) -> None:
             )
             append_audit_event(conn, args.conversation, args.sender, "conversation_closed", {"next_actor": next_actor})
         conversation = conversation_summary(conn, args.conversation)
+    if args.format == "text":
+        print(f"Conversation closed: {conversation['id']}")
+        print(f"Closed by: {conversation['last_sender']}")
+        print(f"Status: {conversation['status']}")
+        print(f"Next actor: {conversation['next_actor'] or '-'}")
+        return
     emit({"ok": True, "conversation": conversation}, args.format)
 
 

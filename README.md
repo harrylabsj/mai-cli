@@ -109,6 +109,7 @@ python3 scripts/mai.py --db ./mai-cli.sqlite conversation message --conversation
 python3 scripts/mai.py --db ./mai-cli.sqlite conversation message --conversation CONV-0001 --sender merchant_agent --intent ask_stock --text "Stock is 5." --status waiting_buyer --format json
 python3 scripts/mai.py --db ./mai-cli.sqlite conversation human-review --conversation CONV-0001 --reason low_confidence --format json
 python3 scripts/mai.py --db ./mai-cli.sqlite conversation resolve-review --conversation CONV-0001 --action reply --sender merchant --text "Human reviewed." --format json
+python3 scripts/mai.py --db ./mai-cli.sqlite conversation close --conversation CONV-0001 --sender operator --text "Closed."
 python3 scripts/mai.py --db ./mai-cli.sqlite conversation close --conversation CONV-0001 --sender operator --text "Closed." --format json
 python3 scripts/mai.py --db ./mai-cli.sqlite conversation list --buyer alice --status waiting_buyer
 python3 scripts/mai.py --db ./mai-cli.sqlite conversation list --buyer alice --status waiting_buyer --format json
@@ -127,6 +128,7 @@ python3 scripts/mai.py --db ./mai-cli.sqlite agent show --agent mai-cli-merchant
 The default `conversation create` text output returns the new conversation id and routing state.
 The default `conversation show` text output prints the conversation summary, review count, and messages.
 The default `conversation message` text output confirms the appended message id and updated routing state.
+The default `conversation close` text output confirms the final status.
 The default `conversation list` text output is a compact status table for quick buyer/merchant queue scans.
 The default `human-review queue` text output is a concise merchant workbench table, `human-review show` prints the review summary plus recent conversation messages, and `human-review resolve` summarizes the resulting conversation status. `--format json` keeps the stable adapter/script output.
 The default `agent list` text output is a compact heartbeat table for operations checks, while `agent show` prints one heartbeat in detail.

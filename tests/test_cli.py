@@ -1002,6 +1002,42 @@ class MaiCliTest(unittest.TestCase):
             self.assertIn("Next actor: buyer", output)
             self.assertNotIn('"message"', output)
 
+    def test_conversation_close_text_output_summarizes_result(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.run_cli(db_file, "merchant", "create", "--id", "seller-a", "--name", "West Lake Tea")
+            self.run_cli(
+                db_file,
+                "conversation",
+                "create",
+                "--buyer",
+                "alice",
+                "--merchant",
+                "seller-a",
+                "--text",
+                "Is this available?",
+                "--format",
+                "json",
+            )
+
+            output = self.run_cli(
+                db_file,
+                "conversation",
+                "close",
+                "--conversation",
+                "CONV-0001",
+                "--sender",
+                "operator",
+                "--text",
+                "Closed.",
+            )
+
+            self.assertIn("Conversation closed: CONV-0001", output)
+            self.assertIn("Closed by: operator", output)
+            self.assertIn("Status: closed", output)
+            self.assertIn("Next actor: -", output)
+            self.assertNotIn('"conversation"', output)
+
     def test_agent_rotate_token_command_revokes_old_and_issues_new_token(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"
