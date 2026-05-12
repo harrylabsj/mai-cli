@@ -647,6 +647,27 @@ class MaiCliTest(unittest.TestCase):
                 conn.close()
             self.assertTrue(row[0])
 
+    def test_agent_revoke_token_command_rejects_ambiguous_token_prefix(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.run_cli(db_file, "merchant", "create", "--id", "seller-a", "--name", "West Lake Tea")
+            for _ in range(2):
+                self.run_cli(db_file, "agent", "token", "--merchant", "seller-a", "--format", "json")
+
+            with self.assertRaises(SystemExit) as raised:
+                self.run_cli(
+                    db_file,
+                    "agent",
+                    "revoke-token",
+                    "--merchant",
+                    "seller-a",
+                    "--token-prefix",
+                    "mai_agent_seller-a_",
+                    "--format",
+                    "json",
+                )
+            self.assertIn("ambiguous", str(raised.exception))
+
     def test_agent_token_command_accepts_ttl_seconds(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"

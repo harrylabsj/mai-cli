@@ -15,6 +15,7 @@ from mai_cli.adapters.mai_legacy import import_json_store
 from mai_cli.agents import buyer_cli, merchant_agent, merchant_daemon
 from mai_cli.agents.tools import HTTPMerchantAgentTools
 from mai_cli.api.app import (
+    AuthError,
     _agent_token_row,
     _agent_token_summary,
     _default_merchant_agent_id,
@@ -68,6 +69,13 @@ def positive_seconds(value: str) -> int:
     if seconds <= 0:
         raise argparse.ArgumentTypeError("must be greater than 0")
     return seconds
+
+
+def resolve_agent_token_for_cli(conn: Any, merchant_id: str, token: str | None, token_prefix: str | None) -> str:
+    try:
+        return _resolve_agent_token(conn, merchant_id, token, token_prefix)
+    except (AuthError, ValueError) as exc:
+        raise SystemExit(str(exc)) from exc
 
 
 def db_path_from_args(args: argparse.Namespace) -> Path:
@@ -749,7 +757,7 @@ def cmd_agent_rotate_token(args: argparse.Namespace) -> None:
         require_merchant(conn, args.merchant)
         if args.merchant_token:
             _require_merchant_token(conn, args.merchant, {"merchant_token": args.merchant_token})
-        token = _resolve_agent_token(conn, args.merchant, args.token, args.token_prefix)
+        token = resolve_agent_token_for_cli(conn, args.merchant, args.token, args.token_prefix)
         row = conn.execute(
             """
             select token, role, merchant_id, agent_id, created_at, expires_at, revoked_at
@@ -799,7 +807,7 @@ def cmd_agent_revoke_token(args: argparse.Namespace) -> None:
         require_merchant(conn, args.merchant)
         if args.merchant_token:
             _require_merchant_token(conn, args.merchant, {"merchant_token": args.merchant_token})
-        token = _resolve_agent_token(conn, args.merchant, args.token, args.token_prefix)
+        token = resolve_agent_token_for_cli(conn, args.merchant, args.token, args.token_prefix)
         row = conn.execute(
             "select role, merchant_id, agent_id, revoked_at from api_tokens where token = ?",
             (token,),

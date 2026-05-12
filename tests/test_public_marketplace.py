@@ -1746,6 +1746,32 @@ class PublicMarketplaceTest(unittest.TestCase):
             )
             self.assertEqual(status, 403)
 
+    def test_agent_token_prefix_api_rejects_ambiguous_prefix(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "marketplace.sqlite"
+            app = create_app(db_file)
+
+            status, merchant = self.request(app, "POST", "/merchants", {"id": "seller-a", "name": "West Lake Tea"})
+            self.assertEqual(status, 200)
+            merchant_token = merchant["merchant_token"]
+            for _ in range(2):
+                status, _issued = self.request(
+                    app,
+                    "POST",
+                    "/agents/tokens",
+                    {"merchant_id": "seller-a", "merchant_token": merchant_token},
+                )
+                self.assertEqual(status, 200)
+
+            status, ambiguous = self.request(
+                app,
+                "POST",
+                "/agents/tokens/revoke",
+                {"merchant_id": "seller-a", "merchant_token": merchant_token, "token_prefix": "mai_agent_seller-a_"},
+            )
+            self.assertEqual(status, 400)
+            self.assertIn("ambiguous", ambiguous["error"])
+
     def test_agent_token_lifecycle_api_records_audit_without_secrets(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "marketplace.sqlite"
