@@ -14,7 +14,7 @@ from mai_cli.adapters import hermes, openclaw
 from mai_cli.adapters.mai_legacy import import_json_store
 from mai_cli.agents import buyer_cli, merchant_agent, merchant_daemon
 from mai_cli.agents.tools import HTTPMerchantAgentTools
-from mai_cli.api.app import _default_merchant_agent_id, _issue_agent_token, _require_merchant_token, create_app
+from mai_cli.api.app import _agent_token_summary, _default_merchant_agent_id, _issue_agent_token, _require_merchant_token, create_app
 from mai_cli.config import DEFAULT_DB_PATH
 from mai_cli.core.catalog import (
     create_merchant,
@@ -709,6 +709,24 @@ def cmd_agent_token(args: argparse.Namespace) -> None:
     )
 
 
+def cmd_agent_tokens(args: argparse.Namespace) -> None:
+    with db_session(db_path_from_args(args)) as conn:
+        require_merchant(conn, args.merchant)
+        if args.merchant_token:
+            _require_merchant_token(conn, args.merchant, {"merchant_token": args.merchant_token})
+        rows = conn.execute(
+            """
+            select token, role, merchant_id, agent_id, created_at, expires_at, revoked_at
+            from api_tokens
+            where merchant_id = ? and role = 'agent'
+            order by created_at desc, token desc
+            """,
+            (args.merchant,),
+        ).fetchall()
+        tokens = [_agent_token_summary(row) for row in rows]
+    emit({"ok": True, "merchant_id": args.merchant, "tokens": tokens}, args.format)
+
+
 def cmd_agent_revoke_token(args: argparse.Namespace) -> None:
     with db_session(db_path_from_args(args)) as conn:
         require_merchant(conn, args.merchant)
@@ -1171,6 +1189,11 @@ def build_parser() -> argparse.ArgumentParser:
     agent_token.add_argument("--ttl-seconds", type=positive_seconds, default=None, help="Optional scoped token lifetime in seconds")
     agent_token.add_argument("--format", choices=["text", "json"], default="text")
     agent_token.set_defaults(func=cmd_agent_token)
+    agent_tokens = agent_sub.add_parser("tokens", help="List scoped merchant-agent API tokens")
+    agent_tokens.add_argument("--merchant", required=True)
+    agent_tokens.add_argument("--merchant-token", default="")
+    agent_tokens.add_argument("--format", choices=["text", "json"], default="text")
+    agent_tokens.set_defaults(func=cmd_agent_tokens)
     agent_revoke_token = agent_sub.add_parser("revoke-token", help="Revoke a scoped merchant-agent API token")
     agent_revoke_token.add_argument("--merchant", required=True)
     agent_revoke_token.add_argument("--token", required=True)

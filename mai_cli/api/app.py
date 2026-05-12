@@ -123,7 +123,7 @@ def route_info() -> list[RouteInfo]:
         RouteInfo("/conversations/{conversation_id}/close", {"POST"}),
         RouteInfo("/buyers/{buyer_id}/conversations", {"GET"}),
         RouteInfo("/agents/heartbeat", {"POST"}),
-        RouteInfo("/agents/tokens", {"POST"}),
+        RouteInfo("/agents/tokens", {"GET", "POST"}),
         RouteInfo("/agents/tokens/revoke", {"POST"}),
         RouteInfo("/agents/messages/claim", {"POST"}),
         RouteInfo("/agents/messages/complete", {"POST"}),
@@ -198,6 +198,25 @@ def _expires_at_from_ttl(ttl_seconds: Any) -> str:
 
 def _token_is_expired(expires_at: str) -> bool:
     return bool(expires_at and expires_at <= now_iso())
+
+
+def _agent_token_summary(row: Any) -> dict[str, Any]:
+    token = str(row["token"])
+    revoked = bool(row["revoked_at"])
+    expired = _token_is_expired(row["expires_at"])
+    return {
+        "token_prefix": token[:24],
+        "token_suffix": token[-6:],
+        "token_role": row["role"],
+        "merchant_id": row["merchant_id"],
+        "agent_id": row["agent_id"],
+        "created_at": row["created_at"],
+        "expires_at": row["expires_at"],
+        "revoked_at": row["revoked_at"],
+        "revoked": revoked,
+        "expired": expired,
+        "active": not revoked and not expired,
+    }
 
 
 def _issue_merchant_token(conn: Any, merchant_id: str) -> str:
@@ -615,6 +634,24 @@ def _create_agent_token(db_path: str | Path, payload: dict[str, Any]) -> dict[st
             raise AuthError(f"Agent {agent_id} cannot act for merchant {merchant_id}")
         token, expires_at = _issue_agent_token(conn, merchant_id, agent_id, payload.get("ttl_seconds"))
         return {"ok": True, "merchant_id": merchant_id, "agent_id": agent_id, "agent_token": token, "expires_at": expires_at}
+
+
+def _list_agent_tokens(db_path: str | Path, payload: dict[str, Any], merchant_id: str = "") -> dict[str, Any]:
+    with db_session(db_path) as conn:
+        merchant_id = str(merchant_id or payload.get("merchant_id") or "")
+        if not merchant_id:
+            raise ValueError("merchant_id is required")
+        _require_merchant_token(conn, merchant_id, payload)
+        rows = conn.execute(
+            """
+            select token, role, merchant_id, agent_id, created_at, expires_at, revoked_at
+            from api_tokens
+            where merchant_id = ? and role = 'agent'
+            order by created_at desc, token desc
+            """,
+            (merchant_id,),
+        ).fetchall()
+        return {"ok": True, "merchant_id": merchant_id, "tokens": [_agent_token_summary(row) for row in rows]}
 
 
 def _revoke_agent_token(db_path: str | Path, payload: dict[str, Any]) -> dict[str, Any]:
@@ -1102,6 +1139,8 @@ def handle_request(
             return 200, _close_conversation(db_path, parts[1], payload)
         if path == "/agents/heartbeat" and method == "POST":
             return 200, _agent_heartbeat(db_path, payload)
+        if path == "/agents/tokens" and method == "GET":
+            return 200, _list_agent_tokens(db_path, payload, merchant_id=str(query.get("merchant_id") or ""))
         if path == "/agents/tokens" and method == "POST":
             return 200, _create_agent_token(db_path, payload)
         if path == "/agents/tokens/revoke" and method == "POST":
@@ -1307,6 +1346,10 @@ def create_app(db_path: str | Path = "mai-cli.sqlite") -> Any:
     @app.post("/agents/tokens")
     def create_agent_token(payload: dict[str, Any], authorization: str = AUTHORIZATION_HEADER) -> dict[str, Any]:
         return _create_agent_token(db_path, _payload_with_auth(payload, authorization))
+
+    @app.get("/agents/tokens")
+    def list_agent_tokens(merchant_id: str = "", authorization: str = AUTHORIZATION_HEADER) -> dict[str, Any]:
+        return _list_agent_tokens(db_path, _payload_with_auth({}, authorization), merchant_id=merchant_id)
 
     @app.post("/agents/tokens/revoke")
     def revoke_agent_token(payload: dict[str, Any], authorization: str = AUTHORIZATION_HEADER) -> dict[str, Any]:

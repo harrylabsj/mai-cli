@@ -121,7 +121,8 @@ class PublicMarketplaceTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "marketplace.sqlite"
             app = create_app(db_file)
-            route_paths = {route.path for route in getattr(app, "routes", []) if hasattr(route, "path")}
+            routes = [route for route in getattr(app, "routes", []) if hasattr(route, "path")]
+            route_paths = {route.path for route in routes}
             self.assertIn("/health", route_paths)
             self.assertIn("/merchants", route_paths)
             self.assertIn("/merchants/{merchant_id}", route_paths)
@@ -138,6 +139,8 @@ class PublicMarketplaceTest(unittest.TestCase):
             self.assertIn("/buyers/{buyer_id}/conversations", route_paths)
             self.assertIn("/agents/heartbeat", route_paths)
             self.assertIn("/agents/tokens", route_paths)
+            token_route = next(route for route in routes if route.path == "/agents/tokens")
+            self.assertEqual(token_route.methods, {"GET", "POST"})
             self.assertIn("/agents/tokens/revoke", route_paths)
             self.assertIn("/agents/messages/claim", route_paths)
             self.assertIn("/agents/messages/complete", route_paths)
@@ -1589,6 +1592,69 @@ class PublicMarketplaceTest(unittest.TestCase):
             )
             self.assertEqual(status, 403)
             self.assertIn("expired", denied["error"])
+
+    def test_agent_token_list_api_reports_status_without_secret(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "marketplace.sqlite"
+            app = create_app(db_file)
+
+            status, merchant = self.request(app, "POST", "/merchants", {"id": "seller-a", "name": "West Lake Tea"})
+            self.assertEqual(status, 200)
+            merchant_token = merchant["merchant_token"]
+            status, expiring = self.request(
+                app,
+                "POST",
+                "/agents/tokens",
+                {"merchant_id": "seller-a", "merchant_token": merchant_token, "ttl_seconds": 3600},
+            )
+            self.assertEqual(status, 200)
+            status, revocable = self.request(
+                app,
+                "POST",
+                "/agents/tokens",
+                {"merchant_id": "seller-a", "merchant_token": merchant_token},
+            )
+            self.assertEqual(status, 200)
+            status, revoked = self.request(
+                app,
+                "POST",
+                "/agents/tokens/revoke",
+                {"merchant_id": "seller-a", "merchant_token": merchant_token, "token": revocable["agent_token"]},
+            )
+            self.assertEqual(status, 200)
+
+            conn = sqlite3.connect(db_file)
+            try:
+                conn.execute(
+                    "update api_tokens set expires_at = ? where token = ?",
+                    ("2000-01-01T00:00:00", expiring["agent_token"]),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+
+            status, anonymous = self.request(app, "GET", "/agents/tokens", query_string="merchant_id=seller-a")
+            self.assertEqual(status, 403)
+            status, listed = self.request(
+                app,
+                "GET",
+                "/agents/tokens",
+                query_string="merchant_id=seller-a",
+                headers={"authorization": f"Bearer {merchant_token}"},
+            )
+            self.assertEqual(status, 200)
+            self.assertEqual(len(listed["tokens"]), 2)
+            serialized = json.dumps(listed, sort_keys=True)
+            self.assertNotIn(expiring["agent_token"], serialized)
+            self.assertNotIn(revocable["agent_token"], serialized)
+            by_prefix = {token["token_prefix"]: token for token in listed["tokens"]}
+            expired_item = by_prefix[expiring["agent_token"][:24]]
+            revoked_item = by_prefix[revocable["agent_token"][:24]]
+            self.assertTrue(expired_item["expired"])
+            self.assertFalse(expired_item["active"])
+            self.assertTrue(revoked_item["revoked"])
+            self.assertFalse(revoked_item["active"])
+            self.assertEqual(revoked_item["revoked_at"], revoked["revoked_at"])
 
     def test_api_exposes_conversation_agent_and_human_review_lifecycle(self):
         with tempfile.TemporaryDirectory() as tmp:

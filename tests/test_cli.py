@@ -660,6 +660,60 @@ class MaiCliTest(unittest.TestCase):
                     "json",
                 )
 
+    def test_agent_tokens_command_lists_status_without_secret(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.run_cli(db_file, "merchant", "create", "--id", "seller-a", "--name", "West Lake Tea")
+            expiring = json.loads(
+                self.run_cli(
+                    db_file,
+                    "agent",
+                    "token",
+                    "--merchant",
+                    "seller-a",
+                    "--ttl-seconds",
+                    "3600",
+                    "--format",
+                    "json",
+                )
+            )
+            revocable = json.loads(
+                self.run_cli(db_file, "agent", "token", "--merchant", "seller-a", "--format", "json")
+            )
+            revoked = json.loads(
+                self.run_cli(
+                    db_file,
+                    "agent",
+                    "revoke-token",
+                    "--merchant",
+                    "seller-a",
+                    "--token",
+                    revocable["agent_token"],
+                    "--format",
+                    "json",
+                )
+            )
+            conn = sqlite3.connect(db_file)
+            try:
+                conn.execute(
+                    "update api_tokens set expires_at = ? where token = ?",
+                    ("2000-01-01T00:00:00", expiring["agent_token"]),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+
+            output = self.run_cli(db_file, "agent", "tokens", "--merchant", "seller-a", "--format", "json")
+            listed = json.loads(output)
+
+            self.assertEqual(len(listed["tokens"]), 2)
+            self.assertNotIn(expiring["agent_token"], output)
+            self.assertNotIn(revocable["agent_token"], output)
+            by_prefix = {token["token_prefix"]: token for token in listed["tokens"]}
+            self.assertTrue(by_prefix[expiring["agent_token"][:24]]["expired"])
+            self.assertTrue(by_prefix[revocable["agent_token"][:24]]["revoked"])
+            self.assertEqual(by_prefix[revocable["agent_token"][:24]]["revoked_at"], revoked["revoked_at"])
+
     def test_human_review_workbench_shows_and_resolves_one_review_by_id(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"

@@ -132,12 +132,13 @@ To run through the Marketplace API boundary instead of direct SQLite access:
 
 ```bash
 python3 scripts/mai.py --db ./mai-cli.sqlite agent token --merchant seller-a --ttl-seconds 86400 --format json
+python3 scripts/mai.py --db ./mai-cli.sqlite agent tokens --merchant seller-a --format json
 python3 scripts/mai.py agent run --merchant seller-a --once --api-url http://127.0.0.1:8765 --agent-token "$MAI_AGENT_TOKEN" --format json
 python3 scripts/mai.py agent run --merchant seller-a --api-url http://127.0.0.1:8765 --agent-token "$MAI_AGENT_TOKEN" --interval 3
 python3 scripts/mai.py --db ./mai-cli.sqlite agent revoke-token --merchant seller-a --token "$MAI_AGENT_TOKEN" --format json
 ```
 
-Use `agent token` locally, or `POST /agents/tokens` with a merchant token over the API, to issue a narrower token for the default merchant agent. Add `--ttl-seconds` locally, or `ttl_seconds` in the API payload, to issue an expiring scoped token. Use `agent revoke-token` locally, or `POST /agents/tokens/revoke` with a merchant token over the API, to revoke a scoped agent token. API-backed agent runs accept `--agent-token` or `MAI_AGENT_TOKEN` for that scoped token, while `--merchant-token` and `MAI_MERCHANT_TOKEN` remain available for local demos.
+Use `agent token` locally, or `POST /agents/tokens` with a merchant token over the API, to issue a narrower token for the default merchant agent. Add `--ttl-seconds` locally, or `ttl_seconds` in the API payload, to issue an expiring scoped token. Use `agent tokens` locally, or `GET /agents/tokens?merchant_id=...` with a merchant Bearer token, to list scoped token status without exposing full token secrets. Use `agent revoke-token` locally, or `POST /agents/tokens/revoke` with a merchant token over the API, to revoke a scoped agent token. API-backed agent runs accept `--agent-token` or `MAI_AGENT_TOKEN` for that scoped token, while `--merchant-token` and `MAI_MERCHANT_TOKEN` remain available for local demos.
 Set `MAI_MARKETPLACE_API_URL` or `MAI_API_URL` to omit `--api-url` from repeated agent runs or background starts. `agent start --api-url` passes credentials to the child process through environment variables and keeps tokens out of the recorded pid command.
 
 ## Marketplace API
@@ -148,7 +149,7 @@ Inspect routes:
 python3 scripts/mai.py --db ./mai-cli.sqlite api routes --format json
 ```
 
-The local API covers catalog, search, conversations, message append/close, agent token issuance/revocation, agent heartbeats, agent message claim/complete/fail/abandon, LLM tool-call audit records, and human-review queue/detail/resolve operations. In environments without FastAPI installed, `create_app()` still returns a lightweight ASGI app for local tests and demos.
+The local API covers catalog, search, conversations, message append/close, agent token issuance/listing/revocation, agent heartbeats, agent message claim/complete/fail/abandon, LLM tool-call audit records, and human-review queue/detail/resolve operations. In environments without FastAPI installed, `create_app()` still returns a lightweight ASGI app for local tests and demos.
 
 External channel adapters can use `POST /channels/messages` with `channel`, `external_user_id`, `text`, and optional `conversation_id`, `city`, `area`, and `external_message_id`. The optional `external_message_id` is an idempotency key for webhook retry safety.
 
