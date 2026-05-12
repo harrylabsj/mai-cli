@@ -1013,6 +1013,15 @@ def cmd_human_review_resolve(args: argparse.Namespace) -> None:
         rows = conn.execute("select id from moderation_flags where conversation_id = ? order by id", (conversation_id,)).fetchall()
         reviews = [_review_summary(conn, row["id"]) for row in rows]
         conversation = conversation_summary(conn, conversation_id)
+    if args.format == "text":
+        remaining_unresolved = sum(1 for item in reviews if not item["resolved_at"])
+        print(f"Review {review['id']} resolved")
+        print(f"Resolution: {review['resolution']}")
+        print(f"Conversation: {conversation['id']}")
+        print(f"Status: {conversation['status']}")
+        print(f"Next actor: {conversation['next_actor']}")
+        print(f"Remaining unresolved reviews: {remaining_unresolved}")
+        return
     emit({"ok": True, "review": review, "reviews": reviews, "conversation": conversation}, args.format)
 
 

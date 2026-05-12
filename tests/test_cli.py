@@ -1043,6 +1043,57 @@ class MaiCliTest(unittest.TestCase):
             self.assertIn("Can I get a private discount?", output)
             self.assertNotIn('"conversation"', output)
 
+    def test_human_review_resolve_text_output_summarizes_result(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.run_cli(db_file, "merchant", "create", "--id", "seller-a", "--name", "West Lake Tea")
+            self.run_cli(
+                db_file,
+                "conversation",
+                "create",
+                "--buyer",
+                "alice",
+                "--merchant",
+                "seller-a",
+                "--text",
+                "Can I get a private discount?",
+            )
+            review = json.loads(
+                self.run_cli(
+                    db_file,
+                    "conversation",
+                    "human-review",
+                    "--conversation",
+                    "CONV-0001",
+                    "--reason",
+                    "low_confidence",
+                    "--format",
+                    "json",
+                )
+            )["review"]
+
+            output = self.run_cli(
+                db_file,
+                "human-review",
+                "resolve",
+                "--review",
+                str(review["id"]),
+                "--action",
+                "reply",
+                "--sender",
+                "merchant",
+                "--text",
+                "Human checked the answer.",
+            )
+
+            self.assertIn(f"Review {review['id']} resolved", output)
+            self.assertIn("Resolution: reply", output)
+            self.assertIn("Conversation: CONV-0001", output)
+            self.assertIn("Status: waiting_buyer", output)
+            self.assertIn("Next actor: buyer", output)
+            self.assertIn("Remaining unresolved reviews: 0", output)
+            self.assertNotIn('"review"', output)
+
     def test_human_review_workbench_shows_and_resolves_one_review_by_id(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"
