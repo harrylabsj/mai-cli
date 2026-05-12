@@ -107,12 +107,15 @@ python3 scripts/mai.py --db ./mai-cli.sqlite conversation human-review --convers
 python3 scripts/mai.py --db ./mai-cli.sqlite conversation resolve-review --conversation CONV-0001 --action reply --sender merchant --text "Human reviewed." --format json
 python3 scripts/mai.py --db ./mai-cli.sqlite conversation close --conversation CONV-0001 --sender operator --text "Closed." --format json
 python3 scripts/mai.py --db ./mai-cli.sqlite conversation list --buyer alice --status waiting_buyer --format json
+python3 scripts/mai.py --db ./mai-cli.sqlite human-review queue
 python3 scripts/mai.py --db ./mai-cli.sqlite human-review queue --format json
 python3 scripts/mai.py --db ./mai-cli.sqlite human-review show --review 1 --format json
 python3 scripts/mai.py --db ./mai-cli.sqlite human-review resolve --review 1 --action reply --sender merchant --text "Human reviewed." --format json
 python3 scripts/mai.py --db ./mai-cli.sqlite agent list --format json
 python3 scripts/mai.py --db ./mai-cli.sqlite agent show --agent mai-cli-merchant-agent:seller-a --format json
 ```
+
+The default `human-review queue` text output is a concise merchant workbench table; `--format json` keeps the stable adapter/script output.
 
 ## Resident Agent Daemon
 

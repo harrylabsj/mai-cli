@@ -904,6 +904,21 @@ def cmd_human_review_queue(args: argparse.Namespace) -> None:
     with db_session(db_path_from_args(args)) as conn:
         rows = conn.execute(sql, values).fetchall()
         reviews = [_review_summary(conn, row["id"]) for row in rows]
+    if args.format == "text":
+        if not reviews:
+            scope = f" for {args.merchant}" if args.merchant else ""
+            print(f"No unresolved human-review items{scope}.")
+            return
+        print(f"{'ID':<5} {'CONVERSATION':<14} {'MERCHANT':<14} {'SEVERITY':<10} REASON")
+        for review in reviews:
+            print(
+                f"{review['id']:<5} "
+                f"{review['conversation_id']:<14} "
+                f"{review['merchant_id']:<14} "
+                f"{review['severity']:<10} "
+                f"{review['reason']}"
+            )
+        return
     emit({"ok": True, "reviews": reviews}, args.format)
 
 
