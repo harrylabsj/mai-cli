@@ -61,7 +61,9 @@ python3 scripts/mai.py --db ./mai-cli.sqlite buyer ask \
   --format json
 
 python3 scripts/mai.py --db ./mai-cli.sqlite agent run --merchant seller-a --once --format json
+python3 scripts/mai.py --db ./mai-cli.sqlite buyer summarize --conversation CONV-0001
 python3 scripts/mai.py --db ./mai-cli.sqlite buyer summarize --conversation CONV-0001 --format json
+python3 scripts/mai.py --db ./mai-cli.sqlite buyer intent --conversation CONV-0001 --intent purchase_intent --text "Buyer wants merchant confirmation."
 python3 scripts/mai.py --db ./mai-cli.sqlite buyer intent --conversation CONV-0001 --intent purchase_intent --text "Buyer wants merchant confirmation." --format json
 
 printf 'longjing gift delivery today\n/summary\n/quit\n' | \

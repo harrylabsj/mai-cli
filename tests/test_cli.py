@@ -209,6 +209,86 @@ class MaiCliTest(unittest.TestCase):
             self.assertIn("Warnings:", output)
             self.assertNotIn('"conversation"', output)
 
+    def test_buyer_summarize_text_output_lists_consultation_state(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.run_cli(db_file, "merchant", "create", "--id", "seller-a", "--name", "West Lake Tea")
+            self.run_cli(
+                db_file,
+                "product",
+                "add",
+                "--merchant",
+                "seller-a",
+                "--sku",
+                "tea-a",
+                "--title",
+                "Longjing Gift Box",
+                "--price",
+                "88",
+                "--stock",
+                "5",
+                "--tags",
+                "longjing,gift",
+            )
+            self.run_cli(
+                db_file,
+                "buyer",
+                "ask",
+                "--buyer",
+                "alice",
+                "--text",
+                "longjing gift delivery today",
+                "--format",
+                "json",
+            )
+
+            output = self.run_cli(db_file, "buyer", "summarize", "--conversation", "CONV-0001")
+
+            self.assertIn("Conversation: CONV-0001", output)
+            self.assertIn("Buyer: alice", output)
+            self.assertIn("Merchant: seller-a", output)
+            self.assertIn("Option: tea-a - Longjing Gift Box", output)
+            self.assertIn("Status: waiting_merchant", output)
+            self.assertIn("Next action:", output)
+            self.assertNotIn('"conversation"', output)
+
+    def test_buyer_intent_text_output_summarizes_recorded_intent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.run_cli(db_file, "merchant", "create", "--id", "seller-a", "--name", "West Lake Tea")
+            self.run_cli(
+                db_file,
+                "conversation",
+                "create",
+                "--buyer",
+                "alice",
+                "--merchant",
+                "seller-a",
+                "--text",
+                "Is this available?",
+                "--format",
+                "json",
+            )
+
+            output = self.run_cli(
+                db_file,
+                "buyer",
+                "intent",
+                "--conversation",
+                "CONV-0001",
+                "--intent",
+                "purchase_intent",
+                "--text",
+                "Buyer wants merchant confirmation.",
+            )
+
+            self.assertIn("Buyer intent recorded: 2", output)
+            self.assertIn("Conversation: CONV-0001", output)
+            self.assertIn("Intent: purchase_intent", output)
+            self.assertIn("Status: waiting_merchant", output)
+            self.assertIn("Next actor: merchant_agent", output)
+            self.assertNotIn('"message"', output)
+
     def test_merchant_and_product_update_commands(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"

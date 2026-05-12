@@ -294,12 +294,43 @@ def cmd_channel_ingest(args: argparse.Namespace) -> None:
 def cmd_buyer_summarize(args: argparse.Namespace) -> None:
     with db_session(db_path_from_args(args)) as conn:
         result = buyer_cli.summarize(conn, args.conversation)
+    if args.format == "text":
+        conversation = result["conversation"]
+        print(f"Conversation: {conversation['id']}")
+        print(f"Buyer: {conversation['buyer_id']}")
+        print(f"Merchant: {conversation['merchant_id']}")
+        print(f"Status: {conversation['status']}")
+        print(f"Next actor: {conversation['next_actor']}")
+        option = result.get("option")
+        if option:
+            print(f"Option: {option['sku']} - {option['title']}")
+            print(f"Price: {option['currency']} {option['price']:g}")
+            print(f"Stock: {option['stock']}")
+        missing_facts = result.get("missing_facts") or []
+        if missing_facts:
+            print(f"Missing facts: {', '.join(missing_facts)}")
+        print(f"Next action: {result['next_action']}")
+        warnings = result.get("warnings") or []
+        if warnings:
+            print("Warnings:")
+            for warning in warnings:
+                print(f"- {warning}")
+        return
     emit(result, args.format)
 
 
 def cmd_buyer_intent(args: argparse.Namespace) -> None:
     with db_session(db_path_from_args(args)) as conn:
         result = buyer_cli.record_intent(conn, args.conversation, args.intent, args.text)
+    if args.format == "text":
+        message = result["message"]
+        conversation = result["conversation"]
+        print(f"Buyer intent recorded: {message['id']}")
+        print(f"Conversation: {conversation['id']}")
+        print(f"Intent: {message['intent']}")
+        print(f"Status: {conversation['status']}")
+        print(f"Next actor: {conversation['next_actor']}")
+        return
     emit(result, args.format)
 
 
