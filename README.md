@@ -51,6 +51,12 @@ python3 scripts/mai.py --db ./mai-cli.sqlite buyer ask \
   --buyer alice \
   --text "longjing gift delivery today" \
   --city Hangzhou \
+  --area "West Lake"
+
+python3 scripts/mai.py --db ./mai-cli.sqlite buyer ask \
+  --buyer alice \
+  --text "longjing gift delivery today" \
+  --city Hangzhou \
   --area "West Lake" \
   --format json
 

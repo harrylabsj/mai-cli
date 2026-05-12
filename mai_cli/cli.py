@@ -250,6 +250,29 @@ def cmd_search_merchants(args: argparse.Namespace) -> None:
 def cmd_buyer_ask(args: argparse.Namespace) -> None:
     with db_session(db_path_from_args(args)) as conn:
         result = buyer_cli.ask(conn, args.buyer, args.text, city=args.city or "", area=args.area or "")
+    if args.format == "text":
+        print(f"Buyer: {result['buyer_id']}")
+        conversation = result.get("conversation")
+        selected = result.get("selected")
+        if not conversation or not selected:
+            print("No matching merchant or product found.")
+            warnings = result.get("warnings") or []
+            if warnings:
+                print("Warnings:")
+                for warning in warnings:
+                    print(f"- {warning}")
+            return
+        print(f"Conversation: {conversation['id']}")
+        print(f"Selected: {selected['sku']} - {selected['title']}")
+        print(f"Merchant: {selected['merchant']['name']}")
+        print(f"Status: {conversation['status']}")
+        print(f"Next actor: {conversation['next_actor']}")
+        warnings = result.get("warnings") or []
+        if warnings:
+            print("Warnings:")
+            for warning in warnings:
+                print(f"- {warning}")
+        return
     emit(result, args.format)
 
 

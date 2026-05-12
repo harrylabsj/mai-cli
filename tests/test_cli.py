@@ -156,6 +156,59 @@ class MaiCliTest(unittest.TestCase):
             self.assertIn("West Lake", output)
             self.assertNotIn('"results"', output)
 
+    def test_buyer_ask_text_output_summarizes_selected_consultation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.run_cli(
+                db_file,
+                "merchant",
+                "create",
+                "--id",
+                "seller-a",
+                "--name",
+                "West Lake Tea",
+                "--city",
+                "Hangzhou",
+            )
+            self.run_cli(
+                db_file,
+                "product",
+                "add",
+                "--merchant",
+                "seller-a",
+                "--sku",
+                "tea-a",
+                "--title",
+                "Longjing Gift Box",
+                "--price",
+                "88",
+                "--stock",
+                "5",
+                "--tags",
+                "longjing,gift",
+            )
+
+            output = self.run_cli(
+                db_file,
+                "buyer",
+                "ask",
+                "--buyer",
+                "alice",
+                "--text",
+                "longjing gift delivery today",
+                "--city",
+                "Hangzhou",
+            )
+
+            self.assertIn("Buyer: alice", output)
+            self.assertIn("Conversation: CONV-0001", output)
+            self.assertIn("Selected: tea-a - Longjing Gift Box", output)
+            self.assertIn("Merchant: West Lake Tea", output)
+            self.assertIn("Status: waiting_merchant", output)
+            self.assertIn("Next actor: merchant_agent", output)
+            self.assertIn("Warnings:", output)
+            self.assertNotIn('"conversation"', output)
+
     def test_merchant_and_product_update_commands(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"
