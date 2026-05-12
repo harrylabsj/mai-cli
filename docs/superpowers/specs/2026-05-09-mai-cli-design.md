@@ -376,6 +376,7 @@ Current OpenClaw/Hermes improvement plan:
    - Build a repeatable demo/test where OpenClaw runs the merchant side, Hermes runs the buyer side, and both share one `mai-cli` Marketplace API/database.
    - The demo should complete a consultation through the trusted `mai-cli` state boundary, including buyer message creation, merchant-agent processing, reply or human-review routing, and conversation summary.
    - Success means neither host owns business state; OpenClaw/Hermes only supply agent surfaces and transport/tool execution.
+   - Execution plan: `docs/superpowers/plans/2026-05-13-openclaw-hermes-api-e2e-plan.md`.
 
 2. Host-native tool server with permission mapping.
    - Move beyond CLI wrappers by exposing first-class host tools for OpenClaw/Hermes.
@@ -762,6 +763,7 @@ If choosing the next concrete engineering task, prefer this order:
 1. Add a real OpenClaw merchant + Hermes buyer end-to-end demo/test that proves both hosts can share one `mai-cli` Marketplace API/database and complete a consultation without owning business state.
    - Cover buyer message creation, merchant-agent processing, reply or human-review routing, and conversation summary.
    - Assert that host adapters only call `mai-cli` CLI/API/tool contracts and never write trusted commerce state directly.
+   - Execution plan: `docs/superpowers/plans/2026-05-13-openclaw-hermes-api-e2e-plan.md`.
 2. Add a host-native OpenClaw/Hermes tool server with permission mapping.
    - Map host identity, profile, device, session, and tool scope into `mai-cli` buyer, merchant, merchant-agent, and operator permissions.
    - Record `host`, `session_id`, `actor`, `token_scope`, tool name, result status, error, and latency for every host-visible tool call.
