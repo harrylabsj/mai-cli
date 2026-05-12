@@ -518,6 +518,14 @@ def cmd_conversation_human_review(args: argparse.Namespace) -> None:
         )
         review = _review_summary(conn, flag["id"])
         conversation = conversation_summary(conn, args.conversation)
+    if args.format == "text":
+        print(f"Human review flagged: {review['id']}")
+        print(f"Conversation: {conversation['id']}")
+        print(f"Reason: {review['reason']}")
+        print(f"Severity: {review['severity']}")
+        print(f"Status: {conversation['status']}")
+        print(f"Next actor: {conversation['next_actor']}")
+        return
     emit({"ok": True, "review": review, "conversation": conversation}, args.format)
 
 

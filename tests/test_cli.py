@@ -1038,6 +1038,44 @@ class MaiCliTest(unittest.TestCase):
             self.assertIn("Next actor: -", output)
             self.assertNotIn('"conversation"', output)
 
+    def test_conversation_human_review_text_output_summarizes_flag(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.run_cli(db_file, "merchant", "create", "--id", "seller-a", "--name", "West Lake Tea")
+            self.run_cli(
+                db_file,
+                "conversation",
+                "create",
+                "--buyer",
+                "alice",
+                "--merchant",
+                "seller-a",
+                "--text",
+                "Is this available?",
+                "--format",
+                "json",
+            )
+
+            output = self.run_cli(
+                db_file,
+                "conversation",
+                "human-review",
+                "--conversation",
+                "CONV-0001",
+                "--reason",
+                "low_confidence",
+                "--severity",
+                "urgent",
+            )
+
+            self.assertIn("Human review flagged: 1", output)
+            self.assertIn("Conversation: CONV-0001", output)
+            self.assertIn("Reason: low_confidence", output)
+            self.assertIn("Severity: urgent", output)
+            self.assertIn("Status: human_required", output)
+            self.assertIn("Next actor: merchant_human", output)
+            self.assertNotIn('"review"', output)
+
     def test_agent_rotate_token_command_revokes_old_and_issues_new_token(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"
