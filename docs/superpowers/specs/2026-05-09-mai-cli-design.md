@@ -325,6 +325,7 @@ Priority order:
    - Expiry slice: allow optional TTLs for scoped default merchant-agent tokens through `agent token --ttl-seconds` and `/agents/tokens` payload `ttl_seconds`; expired tokens must fail before the same agent/API-backed actions can run.
    - Inventory slice: allow owning merchants to list scoped default merchant-agent token status through `agent tokens` and `GET /agents/tokens?merchant_id=...` without exposing full token secrets.
    - Rotation slice: allow owning merchants to rotate scoped default merchant-agent tokens through `agent rotate-token` and `/agents/tokens/rotate`, revoking the old token and issuing the replacement in one operation without echoing the old token secret.
+   - Prefix operation slice: allow owners to rotate or revoke by a unique token prefix from the token inventory so routine operations do not require re-exposing full token secrets.
    - Audit slice: append secret-safe `agent_token_issued`, `agent_token_rotated`, and `agent_token_revoked` audit events for token lifecycle operations, and expose merchant-scoped audit search through `audit events` and `GET /audit/events`.
 
 2. HTTP-backed marketplace tool boundary.

@@ -1704,6 +1704,48 @@ class PublicMarketplaceTest(unittest.TestCase):
             )
             self.assertEqual(status, 200)
 
+    def test_agent_token_rotate_api_accepts_unique_token_prefix(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "marketplace.sqlite"
+            app = create_app(db_file)
+
+            status, merchant = self.request(app, "POST", "/merchants", {"id": "seller-a", "name": "West Lake Tea"})
+            self.assertEqual(status, 200)
+            merchant_token = merchant["merchant_token"]
+            status, issued = self.request(
+                app,
+                "POST",
+                "/agents/tokens",
+                {"merchant_id": "seller-a", "merchant_token": merchant_token},
+            )
+            self.assertEqual(status, 200)
+            old_token = issued["agent_token"]
+            status, listed = self.request(
+                app,
+                "GET",
+                "/agents/tokens",
+                query_string="merchant_id=seller-a",
+                headers={"authorization": f"Bearer {merchant_token}"},
+            )
+            self.assertEqual(status, 200)
+            token_prefix = listed["tokens"][0]["token_prefix"]
+
+            status, rotated = self.request(
+                app,
+                "POST",
+                "/agents/tokens/rotate",
+                {"merchant_id": "seller-a", "merchant_token": merchant_token, "token_prefix": token_prefix},
+            )
+            self.assertEqual(status, 200)
+            self.assertNotEqual(rotated["agent_token"], old_token)
+            status, old_denied = self.request(
+                app,
+                "POST",
+                "/agents/heartbeat",
+                {"merchant_id": "seller-a", "_auth_token": old_token},
+            )
+            self.assertEqual(status, 403)
+
     def test_agent_token_lifecycle_api_records_audit_without_secrets(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "marketplace.sqlite"

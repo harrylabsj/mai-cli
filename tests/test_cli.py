@@ -614,6 +614,39 @@ class MaiCliTest(unittest.TestCase):
                 conn.close()
             self.assertTrue(row[0])
 
+    def test_agent_revoke_token_command_accepts_unique_token_prefix(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.run_cli(db_file, "merchant", "create", "--id", "seller-a", "--name", "West Lake Tea")
+            issued = json.loads(
+                self.run_cli(db_file, "agent", "token", "--merchant", "seller-a", "--format", "json")
+            )
+            listed = json.loads(self.run_cli(db_file, "agent", "tokens", "--merchant", "seller-a", "--format", "json"))
+            revoked = json.loads(
+                self.run_cli(
+                    db_file,
+                    "agent",
+                    "revoke-token",
+                    "--merchant",
+                    "seller-a",
+                    "--token-prefix",
+                    listed["tokens"][0]["token_prefix"],
+                    "--format",
+                    "json",
+                )
+            )
+
+            self.assertTrue(revoked["revoked"])
+            conn = sqlite3.connect(db_file)
+            try:
+                row = conn.execute(
+                    "select revoked_at from api_tokens where token = ?",
+                    (issued["agent_token"],),
+                ).fetchone()
+            finally:
+                conn.close()
+            self.assertTrue(row[0])
+
     def test_agent_token_command_accepts_ttl_seconds(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"

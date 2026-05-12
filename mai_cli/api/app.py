@@ -233,6 +233,28 @@ def _agent_token_row(conn: Any, token: str) -> Any:
     ).fetchone()
 
 
+def _resolve_agent_token(conn: Any, merchant_id: str, token: Any = "", token_prefix: Any = "") -> str:
+    resolved = str(token or "")
+    if resolved:
+        return resolved
+    prefix = str(token_prefix or "")
+    if not prefix:
+        raise ValueError("token or token_prefix is required")
+    rows = conn.execute(
+        """
+        select token from api_tokens
+        where merchant_id = ? and role = 'agent' and token like ?
+        order by token
+        """,
+        (merchant_id, f"{prefix}%"),
+    ).fetchall()
+    if not rows:
+        raise AuthError("invalid agent token")
+    if len(rows) > 1:
+        raise ValueError("token_prefix is ambiguous")
+    return str(rows[0]["token"])
+
+
 def _append_agent_token_audit(conn: Any, merchant_id: str, event: str, details: dict[str, Any]) -> None:
     append_audit_event(conn, "", merchant_id, event, details)
 
@@ -704,7 +726,7 @@ def _revoke_agent_token(db_path: str | Path, payload: dict[str, Any]) -> dict[st
     with db_session(db_path) as conn:
         merchant_id = str(payload["merchant_id"])
         _require_merchant_token(conn, merchant_id, payload)
-        token = str(payload["token"])
+        token = _resolve_agent_token(conn, merchant_id, payload.get("token"), payload.get("token_prefix"))
         row = _agent_token_row(conn, token)
         if row is None or row["role"] != "agent" or row["merchant_id"] != merchant_id:
             raise AuthError("invalid agent token")
@@ -732,7 +754,7 @@ def _rotate_agent_token(db_path: str | Path, payload: dict[str, Any]) -> dict[st
     with db_session(db_path) as conn:
         merchant_id = str(payload["merchant_id"])
         _require_merchant_token(conn, merchant_id, payload)
-        old_token = str(payload["token"])
+        old_token = _resolve_agent_token(conn, merchant_id, payload.get("token"), payload.get("token_prefix"))
         row = _agent_token_row(conn, old_token)
         if row is None or row["role"] != "agent" or row["merchant_id"] != merchant_id:
             raise AuthError("invalid agent token")

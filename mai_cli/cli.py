@@ -21,6 +21,7 @@ from mai_cli.api.app import (
     _issue_agent_token,
     _merchant_audit_events,
     _require_merchant_token,
+    _resolve_agent_token,
     create_app,
 )
 from mai_cli.config import DEFAULT_DB_PATH
@@ -748,21 +749,22 @@ def cmd_agent_rotate_token(args: argparse.Namespace) -> None:
         require_merchant(conn, args.merchant)
         if args.merchant_token:
             _require_merchant_token(conn, args.merchant, {"merchant_token": args.merchant_token})
+        token = _resolve_agent_token(conn, args.merchant, args.token, args.token_prefix)
         row = conn.execute(
             """
             select token, role, merchant_id, agent_id, created_at, expires_at, revoked_at
             from api_tokens
             where token = ?
             """,
-            (args.token,),
+            (token,),
         ).fetchone()
         if row is None or row["role"] != "agent" or row["merchant_id"] != args.merchant:
             raise SystemExit("Unknown scoped agent token for merchant")
         revoked_at = row["revoked_at"] or now_iso()
         if not row["revoked_at"]:
-            conn.execute("update api_tokens set revoked_at = ? where token = ?", (revoked_at, args.token))
+            conn.execute("update api_tokens set revoked_at = ? where token = ?", (revoked_at, token))
         new_token, expires_at = _issue_agent_token(conn, args.merchant, row["agent_id"], args.ttl_seconds)
-        previous = _agent_token_row(conn, args.token)
+        previous = _agent_token_row(conn, token)
         replacement = _agent_token_row(conn, new_token)
         append_audit_event(
             conn,
@@ -797,16 +799,17 @@ def cmd_agent_revoke_token(args: argparse.Namespace) -> None:
         require_merchant(conn, args.merchant)
         if args.merchant_token:
             _require_merchant_token(conn, args.merchant, {"merchant_token": args.merchant_token})
+        token = _resolve_agent_token(conn, args.merchant, args.token, args.token_prefix)
         row = conn.execute(
             "select role, merchant_id, agent_id, revoked_at from api_tokens where token = ?",
-            (args.token,),
+            (token,),
         ).fetchone()
         if row is None or row["role"] != "agent" or row["merchant_id"] != args.merchant:
             raise SystemExit("Unknown scoped agent token for merchant")
         revoked_at = row["revoked_at"] or now_iso()
         if not row["revoked_at"]:
-            conn.execute("update api_tokens set revoked_at = ? where token = ?", (revoked_at, args.token))
-        revoked = _agent_token_row(conn, args.token)
+            conn.execute("update api_tokens set revoked_at = ? where token = ?", (revoked_at, token))
+        revoked = _agent_token_row(conn, token)
         append_audit_event(
             conn,
             "",
@@ -1278,14 +1281,18 @@ def build_parser() -> argparse.ArgumentParser:
     agent_tokens.set_defaults(func=cmd_agent_tokens)
     agent_rotate_token = agent_sub.add_parser("rotate-token", help="Rotate a scoped merchant-agent API token")
     agent_rotate_token.add_argument("--merchant", required=True)
-    agent_rotate_token.add_argument("--token", required=True)
+    agent_rotate_token_target = agent_rotate_token.add_mutually_exclusive_group(required=True)
+    agent_rotate_token_target.add_argument("--token")
+    agent_rotate_token_target.add_argument("--token-prefix")
     agent_rotate_token.add_argument("--merchant-token", default="")
     agent_rotate_token.add_argument("--ttl-seconds", type=positive_seconds, default=None, help="Optional new token lifetime in seconds")
     agent_rotate_token.add_argument("--format", choices=["text", "json"], default="text")
     agent_rotate_token.set_defaults(func=cmd_agent_rotate_token)
     agent_revoke_token = agent_sub.add_parser("revoke-token", help="Revoke a scoped merchant-agent API token")
     agent_revoke_token.add_argument("--merchant", required=True)
-    agent_revoke_token.add_argument("--token", required=True)
+    agent_revoke_token_target = agent_revoke_token.add_mutually_exclusive_group(required=True)
+    agent_revoke_token_target.add_argument("--token")
+    agent_revoke_token_target.add_argument("--token-prefix")
     agent_revoke_token.add_argument("--merchant-token", default="")
     agent_revoke_token.add_argument("--format", choices=["text", "json"], default="text")
     agent_revoke_token.set_defaults(func=cmd_agent_revoke_token)
