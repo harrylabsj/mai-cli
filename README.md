@@ -42,6 +42,8 @@ python3 scripts/mai.py --db ./mai-cli.sqlite product add \
 
 python3 scripts/mai.py --db ./mai-cli.sqlite merchant update --id seller-a --hours "10:00-20:00"
 python3 scripts/mai.py --db ./mai-cli.sqlite product update --merchant seller-a --sku tea-a --stock 4 --price 92
+python3 scripts/mai.py --db ./mai-cli.sqlite search products --query "longjing"
+python3 scripts/mai.py --db ./mai-cli.sqlite search products --query "longjing" --format json
 python3 scripts/mai.py --db ./mai-cli.sqlite search merchants --query "west lake" --city Hangzhou --format json
 
 python3 scripts/mai.py --db ./mai-cli.sqlite buyer ask \

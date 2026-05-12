@@ -207,6 +207,22 @@ def cmd_search_products(args: argparse.Namespace) -> None:
             max_price=args.max_price,
             include_out_of_stock=args.include_out_of_stock,
         )
+    if args.format == "text":
+        if not results:
+            query = args.query or "all products"
+            print(f"No products found for {query}.")
+            return
+        print(f"{'SKU':<14} {'STOCK':<6} {'PRICE':<10} {'MERCHANT':<20} TITLE")
+        for product in results:
+            price = f"{product['currency']} {product['price']:g}"
+            print(
+                f"{product['sku']:<14} "
+                f"{product['stock']:<6} "
+                f"{price:<10} "
+                f"{product['merchant']['name']:<20} "
+                f"{product['title']}"
+            )
+        return
     emit({"ok": True, "query": args.query or "", "results": results}, args.format)
 
 
