@@ -101,6 +101,7 @@ python3 scripts/mai.py adapter install-command --host openclaw --dry-run --forma
 The raw conversation lifecycle is available without the API server:
 
 ```bash
+python3 scripts/mai.py --db ./mai-cli.sqlite conversation create --buyer alice --merchant seller-a --sku tea-a --intent ask_stock --text "Is this available?"
 python3 scripts/mai.py --db ./mai-cli.sqlite conversation create --buyer alice --merchant seller-a --sku tea-a --intent ask_stock --text "Is this available?" --format json
 python3 scripts/mai.py --db ./mai-cli.sqlite conversation show --conversation CONV-0001
 python3 scripts/mai.py --db ./mai-cli.sqlite conversation show --conversation CONV-0001 --format json
@@ -122,6 +123,7 @@ python3 scripts/mai.py --db ./mai-cli.sqlite agent show --agent mai-cli-merchant
 python3 scripts/mai.py --db ./mai-cli.sqlite agent show --agent mai-cli-merchant-agent:seller-a --format json
 ```
 
+The default `conversation create` text output returns the new conversation id and routing state.
 The default `conversation show` text output prints the conversation summary, review count, and messages.
 The default `conversation list` text output is a compact status table for quick buyer/merchant queue scans.
 The default `human-review queue` text output is a concise merchant workbench table, `human-review show` prints the review summary plus recent conversation messages, and `human-review resolve` summarizes the resulting conversation status. `--format json` keeps the stable adapter/script output.

@@ -353,6 +353,15 @@ def cmd_conversation_create(args: argparse.Namespace) -> None:
                 structured_payload={"source_id": args.source_id or "buyer-cli"},
             )
             conversation = conversation_summary(conn, conversation["id"])
+    if args.format == "text":
+        print(f"Conversation created: {conversation['id']}")
+        print(f"Buyer: {conversation['buyer_id']}")
+        print(f"Merchant: {conversation['merchant_id']}")
+        if conversation["sku"]:
+            print(f"SKU: {conversation['sku']}")
+        print(f"Status: {conversation['status']}")
+        print(f"Next actor: {conversation['next_actor']}")
+        return
     emit({"ok": True, "conversation": conversation}, args.format)
 
 

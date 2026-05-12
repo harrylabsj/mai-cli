@@ -936,6 +936,30 @@ class MaiCliTest(unittest.TestCase):
             self.assertIn("Is this available?", output)
             self.assertNotIn('"conversation"', output)
 
+    def test_conversation_create_text_output_summarizes_created_conversation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.run_cli(db_file, "merchant", "create", "--id", "seller-a", "--name", "West Lake Tea")
+
+            output = self.run_cli(
+                db_file,
+                "conversation",
+                "create",
+                "--buyer",
+                "alice",
+                "--merchant",
+                "seller-a",
+                "--text",
+                "Is this available?",
+            )
+
+            self.assertIn("Conversation created: CONV-0001", output)
+            self.assertIn("Buyer: alice", output)
+            self.assertIn("Merchant: seller-a", output)
+            self.assertIn("Status: waiting_merchant", output)
+            self.assertIn("Next actor: merchant_agent", output)
+            self.assertNotIn('"conversation"', output)
+
     def test_agent_rotate_token_command_revokes_old_and_issues_new_token(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"
