@@ -14,7 +14,7 @@ from mai_cli.adapters import hermes, openclaw
 from mai_cli.adapters.mai_legacy import import_json_store
 from mai_cli.agents import buyer_cli, merchant_agent, merchant_daemon
 from mai_cli.agents.tools import HTTPMerchantAgentTools
-from mai_cli.api.app import _agent_token_summary, _default_merchant_agent_id, _issue_agent_token, _require_merchant_token, create_app
+from mai_cli.api.app import _agent_token_row, _agent_token_summary, _default_merchant_agent_id, _issue_agent_token, _require_merchant_token, create_app
 from mai_cli.config import DEFAULT_DB_PATH
 from mai_cli.core.catalog import (
     create_merchant,
@@ -696,6 +696,14 @@ def cmd_agent_token(args: argparse.Namespace) -> None:
             _require_merchant_token(conn, args.merchant, {"merchant_token": args.merchant_token})
         agent_id = _default_merchant_agent_id(args.merchant)
         token, expires_at = _issue_agent_token(conn, args.merchant, agent_id, args.ttl_seconds)
+        issued = _agent_token_row(conn, token)
+        append_audit_event(
+            conn,
+            "",
+            args.merchant,
+            "agent_token_issued",
+            {"agent_id": agent_id, "token": _agent_token_summary(issued)},
+        )
     emit(
         {
             "ok": True,
@@ -746,14 +754,20 @@ def cmd_agent_rotate_token(args: argparse.Namespace) -> None:
         if not row["revoked_at"]:
             conn.execute("update api_tokens set revoked_at = ? where token = ?", (revoked_at, args.token))
         new_token, expires_at = _issue_agent_token(conn, args.merchant, row["agent_id"], args.ttl_seconds)
-        previous = conn.execute(
-            """
-            select token, role, merchant_id, agent_id, created_at, expires_at, revoked_at
-            from api_tokens
-            where token = ?
-            """,
-            (args.token,),
-        ).fetchone()
+        previous = _agent_token_row(conn, args.token)
+        replacement = _agent_token_row(conn, new_token)
+        append_audit_event(
+            conn,
+            "",
+            args.merchant,
+            "agent_token_rotated",
+            {
+                "agent_id": row["agent_id"],
+                "revoked_at": revoked_at,
+                "previous_token": _agent_token_summary(previous),
+                "new_token": _agent_token_summary(replacement),
+            },
+        )
     emit(
         {
             "ok": True,
@@ -784,6 +798,14 @@ def cmd_agent_revoke_token(args: argparse.Namespace) -> None:
         revoked_at = row["revoked_at"] or now_iso()
         if not row["revoked_at"]:
             conn.execute("update api_tokens set revoked_at = ? where token = ?", (revoked_at, args.token))
+        revoked = _agent_token_row(conn, args.token)
+        append_audit_event(
+            conn,
+            "",
+            args.merchant,
+            "agent_token_revoked",
+            {"agent_id": row["agent_id"], "revoked_at": revoked_at, "token": _agent_token_summary(revoked)},
+        )
     emit(
         {
             "ok": True,

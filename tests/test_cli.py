@@ -755,6 +755,59 @@ class MaiCliTest(unittest.TestCase):
             self.assertEqual(new_row[0], rotated["expires_at"])
             self.assertEqual(new_row[1], "")
 
+    def test_agent_token_cli_lifecycle_records_audit_without_secrets(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.run_cli(db_file, "merchant", "create", "--id", "seller-a", "--name", "West Lake Tea")
+            issued = json.loads(
+                self.run_cli(db_file, "agent", "token", "--merchant", "seller-a", "--ttl-seconds", "3600", "--format", "json")
+            )
+            old_token = issued["agent_token"]
+            rotated = json.loads(
+                self.run_cli(
+                    db_file,
+                    "agent",
+                    "rotate-token",
+                    "--merchant",
+                    "seller-a",
+                    "--token",
+                    old_token,
+                    "--ttl-seconds",
+                    "7200",
+                    "--format",
+                    "json",
+                )
+            )
+            new_token = rotated["agent_token"]
+            revoked = json.loads(
+                self.run_cli(
+                    db_file,
+                    "agent",
+                    "revoke-token",
+                    "--merchant",
+                    "seller-a",
+                    "--token",
+                    new_token,
+                    "--format",
+                    "json",
+                )
+            )
+
+            conn = sqlite3.connect(db_file)
+            try:
+                rows = conn.execute(
+                    "select actor, event, details_json from audit_events where conversation_id = '' order by id"
+                ).fetchall()
+            finally:
+                conn.close()
+            self.assertEqual([row[1] for row in rows], ["agent_token_issued", "agent_token_rotated", "agent_token_revoked"])
+            self.assertTrue(all(row[0] == "seller-a" for row in rows))
+            serialized = json.dumps([json.loads(row[2]) for row in rows], sort_keys=True)
+            self.assertNotIn(old_token, serialized)
+            self.assertNotIn(new_token, serialized)
+            self.assertIn(issued["agent_id"], serialized)
+            self.assertIn(revoked["revoked_at"], serialized)
+
     def test_human_review_workbench_shows_and_resolves_one_review_by_id(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"

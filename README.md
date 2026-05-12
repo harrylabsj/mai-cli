@@ -140,6 +140,7 @@ python3 scripts/mai.py --db ./mai-cli.sqlite agent revoke-token --merchant selle
 ```
 
 Use `agent token` locally, or `POST /agents/tokens` with a merchant token over the API, to issue a narrower token for the default merchant agent. Add `--ttl-seconds` locally, or `ttl_seconds` in the API payload, to issue an expiring scoped token. Use `agent tokens` locally, or `GET /agents/tokens?merchant_id=...` with a merchant Bearer token, to list scoped token status without exposing full token secrets. Use `agent rotate-token` locally, or `POST /agents/tokens/rotate`, to revoke an old scoped agent token and issue a replacement in one step. Use `agent revoke-token` locally, or `POST /agents/tokens/revoke` with a merchant token over the API, to revoke a scoped agent token. API-backed agent runs accept `--agent-token` or `MAI_AGENT_TOKEN` for that scoped token, while `--merchant-token` and `MAI_MERCHANT_TOKEN` remain available for local demos.
+Agent token issue, rotate, and revoke operations append audit events with token status hints, never the full token secret.
 Set `MAI_MARKETPLACE_API_URL` or `MAI_API_URL` to omit `--api-url` from repeated agent runs or background starts. `agent start --api-url` passes credentials to the child process through environment variables and keeps tokens out of the recorded pid command.
 
 ## Marketplace API

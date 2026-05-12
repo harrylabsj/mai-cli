@@ -1703,6 +1703,53 @@ class PublicMarketplaceTest(unittest.TestCase):
             )
             self.assertEqual(status, 200)
 
+    def test_agent_token_lifecycle_api_records_audit_without_secrets(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "marketplace.sqlite"
+            app = create_app(db_file)
+
+            status, merchant = self.request(app, "POST", "/merchants", {"id": "seller-a", "name": "West Lake Tea"})
+            self.assertEqual(status, 200)
+            merchant_token = merchant["merchant_token"]
+            status, issued = self.request(
+                app,
+                "POST",
+                "/agents/tokens",
+                {"merchant_id": "seller-a", "merchant_token": merchant_token, "ttl_seconds": 3600},
+            )
+            self.assertEqual(status, 200)
+            old_token = issued["agent_token"]
+            status, rotated = self.request(
+                app,
+                "POST",
+                "/agents/tokens/rotate",
+                {"merchant_id": "seller-a", "merchant_token": merchant_token, "token": old_token, "ttl_seconds": 7200},
+            )
+            self.assertEqual(status, 200)
+            new_token = rotated["agent_token"]
+            status, revoked = self.request(
+                app,
+                "POST",
+                "/agents/tokens/revoke",
+                {"merchant_id": "seller-a", "merchant_token": merchant_token, "token": new_token},
+            )
+            self.assertEqual(status, 200)
+
+            conn = sqlite3.connect(db_file)
+            try:
+                rows = conn.execute(
+                    "select actor, event, details_json from audit_events where conversation_id = '' order by id"
+                ).fetchall()
+            finally:
+                conn.close()
+            self.assertEqual([row[1] for row in rows], ["agent_token_issued", "agent_token_rotated", "agent_token_revoked"])
+            self.assertTrue(all(row[0] == "seller-a" for row in rows))
+            serialized = json.dumps([json.loads(row[2]) for row in rows], sort_keys=True)
+            self.assertNotIn(old_token, serialized)
+            self.assertNotIn(new_token, serialized)
+            self.assertIn(issued["agent_id"], serialized)
+            self.assertIn(revoked["revoked_at"], serialized)
+
     def test_api_exposes_conversation_agent_and_human_review_lifecycle(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "marketplace.sqlite"

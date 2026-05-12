@@ -220,6 +220,21 @@ def _agent_token_summary(row: Any) -> dict[str, Any]:
     }
 
 
+def _agent_token_row(conn: Any, token: str) -> Any:
+    return conn.execute(
+        """
+        select token, role, merchant_id, agent_id, created_at, expires_at, revoked_at
+        from api_tokens
+        where token = ?
+        """,
+        (token,),
+    ).fetchone()
+
+
+def _append_agent_token_audit(conn: Any, merchant_id: str, event: str, details: dict[str, Any]) -> None:
+    append_audit_event(conn, "", merchant_id, event, details)
+
+
 def _issue_merchant_token(conn: Any, merchant_id: str) -> str:
     token = f"mai_{merchant_id}_{secrets.token_urlsafe(18)}"
     conn.execute(
@@ -634,6 +649,13 @@ def _create_agent_token(db_path: str | Path, payload: dict[str, Any]) -> dict[st
         if agent_id != _default_merchant_agent_id(merchant_id):
             raise AuthError(f"Agent {agent_id} cannot act for merchant {merchant_id}")
         token, expires_at = _issue_agent_token(conn, merchant_id, agent_id, payload.get("ttl_seconds"))
+        issued = _agent_token_row(conn, token)
+        _append_agent_token_audit(
+            conn,
+            merchant_id,
+            "agent_token_issued",
+            {"agent_id": agent_id, "token": _agent_token_summary(issued)},
+        )
         return {"ok": True, "merchant_id": merchant_id, "agent_id": agent_id, "agent_token": token, "expires_at": expires_at}
 
 
@@ -660,15 +682,19 @@ def _revoke_agent_token(db_path: str | Path, payload: dict[str, Any]) -> dict[st
         merchant_id = str(payload["merchant_id"])
         _require_merchant_token(conn, merchant_id, payload)
         token = str(payload["token"])
-        row = conn.execute(
-            "select role, merchant_id, agent_id, revoked_at from api_tokens where token = ?",
-            (token,),
-        ).fetchone()
+        row = _agent_token_row(conn, token)
         if row is None or row["role"] != "agent" or row["merchant_id"] != merchant_id:
             raise AuthError("invalid agent token")
         revoked_at = row["revoked_at"] or now_iso()
         if not row["revoked_at"]:
             conn.execute("update api_tokens set revoked_at = ? where token = ?", (revoked_at, token))
+        revoked = _agent_token_row(conn, token)
+        _append_agent_token_audit(
+            conn,
+            merchant_id,
+            "agent_token_revoked",
+            {"agent_id": row["agent_id"], "revoked_at": revoked_at, "token": _agent_token_summary(revoked)},
+        )
         return {
             "ok": True,
             "revoked": True,
@@ -684,28 +710,26 @@ def _rotate_agent_token(db_path: str | Path, payload: dict[str, Any]) -> dict[st
         merchant_id = str(payload["merchant_id"])
         _require_merchant_token(conn, merchant_id, payload)
         old_token = str(payload["token"])
-        row = conn.execute(
-            """
-            select token, role, merchant_id, agent_id, created_at, expires_at, revoked_at
-            from api_tokens
-            where token = ?
-            """,
-            (old_token,),
-        ).fetchone()
+        row = _agent_token_row(conn, old_token)
         if row is None or row["role"] != "agent" or row["merchant_id"] != merchant_id:
             raise AuthError("invalid agent token")
         revoked_at = row["revoked_at"] or now_iso()
         if not row["revoked_at"]:
             conn.execute("update api_tokens set revoked_at = ? where token = ?", (revoked_at, old_token))
         new_token, expires_at = _issue_agent_token(conn, merchant_id, row["agent_id"], payload.get("ttl_seconds"))
-        previous = conn.execute(
-            """
-            select token, role, merchant_id, agent_id, created_at, expires_at, revoked_at
-            from api_tokens
-            where token = ?
-            """,
-            (old_token,),
-        ).fetchone()
+        previous = _agent_token_row(conn, old_token)
+        replacement = _agent_token_row(conn, new_token)
+        _append_agent_token_audit(
+            conn,
+            merchant_id,
+            "agent_token_rotated",
+            {
+                "agent_id": row["agent_id"],
+                "revoked_at": revoked_at,
+                "previous_token": _agent_token_summary(previous),
+                "new_token": _agent_token_summary(replacement),
+            },
+        )
         return {
             "ok": True,
             "rotated": True,

@@ -61,3 +61,4 @@ python3 scripts/mai.py --db ./mai-cli.sqlite agent revoke-token --merchant selle
 ```
 
 The Marketplace API equivalents are `POST /agents/tokens` with optional `ttl_seconds`, `GET /agents/tokens?merchant_id=...`, `POST /agents/tokens/rotate`, and `POST /agents/tokens/revoke`, all authenticated by the owning merchant token. Token list and rotation responses expose status and old-token hints, not full old token secrets. Expired or revoked agent tokens are rejected before heartbeat, message processing, reply, close, human-review, or API-backed LLM tool actions can run.
+Issue, rotate, and revoke operations append `agent_token_issued`, `agent_token_rotated`, and `agent_token_revoked` audit events under the merchant actor. Audit details include token summaries only, not complete token secrets.
