@@ -268,6 +268,65 @@ OpenClaw and Hermes remain optional adapters. They should call the same marketpl
 
 Hermes and OpenClaw are general-purpose agent platforms. `mai-cli` is a vertical commerce runtime, so it should not copy every platform feature. The right product boundary is to keep commerce state, rules, permissions, and conversation orchestration inside `mai-cli`, while integrating the platform capabilities that are necessary for buyer and merchant collaboration.
 
+Borrowable platform capabilities:
+
+1. Gateway and channel abstractions.
+   - Borrow the idea of host-managed gateways, devices, pairing, and webhook adapters.
+   - Adapt it into a commerce-safe ingress/egress layer where `mai-cli` owns buyer identity mapping, idempotency, conversation routing, and audit records.
+   - Do not let a host channel directly decide merchant ownership, buyer ownership, order state, or review status.
+
+2. Native tool registry and permission scopes.
+   - Borrow the platform model where agents call typed tools through an explicit registry instead of shelling out ad hoc commands.
+   - Adapt it into `mai-cli` host tools with scoped buyer, merchant, merchant-agent, and operator permissions.
+   - Every host-visible tool should have a declared scope, owner check, audit event, and deterministic error shape.
+
+3. Profiles, sessions, and isolated workspaces.
+   - Borrow host support for profiles, sessions, device identities, and isolated agent workspaces.
+   - Adapt it into `mai-cli profile` concepts for merchants, demo databases, staging databases, buyer test sessions, and environment switching.
+   - Profiles should isolate database path, API URL, credentials, adapter roots, and demo fixtures.
+
+4. Long-running agent lifecycle management.
+   - Borrow platform expectations around resident agents, lifecycle state, logs, restart behavior, and observable execution.
+   - Adapt it into durable worker leases, scheduled polling, retry policies, crash recovery, task records, and agent heartbeat dashboards.
+   - Avoid relying only on local pid files once agents run across API boundaries or containers.
+
+5. Memory retrieval and contextual grounding.
+   - Borrow the idea of agent-accessible memory, but make it domain-specific instead of general personal memory.
+   - Store buyer preferences, merchant policies, FAQ answers, delivery constraints, prior consultation outcomes, and human-reviewed response patterns.
+   - Retrieval must be scoped by buyer, merchant, conversation, and actor role, with redaction for cross-merchant and cross-buyer access.
+
+6. Human handoff and review flows.
+   - Borrow platform patterns for pausing automation, routing to a human, and resuming after a decision.
+   - Adapt them into merchant/operator queues for low confidence, suspicious content, bargaining, low stock, unclear delivery, and policy exceptions.
+   - Human decisions should become durable `mai-cli` records, not host-local notes.
+
+7. Tool-call observability.
+   - Borrow detailed host/session/tool execution traces.
+   - Adapt them into audit search that records host, session id, actor, token scope, tool name, inputs category, result status, error, latency, and model/provider metadata when available.
+   - Keep secrets and buyer private content out of routine audit summaries.
+
+8. Model routing and fallback controls.
+   - Borrow platform-level model selection, fallback, retry, and streaming conventions.
+   - Adapt them into merchant-configurable deterministic-vs-LLM policy, bounded tool budgets, provider auth isolation, cost logs, latency logs, and deterministic fallback content.
+   - The trusted policy engine should enforce forbidden claims and ownership checks outside prompts.
+
+9. Packaging and install ergonomics.
+   - Borrow host-friendly install, inspect, doctor, and update flows.
+   - Adapt them into `mai-cli adapter inspect|doctor|install-command` plus version checks, stale symlink detection, DB path validation, API reachability checks, and skill/tool manifest checks.
+   - Setup failures should be visible before a demo starts.
+
+10. Multi-agent demo harnesses.
+    - Borrow platform habits of proving agent collaboration through repeatable sessions.
+    - Adapt them into a first-party demo harness where Hermes acts as buyer, OpenClaw acts as merchant, and `mai-cli` owns the marketplace API/database.
+    - The harness should verify no host bypasses commerce permissions or writes business state outside `mai-cli`.
+
+Boundaries that `mai-cli` should not copy directly:
+
+- Do not make `mai-cli` a general-purpose agent host; keep it focused on local commerce consultation.
+- Do not let host memory, host sessions, or host workflow state become the source of truth for merchant, product, stock, delivery, conversation, review, audit, quote, or transaction records.
+- Do not add order/payment/fulfillment behavior just because a host can automate tools; require a separate transaction design and human-confirmed commercial state first.
+- Do not trust prompt instructions for business policy; enforce ownership, scope, human-review triggers, and forbidden transaction claims in trusted code.
+
 Prioritized gaps:
 
 1. Real message-channel integration.
@@ -310,6 +369,49 @@ Prioritized gaps:
 10. Merchant-confirmed quote drafts before orders.
     - Do not jump directly to orders, payment, or fulfillment.
     - Add `quote_draft` and `merchant_confirmed_quote` as pre-transaction records so the system can capture a merchant-confirmed commercial answer without reserving stock, charging payment, or claiming delivery success.
+
+Current OpenClaw/Hermes improvement plan:
+
+1. Real OpenClaw merchant + Hermes buyer end-to-end demo.
+   - Build a repeatable demo/test where OpenClaw runs the merchant side, Hermes runs the buyer side, and both share one `mai-cli` Marketplace API/database.
+   - The demo should complete a consultation through the trusted `mai-cli` state boundary, including buyer message creation, merchant-agent processing, reply or human-review routing, and conversation summary.
+   - Success means neither host owns business state; OpenClaw/Hermes only supply agent surfaces and transport/tool execution.
+
+2. Host-native tool server with permission mapping.
+   - Move beyond CLI wrappers by exposing first-class host tools for OpenClaw/Hermes.
+   - Map host identity, profile, device, session, and tool scope into `mai-cli` buyer, merchant, merchant-agent, and operator permissions before any state mutation.
+   - Record host, session id, actor, token scope, tool name, status, and error in audit events for every host-visible tool call.
+
+3. Durable worker leases and scheduling.
+   - Replace single-terminal assumptions with durable task and lease records for resident merchant agents.
+   - Add scheduler support, retry policy, lease expiry, crash recovery, and task-level observability so multiple workers can coordinate safely.
+   - Keep direct SQLite polling available for local demos, but make API-backed workers the preferred reliable boundary.
+
+4. Merchant/operator review workbench.
+   - Expand the current human-review queue into a practical merchant/operator workflow.
+   - Include pending replies, low stock, bargaining, suspicious content, unclear delivery, approve, reply, reject, close, and escalate actions.
+   - This workbench should remain inside `mai-cli` so human-in-the-loop decisions do not depend on host-specific OpenClaw/Hermes workflows.
+
+5. Real channel bridges.
+   - Implement WhatsApp, Telegram, Slack, and web chat bridges on top of the existing `channel ingest` and `/channels/messages` boundary.
+   - Preserve channel identity, external message id, delivery state, and reply routing so external users can continue a consultation from the original channel.
+   - Keep idempotency mandatory for retried webhook deliveries.
+
+6. Commerce-specific memory and preference layer.
+   - Add structured buyer preferences, merchant policies, frequently answered questions, delivery constraints, and prior consultation outcomes.
+   - Agents may retrieve this memory only through scoped tools that enforce ownership and redact data outside the current actor boundary.
+
+7. LLM runtime governance.
+   - Add model fallback, tool budgets, cost and latency logs, streaming responses, provider auth isolation, and deterministic fallback controls.
+   - Let merchants choose between deterministic agents and LLM-backed agents per policy, not per prompt convention.
+
+8. Security and deployment readiness.
+   - Add rate limits, request logs, secret storage, host consent, device pairing, reviewable permission grants, Postgres support, migrations, backup/restore, and deployment health checks.
+   - Treat public deployment as a separate hardening milestone after local commerce flows and host demos are stable.
+
+9. Pre-transaction quote drafts.
+   - Add `quote_draft` and `merchant_confirmed_quote` before any order/payment/fulfillment system.
+   - These records capture merchant-confirmed commercial answers without reserving inventory, charging payment, or claiming delivery success.
 
 ### Independent Agent Runtime Roadmap
 
@@ -360,7 +462,7 @@ Priority order:
    - Add Postgres, migrations, token rotation, rate limits, request logs, backup/restore, and multi-worker-safe leases only after the local deterministic runtime is stable.
    - Keep orders, payment, escrow, refunds, and courier dispatch behind a separate transaction design.
 
-Recommended next build sequence: channel idempotency first, HTTP-backed tool boundary second, then the LLM execution loop. This turns `mai-cli` from a CLI/tool package into an independently safe agent runtime.
+Recommended next build sequence: real OpenClaw merchant + Hermes buyer E2E demo first, host-native tool server permission mapping second, durable worker leases/scheduling third, and merchant/operator review workbench fourth. Channel bridges, commerce memory, LLM governance, security hardening, hosted readiness, and pre-transaction quote drafts follow after this core collaboration path is proven.
 
 ## Internal Agent Protocol
 
