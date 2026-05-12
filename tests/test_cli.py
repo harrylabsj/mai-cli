@@ -286,6 +286,18 @@ class MaiCliTest(unittest.TestCase):
 
             self.assertEqual(constructed[0]["base_url"], "http://127.0.0.1:8765")
 
+    def test_api_routes_json_includes_route_methods(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+
+            output = self.run_cli(db_file, "api", "routes", "--format", "json")
+
+            result = json.loads(output)
+            self.assertIn("/agents/tokens", result["routes"])
+            routes_by_path = {route["path"]: route["methods"] for route in result["route_details"]}
+            self.assertEqual(routes_by_path["/agents/tokens"], ["GET", "POST"])
+            self.assertEqual(routes_by_path["/audit/events"], ["GET"])
+
     def test_agent_run_can_loop_with_http_marketplace_tools_until_stop_file(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"

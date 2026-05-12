@@ -987,13 +987,29 @@ def cmd_legacy_import(args: argparse.Namespace) -> None:
 
 def cmd_api_routes(args: argparse.Namespace) -> None:
     app = create_app(db_path_from_args(args))
-    routes = sorted({route.path for route in getattr(app, "routes", []) if hasattr(route, "path")})
+    route_methods: dict[str, set[str]] = {}
+    for route in getattr(app, "routes", []):
+        path = getattr(route, "path", "")
+        if not path:
+            continue
+        methods = {
+            str(method)
+            for method in getattr(route, "methods", set())
+            if str(method) not in {"HEAD", "OPTIONS"}
+        }
+        route_methods.setdefault(path, set()).update(methods)
+    routes = sorted(route_methods)
+    route_details = [
+        {"path": path, "methods": sorted(methods)}
+        for path, methods in sorted(route_methods.items())
+    ]
     emit(
         {
             "ok": True,
             "title": getattr(app, "title", "mai-cli Marketplace API"),
             "fastapi_available": bool(getattr(getattr(app, "state", None), "fastapi_available", False)),
             "routes": routes,
+            "route_details": route_details,
         },
         args.format,
     )
