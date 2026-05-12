@@ -54,6 +54,13 @@ def emit(value: Any, fmt: str) -> None:
             print(json.dumps(value, ensure_ascii=False, sort_keys=True))
 
 
+def positive_seconds(value: str) -> int:
+    seconds = int(value)
+    if seconds <= 0:
+        raise argparse.ArgumentTypeError("must be greater than 0")
+    return seconds
+
+
 def db_path_from_args(args: argparse.Namespace) -> Path:
     return Path(getattr(args, "agent_db", None) or args.db or args.data or DEFAULT_DB_PATH).expanduser()
 
@@ -688,13 +695,14 @@ def cmd_agent_token(args: argparse.Namespace) -> None:
         if args.merchant_token:
             _require_merchant_token(conn, args.merchant, {"merchant_token": args.merchant_token})
         agent_id = _default_merchant_agent_id(args.merchant)
-        token = _issue_agent_token(conn, args.merchant, agent_id)
+        token, expires_at = _issue_agent_token(conn, args.merchant, agent_id, args.ttl_seconds)
     emit(
         {
             "ok": True,
             "merchant_id": args.merchant,
             "agent_id": agent_id,
             "agent_token": token,
+            "expires_at": expires_at,
             "message": f"Agent token issued for {agent_id}: {token}",
         },
         args.format,
@@ -1160,6 +1168,7 @@ def build_parser() -> argparse.ArgumentParser:
     agent_token = agent_sub.add_parser("token", help="Issue a scoped merchant-agent API token")
     agent_token.add_argument("--merchant", required=True)
     agent_token.add_argument("--merchant-token", default="")
+    agent_token.add_argument("--ttl-seconds", type=positive_seconds, default=None, help="Optional scoped token lifetime in seconds")
     agent_token.add_argument("--format", choices=["text", "json"], default="text")
     agent_token.set_defaults(func=cmd_agent_token)
     agent_revoke_token = agent_sub.add_parser("revoke-token", help="Revoke a scoped merchant-agent API token")

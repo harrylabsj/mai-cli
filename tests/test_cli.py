@@ -4,7 +4,7 @@ import sqlite3
 import sys
 import tempfile
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
@@ -613,6 +613,52 @@ class MaiCliTest(unittest.TestCase):
             finally:
                 conn.close()
             self.assertTrue(row[0])
+
+    def test_agent_token_command_accepts_ttl_seconds(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.run_cli(db_file, "merchant", "create", "--id", "seller-a", "--name", "West Lake Tea")
+            issued = json.loads(
+                self.run_cli(
+                    db_file,
+                    "agent",
+                    "token",
+                    "--merchant",
+                    "seller-a",
+                    "--ttl-seconds",
+                    "3600",
+                    "--format",
+                    "json",
+                )
+            )
+
+            self.assertTrue(issued["expires_at"])
+            conn = sqlite3.connect(db_file)
+            try:
+                row = conn.execute(
+                    "select expires_at from api_tokens where token = ?",
+                    (issued["agent_token"],),
+                ).fetchone()
+            finally:
+                conn.close()
+            self.assertEqual(row[0], issued["expires_at"])
+
+    def test_agent_token_command_rejects_non_positive_ttl_seconds(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.run_cli(db_file, "merchant", "create", "--id", "seller-a", "--name", "West Lake Tea")
+            with self.assertRaises(SystemExit), redirect_stderr(StringIO()):
+                self.run_cli(
+                    db_file,
+                    "agent",
+                    "token",
+                    "--merchant",
+                    "seller-a",
+                    "--ttl-seconds",
+                    "0",
+                    "--format",
+                    "json",
+                )
 
     def test_human_review_workbench_shows_and_resolves_one_review_by_id(self):
         with tempfile.TemporaryDirectory() as tmp:

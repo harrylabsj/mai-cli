@@ -116,6 +116,7 @@ SCHEMA = [
         agent_id text not null default '',
         conversation_id text not null default '',
         revoked_at text not null default '',
+        expires_at text not null default '',
         created_at text not null
     )
     """,
@@ -180,5 +181,6 @@ EXTRA_COLUMNS = {
         ("agent_id", "text not null default ''"),
         ("conversation_id", "text not null default ''"),
         ("revoked_at", "text not null default ''"),
+        ("expires_at", "text not null default ''"),
     ],
 }

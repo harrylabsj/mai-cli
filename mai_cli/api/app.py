@@ -187,6 +187,19 @@ def _payload_with_auth(payload: dict[str, Any], authorization: Any = "") -> dict
     return merged
 
 
+def _expires_at_from_ttl(ttl_seconds: Any) -> str:
+    if ttl_seconds in (None, ""):
+        return ""
+    seconds = int(ttl_seconds)
+    if seconds <= 0:
+        raise ValueError("ttl_seconds must be greater than 0")
+    return (datetime.now() + timedelta(seconds=seconds)).replace(microsecond=0).isoformat()
+
+
+def _token_is_expired(expires_at: str) -> bool:
+    return bool(expires_at and expires_at <= now_iso())
+
+
 def _issue_merchant_token(conn: Any, merchant_id: str) -> str:
     token = f"mai_{merchant_id}_{secrets.token_urlsafe(18)}"
     conn.execute(
@@ -199,16 +212,17 @@ def _issue_merchant_token(conn: Any, merchant_id: str) -> str:
     return token
 
 
-def _issue_agent_token(conn: Any, merchant_id: str, agent_id: str) -> str:
+def _issue_agent_token(conn: Any, merchant_id: str, agent_id: str, ttl_seconds: Any = None) -> tuple[str, str]:
     token = f"mai_agent_{merchant_id}_{secrets.token_urlsafe(18)}"
+    expires_at = _expires_at_from_ttl(ttl_seconds)
     conn.execute(
         """
-        insert into api_tokens(token, role, merchant_id, buyer_id, agent_id, created_at)
-        values (?, 'agent', ?, '', ?, ?)
+        insert into api_tokens(token, role, merchant_id, buyer_id, agent_id, expires_at, created_at)
+        values (?, 'agent', ?, '', ?, ?, ?)
         """,
-        (token, merchant_id, agent_id, now_iso()),
+        (token, merchant_id, agent_id, expires_at, now_iso()),
     )
-    return token
+    return token, expires_at
 
 
 def _issue_buyer_token(conn: Any, buyer_id: str, conversation_id: str) -> str:
@@ -228,13 +242,15 @@ def _require_api_token(conn: Any, payload: dict[str, Any], missing_error: str = 
     if not token:
         raise AuthError(missing_error)
     row = conn.execute(
-        "select role, merchant_id, buyer_id, agent_id, conversation_id, revoked_at from api_tokens where token = ?",
+        "select role, merchant_id, buyer_id, agent_id, conversation_id, revoked_at, expires_at from api_tokens where token = ?",
         (token,),
     ).fetchone()
     if row is None:
         raise AuthError("invalid authorization token")
     if row["revoked_at"]:
         raise AuthError("revoked authorization token")
+    if _token_is_expired(row["expires_at"]):
+        raise AuthError("expired authorization token")
     return row
 
 
@@ -242,11 +258,13 @@ def _require_merchant_token(conn: Any, merchant_id: str, payload: dict[str, Any]
     token = _payload_token(payload)
     if not token:
         raise AuthError("merchant token required")
-    row = conn.execute("select role, merchant_id, revoked_at from api_tokens where token = ?", (token,)).fetchone()
+    row = conn.execute("select role, merchant_id, revoked_at, expires_at from api_tokens where token = ?", (token,)).fetchone()
     if row is None or row["role"] != "merchant" or row["merchant_id"] != merchant_id:
         raise AuthError("invalid merchant token")
     if row["revoked_at"]:
         raise AuthError("revoked merchant token")
+    if _token_is_expired(row["expires_at"]):
+        raise AuthError("expired merchant token")
 
 
 def _require_agent_or_merchant_token(conn: Any, merchant_id: str, agent_id: str, payload: dict[str, Any]) -> None:
@@ -255,11 +273,13 @@ def _require_agent_or_merchant_token(conn: Any, merchant_id: str, agent_id: str,
     token = _payload_token(payload)
     if not token:
         raise AuthError("agent or merchant token required")
-    row = conn.execute("select role, merchant_id, agent_id, revoked_at from api_tokens where token = ?", (token,)).fetchone()
+    row = conn.execute("select role, merchant_id, agent_id, revoked_at, expires_at from api_tokens where token = ?", (token,)).fetchone()
     if row is None or row["merchant_id"] != merchant_id:
         raise AuthError("invalid agent or merchant token")
     if row["revoked_at"]:
         raise AuthError("revoked agent or merchant token")
+    if _token_is_expired(row["expires_at"]):
+        raise AuthError("expired agent or merchant token")
     if row["role"] == "merchant":
         return
     if row["role"] == "agent" and row["agent_id"] == agent_id:
@@ -593,8 +613,8 @@ def _create_agent_token(db_path: str | Path, payload: dict[str, Any]) -> dict[st
         agent_id = str(payload.get("agent_id") or _default_merchant_agent_id(merchant_id))
         if agent_id != _default_merchant_agent_id(merchant_id):
             raise AuthError(f"Agent {agent_id} cannot act for merchant {merchant_id}")
-        token = _issue_agent_token(conn, merchant_id, agent_id)
-        return {"ok": True, "merchant_id": merchant_id, "agent_id": agent_id, "agent_token": token}
+        token, expires_at = _issue_agent_token(conn, merchant_id, agent_id, payload.get("ttl_seconds"))
+        return {"ok": True, "merchant_id": merchant_id, "agent_id": agent_id, "agent_token": token, "expires_at": expires_at}
 
 
 def _revoke_agent_token(db_path: str | Path, payload: dict[str, Any]) -> dict[str, Any]:

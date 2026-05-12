@@ -131,13 +131,13 @@ Pid, state, and log files are written under `~/.local/state/mai-cli/` by default
 To run through the Marketplace API boundary instead of direct SQLite access:
 
 ```bash
-python3 scripts/mai.py --db ./mai-cli.sqlite agent token --merchant seller-a --format json
+python3 scripts/mai.py --db ./mai-cli.sqlite agent token --merchant seller-a --ttl-seconds 86400 --format json
 python3 scripts/mai.py agent run --merchant seller-a --once --api-url http://127.0.0.1:8765 --agent-token "$MAI_AGENT_TOKEN" --format json
 python3 scripts/mai.py agent run --merchant seller-a --api-url http://127.0.0.1:8765 --agent-token "$MAI_AGENT_TOKEN" --interval 3
 python3 scripts/mai.py --db ./mai-cli.sqlite agent revoke-token --merchant seller-a --token "$MAI_AGENT_TOKEN" --format json
 ```
 
-Use `agent token` locally, or `POST /agents/tokens` with a merchant token over the API, to issue a narrower token for the default merchant agent. Use `agent revoke-token` locally, or `POST /agents/tokens/revoke` with a merchant token over the API, to revoke a scoped agent token. API-backed agent runs accept `--agent-token` or `MAI_AGENT_TOKEN` for that scoped token, while `--merchant-token` and `MAI_MERCHANT_TOKEN` remain available for local demos.
+Use `agent token` locally, or `POST /agents/tokens` with a merchant token over the API, to issue a narrower token for the default merchant agent. Add `--ttl-seconds` locally, or `ttl_seconds` in the API payload, to issue an expiring scoped token. Use `agent revoke-token` locally, or `POST /agents/tokens/revoke` with a merchant token over the API, to revoke a scoped agent token. API-backed agent runs accept `--agent-token` or `MAI_AGENT_TOKEN` for that scoped token, while `--merchant-token` and `MAI_MERCHANT_TOKEN` remain available for local demos.
 Set `MAI_MARKETPLACE_API_URL` or `MAI_API_URL` to omit `--api-url` from repeated agent runs or background starts. `agent start --api-url` passes credentials to the child process through environment variables and keeps tokens out of the recorded pid command.
 
 ## Marketplace API
@@ -152,7 +152,7 @@ The local API covers catalog, search, conversations, message append/close, agent
 
 External channel adapters can use `POST /channels/messages` with `channel`, `external_user_id`, `text`, and optional `conversation_id`, `city`, `area`, and `external_message_id`. The optional `external_message_id` is an idempotency key for webhook retry safety.
 
-`POST /merchants` returns a local `merchant_token`. Product writes, merchant profile updates, merchant human replies, merchant/operator closes, and human-review resolution require that merchant token in the JSON body as `merchant_token` or as a Bearer token. Agent heartbeats, agent message processing, merchant-agent replies, merchant-agent closes, and merchant-agent human-review flags may use either the merchant token or a scoped agent token. Buyer search and buyer conversation creation remain tokenless for local demos, but created buyer conversations return a conversation-scoped `buyer_token`. Conversation reads, buyer message appends, buyer closes, and human-review queue/detail reads require an owner token: buyer tokens can read or write only their issued conversation, while merchant and agent tokens can read conversations and review queues for their merchant.
+`POST /merchants` returns a local `merchant_token`. Product writes, merchant profile updates, merchant human replies, merchant/operator closes, and human-review resolution require that merchant token in the JSON body as `merchant_token` or as a Bearer token. Agent heartbeats, agent message processing, merchant-agent replies, merchant-agent closes, and merchant-agent human-review flags may use either the merchant token or a scoped agent token. Scoped agent tokens can be revoked and can optionally expire through `ttl_seconds`. Buyer search and buyer conversation creation remain tokenless for local demos, but created buyer conversations return a conversation-scoped `buyer_token`. Conversation reads, buyer message appends, buyer closes, and human-review queue/detail reads require an owner token: buyer tokens can read or write only their issued conversation, while merchant and agent tokens can read conversations and review queues for their merchant.
 
 Serve the FastAPI app after installing API dependencies:
 

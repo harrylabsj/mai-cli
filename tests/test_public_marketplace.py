@@ -1549,6 +1549,47 @@ class PublicMarketplaceTest(unittest.TestCase):
             self.assertEqual(status, 403)
             self.assertIn("revoked", denied["error"])
 
+    def test_agent_token_ttl_api_blocks_expired_agent_access(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "marketplace.sqlite"
+            app = create_app(db_file)
+
+            status, merchant = self.request(app, "POST", "/merchants", {"id": "seller-a", "name": "West Lake Tea"})
+            self.assertEqual(status, 200)
+            status, issued = self.request(
+                app,
+                "POST",
+                "/agents/tokens",
+                {"merchant_id": "seller-a", "merchant_token": merchant["merchant_token"], "ttl_seconds": 3600},
+            )
+            self.assertEqual(status, 200)
+            self.assertTrue(issued["expires_at"])
+            agent_token = issued["agent_token"]
+
+            status, heartbeat = self.request(
+                app,
+                "POST",
+                "/agents/heartbeat",
+                {"merchant_id": "seller-a", "_auth_token": agent_token},
+            )
+            self.assertEqual(status, 200)
+
+            conn = sqlite3.connect(db_file)
+            try:
+                conn.execute("update api_tokens set expires_at = ? where token = ?", ("2000-01-01T00:00:00", agent_token))
+                conn.commit()
+            finally:
+                conn.close()
+
+            status, denied = self.request(
+                app,
+                "POST",
+                "/agents/heartbeat",
+                {"merchant_id": "seller-a", "_auth_token": agent_token},
+            )
+            self.assertEqual(status, 403)
+            self.assertIn("expired", denied["error"])
+
     def test_api_exposes_conversation_agent_and_human_review_lifecycle(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "marketplace.sqlite"
