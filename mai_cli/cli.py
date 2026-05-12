@@ -533,7 +533,7 @@ def cmd_conversation_resolve_review(args: argparse.Namespace) -> None:
     status = "closed" if args.action == "close" else "waiting_buyer"
     with db_session(db_path_from_args(args)) as conn:
         now = now_iso()
-        conn.execute(
+        resolved = conn.execute(
             """
             update moderation_flags
             set resolved_at = ?, resolution = ?, resolved_by = ?
@@ -567,6 +567,14 @@ def cmd_conversation_resolve_review(args: argparse.Namespace) -> None:
         rows = conn.execute("select id from moderation_flags where conversation_id = ? order by id", (args.conversation,)).fetchall()
         reviews = [_review_summary(conn, row["id"]) for row in rows]
         conversation = conversation_summary(conn, args.conversation)
+    if args.format == "text":
+        resolved_count = resolved.rowcount if resolved.rowcount >= 0 else 0
+        print(f"Human review resolved: {conversation['id']}")
+        print(f"Resolution: {args.action}")
+        print(f"Resolved reviews: {resolved_count}")
+        print(f"Status: {conversation['status']}")
+        print(f"Next actor: {conversation['next_actor'] or '-'}")
+        return
     emit({"ok": True, "reviews": reviews, "conversation": conversation}, args.format)
 
 
