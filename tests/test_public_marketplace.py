@@ -229,6 +229,24 @@ class PublicMarketplaceTest(unittest.TestCase):
                 f"Bearer {created['buyer_token']}",
             )
             self.assertEqual(buyer_view[0], 200)
+            anonymous_write = self.fastapi_request(
+                app,
+                "POST",
+                "/conversations/{conversation_id}/messages",
+                "CONV-0001",
+                {"sender": "buyer", "intent": "ask_stock", "text": "Anonymous write should fail."},
+                "",
+            )
+            self.assertEqual(anonymous_write[0], 403)
+            buyer_write = self.fastapi_request(
+                app,
+                "POST",
+                "/conversations/{conversation_id}/messages",
+                "CONV-0001",
+                {"sender": "buyer", "intent": "ask_stock", "text": "Any stock left?"},
+                f"Bearer {created['buyer_token']}",
+            )
+            self.assertEqual(buyer_write[0], 200)
             merchant_view = self.fastapi_request(
                 app,
                 "GET",
@@ -645,6 +663,143 @@ class PublicMarketplaceTest(unittest.TestCase):
             )
             self.assertEqual(status, 200)
             self.assertEqual(agent_queue["reviews"][0]["conversation_id"], "CONV-0001")
+
+    def test_conversation_message_and_close_writes_require_owner_tokens(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "marketplace.sqlite"
+            app = create_app(db_file)
+
+            status, merchant_a = self.request(app, "POST", "/merchants", {"id": "seller-a", "name": "West Lake Tea"})
+            self.assertEqual(status, 200)
+            status, merchant_b = self.request(app, "POST", "/merchants", {"id": "seller-b", "name": "Other Tea"})
+            self.assertEqual(status, 200)
+            status, created = self.request(
+                app,
+                "POST",
+                "/conversations",
+                {
+                    "buyer_id": "alice",
+                    "merchant_id": "seller-a",
+                    "text": "Can I get this delivered today?",
+                },
+            )
+            self.assertEqual(status, 200)
+            buyer_token = created["buyer_token"]
+            status, other = self.request(
+                app,
+                "POST",
+                "/conversations",
+                {
+                    "buyer_id": "bob",
+                    "merchant_id": "seller-b",
+                    "text": "Wrong buyer token source.",
+                },
+            )
+            self.assertEqual(status, 200)
+
+            status, anonymous_buyer = self.request(
+                app,
+                "POST",
+                "/conversations/CONV-0001/messages",
+                {
+                    "sender": "buyer",
+                    "intent": "ask_delivery",
+                    "text": "Anonymous write should fail.",
+                },
+            )
+            self.assertEqual(status, 403)
+            status, wrong_buyer = self.request(
+                app,
+                "POST",
+                "/conversations/CONV-0001/messages",
+                {
+                    "sender": "buyer",
+                    "intent": "ask_delivery",
+                    "text": "Wrong buyer token should fail.",
+                    "buyer_token": other["buyer_token"],
+                },
+            )
+            self.assertEqual(status, 403)
+            status, merchant_impersonates_buyer = self.request(
+                app,
+                "POST",
+                "/conversations/CONV-0001/messages",
+                {
+                    "sender": "buyer",
+                    "intent": "ask_delivery",
+                    "text": "Merchant token should not impersonate buyer.",
+                    "merchant_token": merchant_a["merchant_token"],
+                },
+            )
+            self.assertEqual(status, 403)
+            status, buyer_message = self.request(
+                app,
+                "POST",
+                "/conversations/CONV-0001/messages",
+                {
+                    "sender": "buyer",
+                    "intent": "ask_delivery",
+                    "text": "Can you confirm delivery?",
+                    "buyer_token": buyer_token,
+                },
+            )
+            self.assertEqual(status, 200)
+            self.assertEqual(buyer_message["message"]["sender"], "buyer")
+
+            status, anonymous_close = self.request(
+                app,
+                "POST",
+                "/conversations/CONV-0001/close",
+                {"sender": "operator", "text": "Anonymous close should fail."},
+            )
+            self.assertEqual(status, 403)
+            status, wrong_close = self.request(
+                app,
+                "POST",
+                "/conversations/CONV-0001/close",
+                {
+                    "sender": "buyer",
+                    "text": "Wrong buyer token should not close.",
+                    "buyer_token": other["buyer_token"],
+                },
+            )
+            self.assertEqual(status, 403)
+            status, buyer_close = self.request(
+                app,
+                "POST",
+                "/conversations/CONV-0001/close",
+                {
+                    "sender": "buyer",
+                    "text": "Thanks, close this consultation.",
+                    "buyer_token": buyer_token,
+                },
+            )
+            self.assertEqual(status, 200)
+            self.assertEqual(buyer_close["conversation"]["status"], "closed")
+
+            status, merchant_close_conversation = self.request(
+                app,
+                "POST",
+                "/conversations",
+                {
+                    "buyer_id": "carol",
+                    "merchant_id": "seller-a",
+                    "text": "Merchant close target.",
+                },
+            )
+            self.assertEqual(status, 200)
+            status, operator_close = self.request(
+                app,
+                "POST",
+                "/conversations/CONV-0003/close",
+                {
+                    "sender": "operator",
+                    "text": "Merchant-authorized operator close.",
+                    "merchant_token": merchant_a["merchant_token"],
+                },
+            )
+            self.assertEqual(status, 200)
+            self.assertEqual(operator_close["conversation"]["status"], "closed")
 
     def test_human_review_api_shows_and_resolves_one_review_by_id_with_owner_token(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1308,7 +1463,7 @@ class PublicMarketplaceTest(unittest.TestCase):
                 app,
                 "POST",
                 "/conversations/CONV-0001/close",
-                {"sender": "operator", "text": "Closed after confirmation."},
+                {"sender": "operator", "text": "Closed after confirmation.", "merchant_token": merchant_token},
             )
             self.assertEqual(status, 200)
             self.assertEqual(closed["conversation"]["status"], "closed")

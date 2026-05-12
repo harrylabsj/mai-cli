@@ -539,6 +539,7 @@ Upgrade JSON file storage to SQLite, the dependency-free HTTP server to FastAPI,
 - Marketplace API can run locally with SQLite.
 - FastAPI and fallback ASGI modes pass the same auth/error contract tests.
 - Public API conversation reads and human-review queues require owner tokens; buyer creation remains tokenless but returns a conversation-scoped buyer token instead of a buyer-wide credential.
+- Public API conversation message appends and close operations require buyer, merchant, or agent owner tokens instead of accepting anonymous conversation writes.
 - A merchant can create a shop, product, inventory attributes, and delivery rule.
 - A merchant agent can run as an independent process.
 - Duplicate merchant-agent daemons cannot produce duplicate replies for the same buyer message.

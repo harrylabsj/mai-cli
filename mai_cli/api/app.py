@@ -270,6 +270,17 @@ def _require_conversation_read_token(conn: Any, conversation: dict[str, Any], pa
     raise AuthError("invalid conversation read token")
 
 
+def _require_buyer_conversation_token(conn: Any, conversation: dict[str, Any], payload: dict[str, Any]) -> None:
+    row = _require_api_token(conn, payload, "buyer conversation token required")
+    if (
+        row["role"] == "buyer"
+        and row["buyer_id"] == conversation["buyer_id"]
+        and row["conversation_id"] == conversation["id"]
+    ):
+        return
+    raise AuthError("invalid buyer conversation token")
+
+
 def _require_buyer_read_token(conn: Any, buyer_id: str, payload: dict[str, Any]) -> Any:
     row = _require_api_token(conn, payload, "buyer conversation read token required")
     if row["role"] == "buyer" and row["buyer_id"] == buyer_id:
@@ -479,11 +490,17 @@ def _append_conversation_message(db_path: str | Path, conversation_id: str, payl
         structured_payload = dict(payload.get("structured_payload") or {})
         if payload.get("source_id"):
             structured_payload["source_id"] = payload.get("source_id")
-        if sender == "merchant":
+        if sender in {"buyer", "buyer_cli"}:
+            _require_buyer_conversation_token(conn, conversation, payload)
+        elif sender == "merchant":
             _require_merchant_token(conn, conversation["merchant_id"], payload)
         elif sender == "merchant_agent":
             agent_id = str(structured_payload.get("source_id") or _default_merchant_agent_id(conversation["merchant_id"]))
             _require_agent_or_merchant_token(conn, conversation["merchant_id"], agent_id, payload)
+        elif sender == "operator":
+            _require_merchant_token(conn, conversation["merchant_id"], payload)
+        else:
+            raise SystemExit(f"Unknown conversation sender: {sender}")
         message = append_message(
             conn,
             conversation_id,
@@ -500,8 +517,17 @@ def _close_conversation(db_path: str | Path, conversation_id: str, payload: dict
     with db_session(db_path) as conn:
         conversation = conversation_summary(conn, conversation_id)
         sender = str(payload.get("sender") or "operator")
-        if sender in {"merchant", "merchant_agent"}:
+        if sender in {"buyer", "buyer_cli"}:
+            _require_buyer_conversation_token(conn, conversation, payload)
+        elif sender == "merchant":
             _require_merchant_token(conn, conversation["merchant_id"], payload)
+        elif sender == "merchant_agent":
+            agent_id = str(payload.get("source_id") or _default_merchant_agent_id(conversation["merchant_id"]))
+            _require_agent_or_merchant_token(conn, conversation["merchant_id"], agent_id, payload)
+        elif sender == "operator":
+            _require_merchant_token(conn, conversation["merchant_id"], payload)
+        else:
+            raise SystemExit(f"Unknown conversation sender: {sender}")
         if payload.get("text"):
             append_message(
                 conn,
