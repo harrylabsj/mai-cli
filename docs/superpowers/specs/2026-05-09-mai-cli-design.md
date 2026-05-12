@@ -549,6 +549,7 @@ Upgrade JSON file storage to SQLite, the dependency-free HTTP server to FastAPI,
 - Buyer CLI can summarize options and missing facts.
 - Risky, unsupported, bargaining, or unclear situations are marked for human review.
 - The local human-review workbench can list, show, and resolve individual review items by id without resolving unrelated flags on the same conversation.
+- `llm run` can use either direct SQLite tools for local tests or API-backed tools with Bearer tokens for host adapters.
 - Nested command help works for every public subcommand.
 - No order, payment, refund, escrow, or delivery-success claim is made in MVP.
 - Existing Mai data can be imported through a legacy adapter.
@@ -611,6 +612,7 @@ After the first vertical slice, development should proceed in small, shippable i
 - Add provider abstraction for OpenAI-compatible APIs first.
 - Define typed tool schemas for catalog search, conversation send, summarize, human-review flag, and merchant reply.
 - Add a tool-call dispatcher that maps those schemas to real `mai-cli` API/CLI actions without letting the LLM mutate trusted state directly.
+- Add an API-backed LLM dispatcher so hosted buyer/merchant assistants mutate state through Marketplace API authorization instead of direct SQLite access.
 - Add a tool-call loop that feeds model tool calls through the scoped dispatcher and returns deterministic fallback content on provider or tool failure.
 - Add bounded provider retries and a tool-call budget to keep optional LLM runs recoverable and finite.
 - Add prompt templates for buyer assistant and merchant assistant.

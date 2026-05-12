@@ -7,7 +7,7 @@ from unittest.mock import patch
 from mai_cli.core.catalog import create_merchant, create_product
 from mai_cli.core.conversations import append_message, conversation_summary, ensure_conversation
 from mai_cli.db.session import db_session
-from mai_cli.llm.dispatcher import MarketplaceToolDispatcher, dispatch_marketplace_tool
+from mai_cli.llm.dispatcher import HTTPMarketplaceToolDispatcher, MarketplaceToolDispatcher, dispatch_marketplace_tool
 from mai_cli.llm.prompts import buyer_system_prompt, merchant_system_prompt
 from mai_cli.llm.providers import OpenAICompatibleProvider, provider_from_env
 from mai_cli.llm.runner import run_marketplace_tool_loop
@@ -523,6 +523,80 @@ class LlmContractTest(unittest.TestCase):
             with db_session(db_file) as conn:
                 conversation = conversation_summary(conn, "CONV-0001")
             self.assertEqual([message["sender"] for message in conversation["messages"]], ["buyer"])
+
+    def test_http_marketplace_tool_dispatcher_calls_api_with_bearer_token(self):
+        calls = []
+
+        def fake_transport(method, path, payload, query, headers):
+            calls.append(
+                {
+                    "method": method,
+                    "path": path,
+                    "payload": payload,
+                    "query": query,
+                    "headers": headers,
+                }
+            )
+            if path == "/search/products":
+                return {"ok": True, "results": [{"sku": "tea-a", "title": "Longjing Gift Box"}]}
+            if path == "/conversations/CONV-0001/messages":
+                return {
+                    "ok": True,
+                    "message": {"id": 2, "sender": "buyer", "structured_payload": {"source_id": "hermes-buyer"}},
+                    "conversation": {"id": "CONV-0001", "status": "waiting_merchant"},
+                }
+            raise AssertionError(f"unexpected API path: {path}")
+
+        dispatcher = HTTPMarketplaceToolDispatcher(
+            "http://127.0.0.1:8765",
+            auth_token="buyer-token",
+            source_id="hermes-buyer",
+            host="hermes",
+            session_id="sess-buyer",
+            actor="alice",
+            token_scope="buyer",
+            transport=fake_transport,
+        )
+
+        catalog = dispatcher.dispatch("catalog_search", {"query": "longjing", "city": "Hangzhou"})
+        sent = dispatcher.dispatch(
+            "conversation_send",
+            {
+                "conversation_id": "CONV-0001",
+                "sender": "buyer",
+                "intent": "ask_stock",
+                "text": "Any stock left?",
+            },
+        )
+
+        self.assertEqual(catalog["result"]["results"][0]["sku"], "tea-a")
+        self.assertEqual(sent["result"]["message"]["sender"], "buyer")
+        self.assertEqual(calls[0]["method"], "GET")
+        self.assertEqual(calls[0]["path"], "/search/products")
+        self.assertEqual(calls[0]["query"]["query"], "longjing")
+        self.assertEqual(calls[0]["headers"]["Authorization"], "Bearer buyer-token")
+        self.assertEqual(calls[1]["method"], "POST")
+        self.assertEqual(calls[1]["payload"]["source_id"], "hermes-buyer")
+        self.assertEqual(calls[1]["headers"]["Authorization"], "Bearer buyer-token")
+
+    def test_http_marketplace_tool_dispatcher_enforces_scope_before_api_call(self):
+        calls = []
+        dispatcher = HTTPMarketplaceToolDispatcher(
+            "http://127.0.0.1:8765",
+            auth_token="buyer-token",
+            actor="alice",
+            token_scope="buyer",
+            transport=lambda *args: calls.append(args) or {"ok": True},
+        )
+
+        with self.assertRaises(SystemExit):
+            dispatcher.dispatch(
+                "merchant_reply",
+                {"conversation_id": "CONV-0001", "intent": "support", "text": "Not allowed."},
+            )
+        with self.assertRaises(SystemExit):
+            dispatcher.dispatch("create_order", {})
+        self.assertEqual(calls, [])
 
 
 if __name__ == "__main__":

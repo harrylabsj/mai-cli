@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any, Callable
+import urllib.error
+import urllib.parse
+import urllib.request
 
 from mai_cli.agents import buyer_cli
 from mai_cli.core.catalog import search_products
@@ -14,6 +18,10 @@ from mai_cli.llm.tools import marketplace_tool_schema_objects
 
 
 ToolHandler = Callable[[dict[str, Any]], dict[str, Any]]
+HTTPTransport = Callable[
+    [str, str, dict[str, Any] | None, dict[str, Any] | None, dict[str, str]],
+    dict[str, Any],
+]
 
 BUYER_SCOPES = {"buyer", "buyer_cli"}
 MERCHANT_SCOPES = {"merchant", "merchant_agent"}
@@ -31,6 +39,10 @@ TOOL_SCOPE_ALLOWLIST = {
 
 class ToolAccessDenied(Exception):
     """Raised when a scoped tool call targets a conversation owned by another actor."""
+
+
+class HTTPMarketplaceError(RuntimeError):
+    """Raised when the Marketplace API returns an invalid or failed response."""
 
 
 class MarketplaceToolDispatcher:
@@ -219,6 +231,222 @@ class MarketplaceToolDispatcher:
                 flags.append(add_review_source(flag, self.source_id))
             conversation = conversation_summary(conn, conversation_id)
         return {"ok": True, "message": message, "flags": flags, "conversation": conversation}
+
+
+class HTTPMarketplaceToolDispatcher:
+    def __init__(
+        self,
+        base_url: str,
+        auth_token: str,
+        source_id: str = "llm-tool",
+        host: str = "local",
+        session_id: str = "",
+        actor: str = "",
+        token_scope: str = "local_trusted",
+        timeout: float = 10.0,
+        transport: HTTPTransport | None = None,
+    ):
+        self.base_url = str(base_url or "").rstrip("/")
+        if not self.base_url:
+            raise ValueError("base_url is required")
+        self.auth_token = str(auth_token or "").strip()
+        if not self.auth_token:
+            raise ValueError("auth_token is required")
+        self.source_id = source_id
+        self.host = host
+        self.session_id = session_id
+        self.actor = actor
+        self.token_scope = token_scope
+        self.timeout = float(timeout or 10.0)
+        self.transport = transport
+        self.allowed_tools = {tool.name for tool in marketplace_tool_schema_objects()}
+
+    def dispatch(self, tool_name: str, arguments: dict[str, Any] | None = None) -> dict[str, Any]:
+        arguments = arguments or {}
+        if tool_name not in self.allowed_tools:
+            raise SystemExit(f"Unknown or disallowed marketplace tool: {tool_name}")
+        allowed_scopes = TOOL_SCOPE_ALLOWLIST.get(tool_name, set())
+        if self.token_scope not in allowed_scopes:
+            raise SystemExit(f"tool {tool_name} is not allowed for token scope {self.token_scope}")
+        handler = getattr(self, f"_dispatch_{tool_name}")
+        result = handler(arguments)
+        return {"ok": True, "tool": tool_name, "result": result}
+
+    def _headers(self) -> dict[str, str]:
+        return {"Accept": "application/json", "Authorization": f"Bearer {self.auth_token}"}
+
+    def _request(
+        self,
+        method: str,
+        path: str,
+        payload: dict[str, Any] | None = None,
+        query: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        headers = self._headers()
+        if self.transport is not None:
+            result = self.transport(method.upper(), path, payload, query, headers)
+            return self._validate_response(result)
+
+        url = f"{self.base_url}/{path.lstrip('/')}"
+        clean_query = {key: value for key, value in (query or {}).items() if value not in (None, "")}
+        if clean_query:
+            url = f"{url}?{urllib.parse.urlencode(clean_query)}"
+        body = None
+        if payload is not None:
+            body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+            headers["Content-Type"] = "application/json"
+        request = urllib.request.Request(url, data=body, headers=headers, method=method.upper())
+        try:
+            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                raw_body = response.read()
+        except urllib.error.HTTPError as exc:  # pragma: no cover - network path
+            raw_body = exc.read()
+            raise SystemExit(self._error_message(raw_body, f"Marketplace API returned HTTP {exc.code}")) from exc
+        except urllib.error.URLError as exc:
+            raise SystemExit(f"Marketplace API request failed: {exc.reason}") from exc
+        return self._validate_response(self._decode_body(raw_body))
+
+    @staticmethod
+    def _decode_body(raw_body: bytes) -> dict[str, Any]:
+        if not raw_body:
+            return {}
+        try:
+            decoded = json.loads(raw_body.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise HTTPMarketplaceError("Marketplace API returned invalid JSON") from exc
+        if not isinstance(decoded, dict):
+            raise HTTPMarketplaceError("Marketplace API returned a non-object response")
+        return decoded
+
+    @classmethod
+    def _error_message(cls, raw_body: bytes, fallback: str) -> str:
+        try:
+            decoded = cls._decode_body(raw_body)
+        except HTTPMarketplaceError:
+            return fallback
+        return str(decoded.get("error") or fallback)
+
+    @staticmethod
+    def _validate_response(result: dict[str, Any]) -> dict[str, Any]:
+        if not isinstance(result, dict):
+            raise HTTPMarketplaceError("Marketplace API returned a non-object response")
+        if result.get("ok") is False:
+            raise SystemExit(str(result.get("error") or "Marketplace API request failed"))
+        return result
+
+    @staticmethod
+    def _conversation_path(conversation_id: str) -> str:
+        return f"/conversations/{urllib.parse.quote(str(conversation_id), safe='')}"
+
+    def conversation_summary(self, conversation_id: str) -> dict[str, Any]:
+        return dict(self._request("GET", self._conversation_path(conversation_id))["conversation"])
+
+    def _dispatch_catalog_search(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        result = self._request(
+            "GET",
+            "/search/products",
+            query={
+                "query": str(arguments["query"]),
+                "city": str(arguments.get("city") or ""),
+                "area": str(arguments.get("area") or ""),
+                "max_price": arguments.get("max_price"),
+                "include_out_of_stock": bool(arguments.get("include_out_of_stock") or False),
+            },
+        )
+        return {"ok": True, "query": str(arguments["query"]), "results": list(result.get("results") or [])}
+
+    def _dispatch_conversation_send(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        sender = str(arguments["sender"])
+        if sender not in {"buyer", "buyer_cli"}:
+            raise SystemExit("conversation_send only supports buyer or buyer_cli senders")
+        conversation_id = str(arguments["conversation_id"])
+        return self._request(
+            "POST",
+            f"{self._conversation_path(conversation_id)}/messages",
+            {
+                "sender": sender,
+                "intent": str(arguments["intent"]),
+                "text": str(arguments["text"]),
+                "source_id": self.source_id,
+            },
+        )
+
+    def _dispatch_conversation_summarize(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        conversation_id = str(arguments["conversation_id"])
+        result = self._request("GET", self._conversation_path(conversation_id))
+        conversation = dict(result["conversation"])
+        warnings = list(buyer_cli.MVP_WARNINGS)
+        if conversation.get("status") == "human_required":
+            warnings.append("Merchant human review is required before any commitment.")
+        for flag in conversation.get("flags") or []:
+            warnings.append(f"Human review flag: {flag['reason']}")
+        summary = {
+            "ok": True,
+            "conversation": conversation,
+            "option": conversation.get("product"),
+            "missing_facts": [],
+            "warnings": warnings,
+            "next_action": (
+                "Wait for merchant human review."
+                if conversation.get("status") == "human_required"
+                else "Use purchase_intent only to record interest; confirm order and payment outside this MVP."
+            ),
+            "no_order_created": True,
+            "no_stock_reserved": True,
+        }
+        return {"ok": True, "summary": summary}
+
+    def _dispatch_human_review_flag(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        conversation_id = str(arguments["conversation_id"])
+        return self._request(
+            "POST",
+            f"{self._conversation_path(conversation_id)}/human-review",
+            {
+                "reason": str(arguments.get("reason") or "human_required"),
+                "severity": str(arguments.get("severity") or "review"),
+                "source_id": self.source_id,
+            },
+        )
+
+    def _dispatch_merchant_reply(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        conversation_id = str(arguments["conversation_id"])
+        human_required = bool(arguments.get("human_required") or False)
+        reason = str(arguments.get("reason") or "")
+        message_result = self._request(
+            "POST",
+            f"{self._conversation_path(conversation_id)}/messages",
+            {
+                "sender": "merchant_agent",
+                "intent": str(arguments["intent"]),
+                "text": str(arguments["text"]),
+                "status": "human_required" if human_required else "waiting_buyer",
+                "structured_payload": {
+                    "source_id": self.source_id,
+                    "tool": "merchant_reply",
+                    "human_required": human_required,
+                    "reason": reason,
+                },
+            },
+        )
+        flags = []
+        conversation = message_result.get("conversation")
+        if human_required:
+            review_result = self._request(
+                "POST",
+                f"{self._conversation_path(conversation_id)}/human-review",
+                {
+                    "reason": reason or "human_required",
+                    "source_id": self.source_id,
+                },
+            )
+            flags.append(review_result["review"])
+            conversation = review_result.get("conversation")
+        return {
+            "ok": True,
+            "message": message_result["message"],
+            "flags": flags,
+            "conversation": conversation,
+        }
 
 
 def add_review_source(review: dict[str, Any], source_id: str) -> dict[str, Any]:

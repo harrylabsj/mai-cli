@@ -460,6 +460,50 @@ class MaiCliTest(unittest.TestCase):
                     "Continue this consultation.",
                 )
 
+    def test_llm_run_cli_can_use_api_backed_dispatcher(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            dispatcher = object()
+
+            with (
+                patch("mai_cli.cli.provider_from_env", return_value="provider", create=True),
+                patch("mai_cli.cli.HTTPMarketplaceToolDispatcher", return_value=dispatcher, create=True) as dispatcher_cls,
+                patch(
+                    "mai_cli.cli.run_marketplace_tool_loop",
+                    return_value={"ok": True, "content": "API-backed answer.", "error": "", "tool_results": []},
+                    create=True,
+                ) as run_loop,
+            ):
+                output = self.run_cli(
+                    db_file,
+                    "llm",
+                    "run",
+                    "--role",
+                    "buyer",
+                    "--actor",
+                    "alice",
+                    "--api-url",
+                    "http://127.0.0.1:8765",
+                    "--auth-token",
+                    "buyer-token",
+                    "--text",
+                    "Continue through API.",
+                    "--max-tool-calls",
+                    "1",
+                    "--format",
+                    "json",
+                )
+
+            result = json.loads(output)
+            self.assertTrue(result["ok"])
+            dispatcher_cls.assert_called_once()
+            self.assertEqual(dispatcher_cls.call_args.args[0], "http://127.0.0.1:8765")
+            self.assertEqual(dispatcher_cls.call_args.kwargs["auth_token"], "buyer-token")
+            self.assertEqual(dispatcher_cls.call_args.kwargs["actor"], "alice")
+            self.assertEqual(dispatcher_cls.call_args.kwargs["token_scope"], "buyer")
+            self.assertIs(run_loop.call_args.args[1], dispatcher)
+            self.assertEqual(run_loop.call_args.kwargs["max_tool_calls"], 1)
+
     def test_adapter_cli_exposes_inspect_doctor_and_install_command_helpers(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"

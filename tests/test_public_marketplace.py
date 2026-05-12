@@ -289,6 +289,45 @@ class PublicMarketplaceTest(unittest.TestCase):
             self.assertEqual(resolved[0], 200)
             self.assertEqual(resolved[1]["conversation"]["status"], "waiting_buyer")
 
+    def test_fastapi_product_search_honors_price_and_stock_filters(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "marketplace.sqlite"
+            with patch("mai_cli.api.app.FastAPI", FakeFastAPI):
+                app = create_app(db_file)
+
+            _, merchant = self.fastapi_request(app, "POST", "/merchants", {"id": "seller-a", "name": "West Lake Tea"})
+            for sku, price, stock in (
+                ("tea-cheap", 88, 5),
+                ("tea-expensive", 188, 5),
+                ("tea-soldout", 66, 0),
+            ):
+                status, _product = self.fastapi_request(
+                    app,
+                    "POST",
+                    "/products",
+                    {
+                        "merchant_id": "seller-a",
+                        "sku": sku,
+                        "title": f"Longjing {sku}",
+                        "price": price,
+                        "stock": stock,
+                        "tags": ["longjing"],
+                        "merchant_token": merchant["merchant_token"],
+                    },
+                )
+                self.assertEqual(status, 200)
+
+            under_budget = self.fastapi_request(app, "GET", "/search/products", "longjing", "", "", "100", "")
+            self.assertEqual(under_budget[0], 200)
+            self.assertEqual([product["sku"] for product in under_budget[1]["results"]], ["tea-cheap"])
+
+            with_sold_out = self.fastapi_request(app, "GET", "/search/products", "longjing", "", "", "100", "true")
+            self.assertEqual(with_sold_out[0], 200)
+            self.assertEqual(
+                {product["sku"] for product in with_sold_out[1]["results"]},
+                {"tea-cheap", "tea-soldout"},
+            )
+
     def test_route_metadata_matches_fastapi_and_fallback_apps(self):
         expected = {route.path: set(route.methods) for route in route_info()}
         with tempfile.TemporaryDirectory() as tmp:
@@ -663,6 +702,52 @@ class PublicMarketplaceTest(unittest.TestCase):
             )
             self.assertEqual(status, 200)
             self.assertEqual(agent_queue["reviews"][0]["conversation_id"], "CONV-0001")
+
+    def test_product_search_api_honors_price_and_stock_filters(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "marketplace.sqlite"
+            app = create_app(db_file)
+
+            status, merchant = self.request(app, "POST", "/merchants", {"id": "seller-a", "name": "West Lake Tea"})
+            self.assertEqual(status, 200)
+            for sku, price, stock in (
+                ("tea-cheap", 88, 5),
+                ("tea-expensive", 188, 5),
+                ("tea-soldout", 66, 0),
+            ):
+                status, product = self.request(
+                    app,
+                    "POST",
+                    "/products",
+                    {
+                        "merchant_id": "seller-a",
+                        "sku": sku,
+                        "title": f"Longjing {sku}",
+                        "price": price,
+                        "stock": stock,
+                        "tags": ["longjing"],
+                        "merchant_token": merchant["merchant_token"],
+                    },
+                )
+                self.assertEqual(status, 200)
+
+            status, under_budget = self.request(
+                app,
+                "GET",
+                "/search/products",
+                query_string="query=longjing&max_price=100",
+            )
+            self.assertEqual(status, 200)
+            self.assertEqual([product["sku"] for product in under_budget["results"]], ["tea-cheap"])
+
+            status, with_sold_out = self.request(
+                app,
+                "GET",
+                "/search/products",
+                query_string="query=longjing&max_price=100&include_out_of_stock=true",
+            )
+            self.assertEqual(status, 200)
+            self.assertEqual({product["sku"] for product in with_sold_out["results"]}, {"tea-cheap", "tea-soldout"})
 
     def test_conversation_message_and_close_writes_require_owner_tokens(self):
         with tempfile.TemporaryDirectory() as tmp:

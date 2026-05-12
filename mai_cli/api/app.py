@@ -150,6 +150,10 @@ def _int_or_none(value: Any) -> int | None:
     return None if value is None else int(value)
 
 
+def _bool_from_query(value: Any) -> bool:
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _merchant_list(conn: Any) -> list[dict[str, Any]]:
     rows = conn.execute("select id from merchants order by name, id").fetchall()
     return [catalog.merchant_summary(conn, row["id"]) for row in rows]
@@ -399,6 +403,7 @@ def _get_product(db_path: str | Path, sku: str) -> dict[str, Any]:
 
 
 def _search_products(db_path: str | Path, query: dict[str, Any]) -> dict[str, Any]:
+    max_price = query.get("max_price")
     with db_session(db_path) as conn:
         return {
             "ok": True,
@@ -407,6 +412,8 @@ def _search_products(db_path: str | Path, query: dict[str, Any]) -> dict[str, An
                 query=str(query.get("query") or ""),
                 city=str(query.get("city") or ""),
                 area=str(query.get("area") or ""),
+                max_price=float(max_price) if str(max_price or "") else None,
+                include_out_of_stock=_bool_from_query(query.get("include_out_of_stock")),
             ),
         }
 
@@ -1132,8 +1139,23 @@ def create_app(db_path: str | Path = "mai-cli.sqlite") -> Any:
         return _update_product(db_path, sku, _payload_with_auth(payload, authorization))
 
     @app.get("/search/products")
-    def search_products(query: str = "", city: str = "", area: str = "") -> dict[str, Any]:
-        return _search_products(db_path, {"query": query, "city": city, "area": area})
+    def search_products(
+        query: str = "",
+        city: str = "",
+        area: str = "",
+        max_price: str = "",
+        include_out_of_stock: str = "",
+    ) -> dict[str, Any]:
+        return _search_products(
+            db_path,
+            {
+                "query": query,
+                "city": city,
+                "area": area,
+                "max_price": max_price,
+                "include_out_of_stock": include_out_of_stock,
+            },
+        )
 
     @app.get("/search/merchants")
     def search_merchants(query: str = "", city: str = "") -> dict[str, Any]:
