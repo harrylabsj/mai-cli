@@ -903,6 +903,21 @@ def cmd_agent_show(args: argparse.Namespace) -> None:
         if row is None:
             raise SystemExit(f"Unknown agent: {args.agent}")
         agent = _agent_summary(row)
+    if args.format == "text":
+        print(f"Agent: {agent['id']}")
+        print(f"Type: {agent['type']}")
+        print(f"Owner: {agent['owner_id']}")
+        print(f"Status: {agent['status']}")
+        print(f"Last seen: {agent['last_seen_at']}")
+        print(f"Version: {agent['version'] or '-'}")
+        if agent["pid"]:
+            print(f"PID: {agent['pid']}")
+        print(f"Capabilities: {', '.join(agent['capabilities']) if agent['capabilities'] else '-'}")
+        print(f"Checked: {agent['checked_count']}")
+        print(f"Replied: {agent['replied_count']}")
+        if agent["last_error"]:
+            print(f"Last error: {agent['last_error']}")
+        return
     emit({"ok": True, "agent": agent}, args.format)
 
 
