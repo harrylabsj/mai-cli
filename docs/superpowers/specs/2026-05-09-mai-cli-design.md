@@ -759,10 +759,20 @@ After the first vertical slice, development should proceed in small, shippable i
 
 If choosing the next concrete engineering task, prefer this order:
 
-1. Broaden the LLM tool loop into a buyer/merchant runtime entrypoint with budgets, retries, and API-backed tools as the default trusted state boundary.
-2. Add a real OpenClaw merchant + Hermes buyer end-to-end demo/test that proves both hosts can share one `mai-cli` marketplace database/API and complete a consultation without owning business state.
-3. Add adapter setup and inspection helpers such as `doctor`, `install`, and `inspect` for OpenClaw/Hermes so missing host paths, stale skills, bad DB paths, and version mismatches are visible.
-   - First implementation slice: expose existing helpers through `mai-cli adapter inspect|doctor|install-command`.
-   - Stale skill slice: report adapter skill symlink targets and flag skills that point to a different project root.
-4. Add scoped agent tokens, tool permission checks, and audit records for every host-visible tool call, including `host`, `session_id`, `actor`, `token_scope`, and result status.
-5. Add crash/TTL recovery for in-flight agent claims: stale `processing` rows should become explicit `abandoned` rows with audit events, then retry through the existing retryable claim path.
+1. Add a real OpenClaw merchant + Hermes buyer end-to-end demo/test that proves both hosts can share one `mai-cli` Marketplace API/database and complete a consultation without owning business state.
+   - Cover buyer message creation, merchant-agent processing, reply or human-review routing, and conversation summary.
+   - Assert that host adapters only call `mai-cli` CLI/API/tool contracts and never write trusted commerce state directly.
+2. Add a host-native OpenClaw/Hermes tool server with permission mapping.
+   - Map host identity, profile, device, session, and tool scope into `mai-cli` buyer, merchant, merchant-agent, and operator permissions.
+   - Record `host`, `session_id`, `actor`, `token_scope`, tool name, result status, error, and latency for every host-visible tool call.
+3. Add durable worker leases and scheduling for resident merchant agents.
+   - Persist task records, lease owner, lease expiry, retry count, last error, and recovery status.
+   - Make stale in-flight message claims explicit `abandoned` rows with audit events before retrying through the existing retryable claim path.
+4. Expand the merchant/operator review workbench.
+   - Add queues and actions for pending replies, low stock, bargaining, suspicious content, unclear delivery, approve, reply, reject, close, and escalate.
+   - Keep human decisions as durable `mai-cli` records rather than host-local workflow state.
+5. Add real channel bridges on top of `channel ingest` and `/channels/messages`.
+   - Start with one webhook bridge, then generalize for WhatsApp, Telegram, Slack, and web chat.
+   - Preserve channel identity, external message id, reply routing, idempotency, and audit records.
+6. Broaden LLM governance after the host collaboration path is proven.
+   - Add model fallback, streaming, provider auth isolation, cost and latency logs, bounded tool budgets, and merchant-configurable deterministic-vs-LLM policy.
