@@ -960,6 +960,48 @@ class MaiCliTest(unittest.TestCase):
             self.assertIn("Next actor: merchant_agent", output)
             self.assertNotIn('"conversation"', output)
 
+    def test_conversation_message_text_output_summarizes_append(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.run_cli(db_file, "merchant", "create", "--id", "seller-a", "--name", "West Lake Tea")
+            self.run_cli(
+                db_file,
+                "conversation",
+                "create",
+                "--buyer",
+                "alice",
+                "--merchant",
+                "seller-a",
+                "--text",
+                "Is this available?",
+                "--format",
+                "json",
+            )
+
+            output = self.run_cli(
+                db_file,
+                "conversation",
+                "message",
+                "--conversation",
+                "CONV-0001",
+                "--sender",
+                "merchant_agent",
+                "--intent",
+                "ask_stock",
+                "--text",
+                "Stock is 5.",
+                "--status",
+                "waiting_buyer",
+            )
+
+            self.assertIn("Message appended: 2", output)
+            self.assertIn("Conversation: CONV-0001", output)
+            self.assertIn("Sender: merchant_agent", output)
+            self.assertIn("Intent: ask_stock", output)
+            self.assertIn("Status: waiting_buyer", output)
+            self.assertIn("Next actor: buyer", output)
+            self.assertNotIn('"message"', output)
+
     def test_agent_rotate_token_command_revokes_old_and_issues_new_token(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"

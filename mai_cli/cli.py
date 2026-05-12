@@ -440,6 +440,14 @@ def cmd_conversation_message(args: argparse.Namespace) -> None:
             status=args.status,
         )
         conversation = conversation_summary(conn, args.conversation)
+    if args.format == "text":
+        print(f"Message appended: {message['id']}")
+        print(f"Conversation: {conversation['id']}")
+        print(f"Sender: {message['sender']}")
+        print(f"Intent: {message['intent']}")
+        print(f"Status: {conversation['status']}")
+        print(f"Next actor: {conversation['next_actor']}")
+        return
     emit({"ok": True, "message": message, "conversation": conversation}, args.format)
 
 
