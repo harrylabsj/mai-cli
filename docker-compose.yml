@@ -12,7 +12,7 @@ services:
       - --port
       - "8765"
     ports:
-      - "${MAI_API_PORT:-8765}:8765"
+      - "${MAI_API_BIND:-127.0.0.1}:${MAI_API_PORT:-8765}:8765"
     volumes:
       - mai_api_data:/data
     restart: unless-stopped

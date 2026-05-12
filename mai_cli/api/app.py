@@ -151,7 +151,13 @@ def _merchant_list(conn: Any) -> list[dict[str, Any]]:
 
 
 def _payload_token(payload: dict[str, Any]) -> str:
-    return str(payload.get("merchant_token") or payload.get("_auth_token") or "")
+    return str(
+        payload.get("merchant_token")
+        or payload.get("agent_token")
+        or payload.get("buyer_token")
+        or payload.get("_auth_token")
+        or ""
+    )
 
 
 def _auth_header_default() -> Any:
@@ -194,6 +200,31 @@ def _issue_agent_token(conn: Any, merchant_id: str, agent_id: str) -> str:
     return token
 
 
+def _issue_buyer_token(conn: Any, buyer_id: str, conversation_id: str) -> str:
+    token = f"mai_buyer_{buyer_id}_{secrets.token_urlsafe(18)}"
+    conn.execute(
+        """
+        insert into api_tokens(token, role, merchant_id, buyer_id, agent_id, conversation_id, created_at)
+        values (?, 'buyer', '', ?, '', ?, ?)
+        """,
+        (token, buyer_id, conversation_id, now_iso()),
+    )
+    return token
+
+
+def _require_api_token(conn: Any, payload: dict[str, Any], missing_error: str = "authorization token required") -> Any:
+    token = _payload_token(payload)
+    if not token:
+        raise AuthError(missing_error)
+    row = conn.execute(
+        "select role, merchant_id, buyer_id, agent_id, conversation_id from api_tokens where token = ?",
+        (token,),
+    ).fetchone()
+    if row is None:
+        raise AuthError("invalid authorization token")
+    return row
+
+
 def _require_merchant_token(conn: Any, merchant_id: str, payload: dict[str, Any]) -> None:
     token = _payload_token(payload)
     if not token:
@@ -217,6 +248,37 @@ def _require_agent_or_merchant_token(conn: Any, merchant_id: str, agent_id: str,
     if row["role"] == "agent" and row["agent_id"] == agent_id:
         return
     raise AuthError("invalid agent or merchant token")
+
+
+def _require_conversation_read_token(conn: Any, conversation: dict[str, Any], payload: dict[str, Any]) -> None:
+    row = _require_api_token(conn, payload, "conversation read token required")
+    if (
+        row["role"] == "buyer"
+        and row["buyer_id"] == conversation["buyer_id"]
+        and row["conversation_id"] == conversation["id"]
+    ):
+        return
+    if row["role"] == "merchant" and row["merchant_id"] == conversation["merchant_id"]:
+        return
+    if row["role"] == "agent" and row["merchant_id"] == conversation["merchant_id"]:
+        return
+    raise AuthError("invalid conversation read token")
+
+
+def _require_buyer_read_token(conn: Any, buyer_id: str, payload: dict[str, Any]) -> Any:
+    row = _require_api_token(conn, payload, "buyer conversation read token required")
+    if row["role"] == "buyer" and row["buyer_id"] == buyer_id:
+        return row
+    raise AuthError("invalid buyer conversation read token")
+
+
+def _require_merchant_read_token(conn: Any, merchant_id: str, payload: dict[str, Any]) -> None:
+    row = _require_api_token(conn, payload, "merchant conversation read token required")
+    if row["role"] == "merchant" and row["merchant_id"] == merchant_id:
+        return
+    if row["role"] == "agent" and row["merchant_id"] == merchant_id:
+        return
+    raise AuthError("invalid merchant conversation read token")
 
 
 def _health(db_path: str | Path) -> dict[str, Any]:
@@ -347,13 +409,17 @@ def _search_merchants(db_path: str | Path, query: dict[str, Any]) -> dict[str, A
 
 def _buyer_ask(db_path: str | Path, payload: dict[str, Any]) -> dict[str, Any]:
     with db_session(db_path) as conn:
-        return buyer_cli.ask(
+        buyer_id = str(payload["buyer_id"])
+        result = buyer_cli.ask(
             conn,
-            buyer_id=str(payload["buyer_id"]),
+            buyer_id=buyer_id,
             text=str(payload["text"]),
             city=str(payload.get("city") or ""),
             area=str(payload.get("area") or ""),
         )
+        if result.get("conversation"):
+            result["buyer_token"] = _issue_buyer_token(conn, buyer_id, result["conversation"]["id"])
+        return result
 
 
 def _ingest_channel_message(db_path: str | Path, payload: dict[str, Any]) -> dict[str, Any]:
@@ -372,16 +438,19 @@ def _ingest_channel_message(db_path: str | Path, payload: dict[str, Any]) -> dic
         )
 
 
-def _get_conversation(db_path: str | Path, conversation_id: str) -> dict[str, Any]:
+def _get_conversation(db_path: str | Path, conversation_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     with db_session(db_path) as conn:
-        return {"ok": True, "conversation": conversation_summary(conn, conversation_id)}
+        conversation = conversation_summary(conn, conversation_id)
+        _require_conversation_read_token(conn, conversation, payload)
+        return {"ok": True, "conversation": conversation}
 
 
 def _create_conversation(db_path: str | Path, payload: dict[str, Any]) -> dict[str, Any]:
     with db_session(db_path) as conn:
+        buyer_id = str(payload["buyer_id"])
         conversation = ensure_conversation(
             conn,
-            buyer_id=str(payload["buyer_id"]),
+            buyer_id=buyer_id,
             merchant_id=str(payload["merchant_id"]),
             sku=str(payload.get("sku") or ""),
         )
@@ -395,7 +464,7 @@ def _create_conversation(db_path: str | Path, payload: dict[str, Any]) -> dict[s
                 structured_payload={"source_id": payload.get("source_id") or ""},
             )
             conversation = conversation_summary(conn, conversation["id"])
-        return {"ok": True, "conversation": conversation}
+        return {"ok": True, "conversation": conversation, "buyer_token": _issue_buyer_token(conn, buyer_id, conversation["id"])}
 
 
 def _append_conversation_message(db_path: str | Path, conversation_id: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -608,7 +677,13 @@ def _get_agent(db_path: str | Path, agent_id: str) -> dict[str, Any]:
         return {"ok": True, "agent": _agent_summary(row)}
 
 
-def _conversation_list(db_path: str | Path, filters: dict[str, Any]) -> dict[str, Any]:
+def _conversation_list(
+    db_path: str | Path,
+    filters: dict[str, Any],
+    payload: dict[str, Any],
+    owner_kind: str,
+    owner_id: str,
+) -> dict[str, Any]:
     clauses: list[str] = []
     values: list[Any] = []
     for column in ("status", "merchant_id", "buyer_id", "sku"):
@@ -618,17 +693,27 @@ def _conversation_list(db_path: str | Path, filters: dict[str, Any]) -> dict[str
     if filters.get("updated_since"):
         clauses.append("updated_at >= ?")
         values.append(str(filters["updated_since"]))
-    sql = "select id from conversations"
-    if clauses:
-        sql += " where " + " and ".join(clauses)
-    sql += " order by updated_at desc"
     with db_session(db_path) as conn:
+        if owner_kind == "buyer":
+            token_row = _require_buyer_read_token(conn, owner_id, payload)
+            if token_row["conversation_id"]:
+                clauses.append("id = ?")
+                values.append(str(token_row["conversation_id"]))
+        elif owner_kind == "merchant":
+            _require_merchant_read_token(conn, owner_id, payload)
+        else:
+            raise AuthError("conversation list owner is required")
+        sql = "select id from conversations"
+        if clauses:
+            sql += " where " + " and ".join(clauses)
+        sql += " order by updated_at desc"
         rows = conn.execute(sql, values).fetchall()
         return {"ok": True, "conversations": [conversation_summary(conn, row["id"]) for row in rows]}
 
 
-def _merchant_conversations(db_path: str | Path, merchant_id: str, status: str = "") -> dict[str, Any]:
+def _merchant_conversations(db_path: str | Path, merchant_id: str, payload: dict[str, Any], status: str = "") -> dict[str, Any]:
     with db_session(db_path) as conn:
+        _require_merchant_read_token(conn, merchant_id, payload)
         return {"ok": True, "merchant_id": merchant_id, "conversations": merchant_conversations(conn, merchant_id, status)}
 
 
@@ -649,18 +734,20 @@ def _review_summary(conn: Any, flag_row: Any) -> dict[str, Any]:
     }
 
 
-def _human_review_queue(db_path: str | Path, merchant_id: str = "") -> dict[str, Any]:
+def _human_review_queue(db_path: str | Path, payload: dict[str, Any], merchant_id: str = "") -> dict[str, Any]:
+    if not merchant_id:
+        raise AuthError("merchant_id is required for human-review queue")
     sql = """
         select f.* from moderation_flags f
         join conversations c on c.id = f.conversation_id
         where f.resolved_at = ''
     """
     values: list[Any] = []
-    if merchant_id:
-        sql += " and c.merchant_id = ?"
-        values.append(merchant_id)
+    sql += " and c.merchant_id = ?"
+    values.append(merchant_id)
     sql += " order by f.created_at desc, f.id desc"
     with db_session(db_path) as conn:
+        _require_merchant_read_token(conn, merchant_id, payload)
         rows = conn.execute(sql, values).fetchall()
         return {"ok": True, "reviews": [_review_summary(conn, row) for row in rows]}
 
@@ -790,9 +877,9 @@ def handle_request(
         if len(parts) == 3 and parts[0] == "buyers" and parts[2] == "conversations" and method == "GET":
             filters = dict(query)
             filters["buyer_id"] = parts[1]
-            return 200, _conversation_list(db_path, filters)
+            return 200, _conversation_list(db_path, filters, payload, owner_kind="buyer", owner_id=parts[1])
         if len(parts) == 2 and parts[0] == "conversations" and method == "GET":
-            return 200, _get_conversation(db_path, parts[1])
+            return 200, _get_conversation(db_path, parts[1], payload)
         if len(parts) == 3 and parts[0] == "conversations" and parts[2] == "messages" and method == "POST":
             return 200, _append_conversation_message(db_path, parts[1], payload)
         if len(parts) == 3 and parts[0] == "conversations" and parts[2] == "close" and method == "POST":
@@ -818,13 +905,13 @@ def handle_request(
         if len(parts) == 3 and parts[0] == "merchants" and parts[2] == "agents" and method == "GET":
             return 200, _list_agents(db_path, owner_id=parts[1])
         if path == "/human-review/queue" and method == "GET":
-            return 200, _human_review_queue(db_path)
+            return 200, _human_review_queue(db_path, payload, merchant_id=str(query.get("merchant_id") or ""))
         if len(parts) == 3 and parts[0] == "merchants" and parts[2] == "conversations" and method == "GET":
             filters = dict(query)
             filters["merchant_id"] = parts[1]
-            return 200, _conversation_list(db_path, filters)
+            return 200, _conversation_list(db_path, filters, payload, owner_kind="merchant", owner_id=parts[1])
         if len(parts) == 3 and parts[0] == "merchants" and parts[2] == "human-review" and method == "GET":
-            return 200, _merchant_conversations(db_path, parts[1], status="human_required")
+            return 200, _merchant_conversations(db_path, parts[1], payload, status="human_required")
         if len(parts) == 3 and parts[0] == "conversations" and parts[2] == "human-review" and method == "POST":
             return 200, _create_human_review(db_path, parts[1], payload)
         if len(parts) == 4 and parts[0] == "conversations" and parts[2] == "human-review" and parts[3] == "resolve" and method == "POST":
@@ -938,6 +1025,7 @@ def create_app(db_path: str | Path = "mai-cli.sqlite") -> Any:
         merchant_id: str = "",
         sku: str = "",
         updated_since: str = "",
+        authorization: str = AUTHORIZATION_HEADER,
     ) -> dict[str, Any]:
         return _conversation_list(
             db_path,
@@ -948,11 +1036,14 @@ def create_app(db_path: str | Path = "mai-cli.sqlite") -> Any:
                 "sku": sku,
                 "updated_since": updated_since,
             },
+            _payload_with_auth({}, authorization),
+            owner_kind="buyer",
+            owner_id=buyer_id,
         )
 
     @app.get("/conversations/{conversation_id}")
-    def get_conversation(conversation_id: str) -> dict[str, Any]:
-        return _get_conversation(db_path, conversation_id)
+    def get_conversation(conversation_id: str, authorization: str = AUTHORIZATION_HEADER) -> dict[str, Any]:
+        return _get_conversation(db_path, conversation_id, _payload_with_auth({}, authorization))
 
     @app.post("/conversations/{conversation_id}/messages")
     def add_message(
@@ -1026,8 +1117,8 @@ def create_app(db_path: str | Path = "mai-cli.sqlite") -> Any:
         return _list_agents(db_path, owner_id=merchant_id)
 
     @app.get("/human-review/queue")
-    def human_review_queue() -> dict[str, Any]:
-        return _human_review_queue(db_path)
+    def human_review_queue(merchant_id: str = "", authorization: str = AUTHORIZATION_HEADER) -> dict[str, Any]:
+        return _human_review_queue(db_path, _payload_with_auth({}, authorization), merchant_id=merchant_id)
 
     @app.get("/merchants/{merchant_id}/conversations")
     def get_merchant_conversations(
@@ -1036,6 +1127,7 @@ def create_app(db_path: str | Path = "mai-cli.sqlite") -> Any:
         buyer_id: str = "",
         sku: str = "",
         updated_since: str = "",
+        authorization: str = AUTHORIZATION_HEADER,
     ) -> dict[str, Any]:
         return _conversation_list(
             db_path,
@@ -1046,11 +1138,14 @@ def create_app(db_path: str | Path = "mai-cli.sqlite") -> Any:
                 "sku": sku,
                 "updated_since": updated_since,
             },
+            _payload_with_auth({}, authorization),
+            owner_kind="merchant",
+            owner_id=merchant_id,
         )
 
     @app.get("/merchants/{merchant_id}/human-review")
-    def human_review(merchant_id: str) -> dict[str, Any]:
-        return _merchant_conversations(db_path, merchant_id, status="human_required")
+    def human_review(merchant_id: str, authorization: str = AUTHORIZATION_HEADER) -> dict[str, Any]:
+        return _merchant_conversations(db_path, merchant_id, _payload_with_auth({}, authorization), status="human_required")
 
     @app.post("/conversations/{conversation_id}/human-review")
     def create_human_review(
