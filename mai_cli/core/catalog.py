@@ -469,9 +469,9 @@ def _match_score(query: str, product: sqlite3.Row, merchant: sqlite3.Row) -> flo
     for token in product_tokens:
         if len(token) >= 2 and token in query_lower:
             score += 8
-    if int(product["stock"]) > 0:
+    if _safe_non_negative_int(product["stock"]) > 0:
         score += 5
-    score -= float(product["price"]) / 1000
+    score -= _safe_non_negative_float(product["price"]) / 1000
     return round(score, 4)
 
 
@@ -503,12 +503,14 @@ def search_products(
         merchant = require_merchant(conn, row["merchant_id"])
         if city and merchant["city"].lower() != city.lower():
             continue
-        if max_price is not None and float(row["price"]) > max_price:
+        price = _safe_non_negative_float(row["price"])
+        stock = _safe_non_negative_int(row["stock"])
+        if max_price is not None and price > max_price:
             continue
-        if not include_out_of_stock and int(row["stock"]) <= 0:
+        if not include_out_of_stock and stock <= 0:
             continue
         score = _match_score(query, row, merchant)
-        if query and score <= (5 if int(row["stock"]) > 0 else 0):
+        if query and score <= (5 if stock > 0 else 0):
             continue
         summary = product_summary(conn, row["sku"])
         service_area = str(summary["merchant"].get("service_area") or "")
