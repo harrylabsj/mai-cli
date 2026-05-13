@@ -223,6 +223,28 @@ class LlmContractTest(unittest.TestCase):
             self.assertTrue(result["ok"])
             self.assertEqual(result["content"], "Recovered response.")
 
+    def test_llm_tool_loop_reports_malformed_provider_choices_cleanly(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.seed_consultation(db_file)
+
+            provider = OpenAICompatibleProvider(
+                base_url="https://llm.example/v1",
+                api_key="secret-token",
+                model="mai-test-model",
+                transport=lambda *_args: {"choices": "bad"},
+            )
+            dispatcher = MarketplaceToolDispatcher(db_file, source_id="llm-loop", actor="alice", token_scope="buyer")
+
+            result = run_marketplace_tool_loop(
+                provider,
+                dispatcher,
+                [{"role": "user", "content": "Find longjing near Hangzhou."}],
+            )
+
+            self.assertFalse(result["ok"])
+            self.assertIn("LLM provider choices must be a list", result["error"])
+
     def test_llm_tool_loop_stops_before_exceeding_tool_call_budget(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"

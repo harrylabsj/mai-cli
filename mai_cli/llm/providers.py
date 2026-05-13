@@ -18,6 +18,23 @@ class LLMResponse:
     raw: dict[str, Any]
 
 
+def _assistant_message_from_raw(raw: Any) -> dict[str, Any]:
+    if not isinstance(raw, dict):
+        raise ValueError("LLM provider returned a non-object response")
+    choices = raw.get("choices") or []
+    if not isinstance(choices, list):
+        raise ValueError("LLM provider choices must be a list")
+    if not choices:
+        return {}
+    choice = choices[0]
+    if not isinstance(choice, dict):
+        raise ValueError("LLM provider choice must be an object")
+    message = choice.get("message") or {}
+    if not isinstance(message, dict):
+        raise ValueError("LLM provider message must be an object")
+    return message
+
+
 def _default_transport(url: str, headers: dict[str, str], payload: dict[str, Any], timeout: int) -> dict[str, Any]:
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     request = urllib.request.Request(url, data=body, headers=headers, method="POST")
@@ -61,8 +78,7 @@ class OpenAICompatibleProvider:
             "authorization": f"Bearer {self.api_key}",
         }
         raw = self.transport(f"{self.base_url}/chat/completions", headers, payload, self.timeout)
-        choices = raw.get("choices") or []
-        message = choices[0].get("message", {}) if choices else {}
+        message = _assistant_message_from_raw(raw)
         return LLMResponse(content=str(message.get("content") or ""), raw=raw)
 
 
