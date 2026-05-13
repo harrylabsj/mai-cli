@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import time
 from typing import Any
 
@@ -61,6 +62,8 @@ def _safe_non_negative_float(value: Any, default: float) -> float:
     try:
         number = float(value)
     except (TypeError, ValueError):
+        return default
+    if not math.isfinite(number):
         return default
     return max(number, 0.0)
 
