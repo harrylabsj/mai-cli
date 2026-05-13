@@ -1504,6 +1504,20 @@ class PublicMarketplaceTest(unittest.TestCase):
             self.assertEqual(status, 200)
             self.assertTrue(claim["claim"]["claimed"])
 
+            status, fractional_stale_ttl = self.request(
+                app,
+                "POST",
+                "/agents/messages/abandon-stale",
+                {
+                    "merchant_id": "seller-a",
+                    "agent_id": "mai-cli-merchant-agent:seller-a",
+                    "stale_after_seconds": 0.5,
+                    "merchant_token": merchant_a["merchant_token"],
+                },
+            )
+            self.assertEqual(status, 400)
+            self.assertIn("stale_after_seconds must be a whole number", fractional_stale_ttl["error"])
+
             status, denied = self.request(
                 app,
                 "POST",

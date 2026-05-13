@@ -188,24 +188,31 @@ def _payload_with_auth(payload: dict[str, Any], authorization: Any = "") -> dict
 
 
 def _expires_at_from_ttl(ttl_seconds: Any) -> str:
-    if ttl_seconds in (None, ""):
+    seconds = _positive_whole_seconds(ttl_seconds, "ttl_seconds")
+    if seconds is None:
         return ""
-    if isinstance(ttl_seconds, bool):
-        raise ValueError("ttl_seconds must be a whole number")
-    if isinstance(ttl_seconds, int):
-        seconds = ttl_seconds
-    elif isinstance(ttl_seconds, float):
-        if not math.isfinite(ttl_seconds) or not ttl_seconds.is_integer():
-            raise ValueError("ttl_seconds must be a whole number")
-        seconds = int(ttl_seconds)
+    return (datetime.now() + timedelta(seconds=seconds)).replace(microsecond=0).isoformat()
+
+
+def _positive_whole_seconds(value: Any, field_name: str) -> int | None:
+    if value in (None, ""):
+        return None
+    if isinstance(value, bool):
+        raise ValueError(f"{field_name} must be a whole number")
+    if isinstance(value, int):
+        seconds = value
+    elif isinstance(value, float):
+        if not math.isfinite(value) or not value.is_integer():
+            raise ValueError(f"{field_name} must be a whole number")
+        seconds = int(value)
     else:
         try:
-            seconds = int(str(ttl_seconds).strip())
+            seconds = int(str(value).strip())
         except ValueError as exc:
-            raise ValueError("ttl_seconds must be a whole number") from exc
+            raise ValueError(f"{field_name} must be a whole number") from exc
     if seconds <= 0:
-        raise ValueError("ttl_seconds must be greater than 0")
-    return (datetime.now() + timedelta(seconds=seconds)).replace(microsecond=0).isoformat()
+        raise ValueError(f"{field_name} must be greater than 0")
+    return seconds
 
 
 def _token_is_expired(expires_at: str) -> bool:
@@ -879,7 +886,9 @@ def _abandon_stale_agent_messages(db_path: str | Path, payload: dict[str, Any]) 
         abandoned = abandon_stale_agent_messages(
             conn,
             agent_id,
-            stale_after_seconds=int(payload.get("stale_after_seconds") or 300),
+            stale_after_seconds=(
+                _positive_whole_seconds(payload.get("stale_after_seconds", 300), "stale_after_seconds") or 300
+            ),
         )
         return {"ok": True, "abandoned": abandoned}
 
