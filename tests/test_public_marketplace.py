@@ -1528,6 +1528,15 @@ class PublicMarketplaceTest(unittest.TestCase):
                 "idempotency_key": "mai-cli-merchant-agent:seller-a:1",
                 "merchant_token": merchant_a["merchant_token"],
             }
+            status, fractional_claim = self.request(
+                app,
+                "POST",
+                "/agents/messages/claim",
+                {**claim_payload, "message_id": buyer_message_id + 0.5},
+            )
+            self.assertEqual(status, 400)
+            self.assertIn("message_id must be a whole number", fractional_claim["error"])
+
             status, claim = self.request(app, "POST", "/agents/messages/claim", claim_payload)
             self.assertEqual(status, 200)
             self.assertTrue(claim["claim"]["claimed"])
@@ -1559,6 +1568,20 @@ class PublicMarketplaceTest(unittest.TestCase):
             )
             self.assertEqual(status, 403)
             self.assertIn("cannot access", denied["error"])
+
+            status, fractional_complete = self.request(
+                app,
+                "POST",
+                "/agents/messages/complete",
+                {
+                    "merchant_id": "seller-a",
+                    "agent_id": "mai-cli-merchant-agent:seller-a",
+                    "message_id": buyer_message_id + 0.5,
+                    "merchant_token": merchant_a["merchant_token"],
+                },
+            )
+            self.assertEqual(status, 400)
+            self.assertIn("message_id must be a whole number", fractional_complete["error"])
 
             status, completed = self.request(
                 app,

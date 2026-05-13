@@ -236,6 +236,13 @@ def _non_negative_whole_int(value: Any, field_name: str, default: int = 0) -> in
     return number
 
 
+def _positive_whole_int(value: Any, field_name: str) -> int:
+    number = _non_negative_whole_int(value, field_name)
+    if number <= 0:
+        raise ValueError(f"{field_name} must be greater than 0")
+    return number
+
+
 def _token_is_expired(expires_at: str) -> bool:
     return bool(expires_at and expires_at <= now_iso())
 
@@ -862,7 +869,7 @@ def _claim_agent_message(db_path: str | Path, payload: dict[str, Any]) -> dict[s
         merchant_id, agent_id = _require_agent_payload(conn, payload)
         conversation_id = str(payload["conversation_id"])
         _require_agent_conversation(conn, merchant_id, conversation_id)
-        message_id = int(payload["message_id"])
+        message_id = _positive_whole_int(payload["message_id"], "message_id")
         _require_message_in_conversation(conn, conversation_id, message_id)
         claim = claim_agent_message(
             conn,
@@ -877,7 +884,7 @@ def _claim_agent_message(db_path: str | Path, payload: dict[str, Any]) -> dict[s
 def _complete_agent_message(db_path: str | Path, payload: dict[str, Any]) -> dict[str, Any]:
     with db_session(db_path) as conn:
         merchant_id, agent_id = _require_agent_payload(conn, payload)
-        message_id = int(payload["message_id"])
+        message_id = _positive_whole_int(payload["message_id"], "message_id")
         _require_agent_process_scope(conn, merchant_id, agent_id, message_id)
         process = complete_agent_message(conn, agent_id, message_id)
         return {"ok": True, "process": process}
@@ -886,7 +893,7 @@ def _complete_agent_message(db_path: str | Path, payload: dict[str, Any]) -> dic
 def _fail_agent_message(db_path: str | Path, payload: dict[str, Any]) -> dict[str, Any]:
     with db_session(db_path) as conn:
         merchant_id, agent_id = _require_agent_payload(conn, payload)
-        message_id = int(payload["message_id"])
+        message_id = _positive_whole_int(payload["message_id"], "message_id")
         _require_agent_process_scope(conn, merchant_id, agent_id, message_id)
         process = fail_agent_message(conn, agent_id, message_id, str(payload.get("error") or "agent failure"))
         return {"ok": True, "process": process}
@@ -895,7 +902,7 @@ def _fail_agent_message(db_path: str | Path, payload: dict[str, Any]) -> dict[st
 def _abandon_agent_message(db_path: str | Path, payload: dict[str, Any]) -> dict[str, Any]:
     with db_session(db_path) as conn:
         merchant_id, agent_id = _require_agent_payload(conn, payload)
-        message_id = int(payload["message_id"])
+        message_id = _positive_whole_int(payload["message_id"], "message_id")
         _require_agent_process_scope(conn, merchant_id, agent_id, message_id)
         process = abandon_agent_message(conn, agent_id, message_id, str(payload.get("error") or "agent abandoned claim"))
         return {"ok": True, "process": process}
