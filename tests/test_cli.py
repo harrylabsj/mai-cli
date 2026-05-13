@@ -157,6 +157,33 @@ class MaiCliTest(unittest.TestCase):
             self.assertIn("delivery_rules", tables)
             self.assertNotIn("orders", tables)
 
+    def test_catalog_required_identifiers_cannot_be_blank(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+
+            with self.assertRaises(SystemExit) as merchant_error:
+                self.run_cli(db_file, "merchant", "create", "--id", "  ", "--name", "West Lake Tea")
+            self.assertIn("merchant id is required", str(merchant_error.exception))
+
+            self.run_cli(db_file, "merchant", "create", "--id", "seller-a", "--name", "West Lake Tea")
+            with self.assertRaises(SystemExit) as product_error:
+                self.run_cli(
+                    db_file,
+                    "product",
+                    "add",
+                    "--merchant",
+                    "seller-a",
+                    "--sku",
+                    " ",
+                    "--title",
+                    "Longjing Gift Box",
+                    "--price",
+                    "88",
+                    "--stock",
+                    "5",
+                )
+            self.assertIn("product sku is required", str(product_error.exception))
+
     def test_search_products_text_output_lists_matching_products(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"

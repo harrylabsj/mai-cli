@@ -50,6 +50,12 @@ def create_merchant(
     delivery_eta_minutes: int = 0,
     delivery_radius_km: float = 0,
 ) -> dict[str, Any]:
+    merchant_id = str(merchant_id or "").strip()
+    name = str(name or "").strip()
+    if not merchant_id:
+        raise SystemExit("merchant id is required")
+    if not name:
+        raise SystemExit("merchant name is required")
     now = now_iso()
     conn.execute(
         """
@@ -188,6 +194,15 @@ def create_product(
     description: str = "",
     delivery_attributes: str | list[str] | None = None,
 ) -> dict[str, Any]:
+    merchant_id = str(merchant_id or "").strip()
+    sku = str(sku or "").strip()
+    title = str(title or "").strip()
+    if not merchant_id:
+        raise SystemExit("merchant id is required")
+    if not sku:
+        raise SystemExit("product sku is required")
+    if not title:
+        raise SystemExit("product title is required")
     if price < 0:
         raise SystemExit("--price must be non-negative")
     if stock < 0:
