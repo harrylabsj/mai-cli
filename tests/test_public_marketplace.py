@@ -1576,6 +1576,15 @@ class PublicMarketplaceTest(unittest.TestCase):
                 self.assertEqual(status, 400)
                 self.assertIn(f"{field} must be non-negative", response["error"])
 
+                status, response = self.request(
+                    app,
+                    "POST",
+                    "/agents/heartbeat",
+                    {"merchant_id": "seller-a", "merchant_token": merchant_token, field: 10**100},
+                )
+                self.assertEqual(status, 400)
+                self.assertIn(f"{field} must be <= 9223372036854775807", response["error"])
+
     def test_agent_heartbeat_rejects_unknown_status(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "marketplace.sqlite"

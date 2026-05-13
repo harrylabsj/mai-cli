@@ -52,6 +52,7 @@ class AuthError(Exception):
 
 HUMAN_REVIEW_ACTIONS = {"reply", "approve_public_answer", "reject", "close"}
 HUMAN_REVIEW_SENDERS = {"merchant", "merchant_agent", "operator"}
+MAX_SQLITE_INTEGER = 2**63 - 1
 
 
 def _json_error_response(status_code: int, error: str) -> Any:
@@ -246,6 +247,8 @@ def _non_negative_whole_int(value: Any, field_name: str, default: int = 0) -> in
             raise ValueError(f"{field_name} must be a whole number") from exc
     if number < 0:
         raise ValueError(f"{field_name} must be non-negative")
+    if number > MAX_SQLITE_INTEGER:
+        raise ValueError(f"{field_name} must be <= {MAX_SQLITE_INTEGER}")
     return number
 
 

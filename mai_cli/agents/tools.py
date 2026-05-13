@@ -18,6 +18,7 @@ from mai_cli.db.session import encode_json, now_iso
 
 DEFAULT_CAPABILITIES = ["catalog", "inventory", "delivery", "consultation"]
 AGENT_STATUSES = {"online", "away", "human_required"}
+MAX_SQLITE_INTEGER = 2**63 - 1
 
 
 def _non_negative_whole_int(value: Any, field_name: str, default: int = 0) -> int:
@@ -38,6 +39,8 @@ def _non_negative_whole_int(value: Any, field_name: str, default: int = 0) -> in
             raise ValueError(f"{field_name} must be a whole number") from exc
     if number < 0:
         raise ValueError(f"{field_name} must be non-negative")
+    if number > MAX_SQLITE_INTEGER:
+        raise ValueError(f"{field_name} must be <= {MAX_SQLITE_INTEGER}")
     return number
 
 

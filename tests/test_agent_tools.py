@@ -202,6 +202,10 @@ class AgentToolsBoundaryTest(unittest.TestCase):
                     record_heartbeat(conn, "seller-a", pid=1.5)
                 self.assertIn("pid must be a whole number", str(pid_error.exception))
 
+                with self.assertRaises(ValueError) as huge_error:
+                    record_heartbeat(conn, "seller-a", checked_count=10**100)
+                self.assertIn("checked_count must be <= 9223372036854775807", str(huge_error.exception))
+
     def test_http_merchant_agent_tools_call_marketplace_api_contract(self):
         from mai_cli.agents.tools import HTTPMerchantAgentTools
 
