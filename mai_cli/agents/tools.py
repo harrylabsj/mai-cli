@@ -19,6 +19,7 @@ from mai_cli.db.session import encode_json, now_iso
 DEFAULT_CAPABILITIES = ["catalog", "inventory", "delivery", "consultation"]
 AGENT_STATUSES = {"online", "away", "human_required"}
 MAX_SQLITE_INTEGER = 2**63 - 1
+MAX_HTTP_TOOL_TIMEOUT_SECONDS = 60.0
 
 
 def _non_negative_whole_int(value: Any, field_name: str, default: int = 0) -> int:
@@ -51,7 +52,7 @@ def _positive_whole_int(value: Any, field_name: str) -> int:
     return number
 
 
-def _safe_positive_float(value: Any, default: float) -> float:
+def _safe_positive_float(value: Any, default: float, maximum: float | None = None) -> float:
     if isinstance(value, bool):
         return default
     try:
@@ -60,6 +61,8 @@ def _safe_positive_float(value: Any, default: float) -> float:
         return default
     if not math.isfinite(number) or number <= 0:
         return default
+    if maximum is not None:
+        return min(number, maximum)
     return number
 
 
@@ -286,7 +289,7 @@ class HTTPMerchantAgentTools:
         self.merchant_token = str(merchant_token or "").strip()
         if not self.merchant_token:
             raise ValueError("merchant_token is required")
-        self.timeout = _safe_positive_float(timeout, 10.0)
+        self.timeout = _safe_positive_float(timeout, 10.0, maximum=MAX_HTTP_TOOL_TIMEOUT_SECONDS)
         self.opener = opener or urllib.request.urlopen
         self.host = str(host or "")
         self.session_id = str(session_id or "")
