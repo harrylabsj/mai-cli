@@ -1110,7 +1110,8 @@ def _audit_events(
 
 
 def _human_review_row(conn: Any, review_id: str | int) -> Any:
-    row = conn.execute("select * from moderation_flags where id = ?", (int(review_id),)).fetchone()
+    normalized_review_id = _positive_whole_int(review_id, "review_id")
+    row = conn.execute("select * from moderation_flags where id = ?", (normalized_review_id,)).fetchone()
     if row is None:
         raise SystemExit(f"Unknown human review: {review_id}")
     return row

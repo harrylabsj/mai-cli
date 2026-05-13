@@ -2757,6 +2757,16 @@ class PublicMarketplaceTest(unittest.TestCase):
             self.assertEqual(status, 400)
             self.assertIn("limit must be a whole number", body["error"])
 
+    def test_human_review_api_reports_invalid_review_id_cleanly(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "marketplace.sqlite"
+            app = create_app(db_file)
+
+            status, body = self.request(app, "GET", "/human-review/not-a-number")
+
+            self.assertEqual(status, 400)
+            self.assertIn("review_id must be a whole number", body["error"])
+
     def test_api_exposes_conversation_agent_and_human_review_lifecycle(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "marketplace.sqlite"
