@@ -929,6 +929,51 @@ class PublicMarketplaceTest(unittest.TestCase):
             self.assertEqual(status, 200)
             self.assertEqual(agent_queue["reviews"][0]["conversation_id"], "CONV-0001")
 
+    def test_conversation_read_tolerates_invalid_structured_payload_json(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "marketplace.sqlite"
+            app = create_app(db_file)
+
+            status, merchant = self.request(app, "POST", "/merchants", {"id": "seller-a", "name": "West Lake Tea"})
+            self.assertEqual(status, 200)
+            status, product = self.request(
+                app,
+                "POST",
+                "/products",
+                {
+                    "merchant_id": "seller-a",
+                    "sku": "tea-a",
+                    "title": "Longjing Gift Box",
+                    "price": 88,
+                    "stock": 5,
+                    "tags": ["longjing"],
+                    "merchant_token": merchant["merchant_token"],
+                },
+            )
+            self.assertEqual(status, 200)
+            status, ask = self.request(
+                app,
+                "POST",
+                "/buyer/ask",
+                {"buyer_id": "alice", "text": "longjing delivery today"},
+            )
+            self.assertEqual(status, 200)
+            with sqlite3.connect(db_file) as conn:
+                conn.execute(
+                    "update messages set structured_payload_json = ? where conversation_id = ?",
+                    (sqlite3.Binary(b"\xff"), "CONV-0001"),
+                )
+
+            status, buyer_view = self.request(
+                app,
+                "GET",
+                "/conversations/CONV-0001",
+                headers={"authorization": f"Bearer {ask['buyer_token']}"},
+            )
+
+            self.assertEqual(status, 200)
+            self.assertEqual(buyer_view["conversation"]["messages"][0]["structured_payload"], {})
+
     def test_agent_status_reads_require_owner_tokens(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "marketplace.sqlite"

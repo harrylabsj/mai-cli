@@ -26,7 +26,7 @@ def decode_json(value: str | None, default: Any) -> Any:
         return default
     try:
         decoded = json.loads(value)
-    except (TypeError, json.JSONDecodeError):
+    except (TypeError, UnicodeDecodeError, json.JSONDecodeError):
         return default
     if isinstance(default, list):
         if not isinstance(decoded, list):
