@@ -23,6 +23,9 @@ def ask(
     city: str = "",
     area: str = "",
     limit: int = 3,
+    source_id: str = "buyer-cli",
+    host: str = "",
+    session_id: str = "",
 ) -> dict[str, Any]:
     candidates = search_products(conn, query=text, city=city, area=area, limit=limit)
     if not candidates:
@@ -42,7 +45,14 @@ def ask(
         "buyer",
         infer_intent(text),
         text,
-        structured_payload={"city": city, "area": area, "selected_sku": selected["sku"], "source_id": "buyer-cli"},
+        structured_payload={
+            "city": city,
+            "area": area,
+            "selected_sku": selected["sku"],
+            "source_id": source_id or "buyer-cli",
+            "host": host or "",
+            "session_id": session_id or "",
+        },
     )
     return {
         "ok": True,

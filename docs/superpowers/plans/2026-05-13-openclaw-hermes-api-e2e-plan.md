@@ -236,7 +236,7 @@ git commit -m "Add OpenClaw API agent command metadata"
 **Files:**
 - Create: `tests/test_host_adapter_api_e2e.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/test_host_adapter_api_e2e.py` with this structure:
 
@@ -381,6 +381,9 @@ class HostAdapterAPIE2ETest(unittest.TestCase):
             self.assertEqual(status, 200)
             self.assertEqual(ask["conversation"]["id"], "CONV-0001")
             self.assertEqual(ask["conversation"]["status"], "waiting_merchant")
+            self.assertEqual(ask["message"]["structured_payload"]["source_id"], "hermes-buyer:alice")
+            self.assertEqual(ask["message"]["structured_payload"]["host"], "hermes")
+            self.assertEqual(ask["message"]["structured_payload"]["session_id"], "hermes-session-1")
             buyer_token = ask["buyer_token"]
 
             tools = HTTPMerchantAgentTools(
@@ -403,7 +406,7 @@ class HostAdapterAPIE2ETest(unittest.TestCase):
             self.assertTrue(summary["conversation"]["messages"][-1]["structured_payload"]["source_id"].startswith("mai-cli-merchant-agent:"))
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run:
 
@@ -413,7 +416,7 @@ python3 -m unittest discover -s tests -p test_host_adapter_api_e2e.py
 
 Expected before Tasks 1 and 2 are complete: FAIL because `hermes.buyer_ask_request` is missing. Expected after Tasks 1 and 2 but before API payload support is complete: FAIL on any missing host/session preservation assertion.
 
-- [ ] **Step 3: Implement only the missing behavior**
+- [x] **Step 3: Implement only the missing behavior**
 
 If `_buyer_ask()` ignores `source_id`, `host`, or `session_id`, update `mai_cli/api/app.py` and `mai_cli/agents/buyer_cli.py` so the initial buyer message structured payload preserves:
 
@@ -427,7 +430,7 @@ If `_buyer_ask()` ignores `source_id`, `host`, or `session_id`, update `mai_cli/
 
 Keep the existing tokenless buyer creation behavior and returned `buyer_token` unchanged.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run:
 
@@ -437,7 +440,7 @@ python3 -m unittest discover -s tests -p test_host_adapter_api_e2e.py
 
 Expected: `OK`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add mai_cli/api/app.py mai_cli/agents/buyer_cli.py tests/test_host_adapter_api_e2e.py

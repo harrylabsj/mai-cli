@@ -547,6 +547,9 @@ def _buyer_ask(db_path: str | Path, payload: dict[str, Any]) -> dict[str, Any]:
             text=str(payload["text"]),
             city=str(payload.get("city") or ""),
             area=str(payload.get("area") or ""),
+            source_id=str(payload.get("source_id") or "buyer-cli"),
+            host=str(payload.get("host") or ""),
+            session_id=str(payload.get("session_id") or ""),
         )
         if result.get("conversation"):
             result["buyer_token"] = _issue_buyer_token(conn, buyer_id, result["conversation"]["id"])
