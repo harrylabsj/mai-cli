@@ -44,7 +44,7 @@ def _finite_float(value: Any, message: str) -> float:
         raise SystemExit(message)
     try:
         number = float(value)
-    except (TypeError, ValueError) as exc:
+    except (OverflowError, TypeError, ValueError) as exc:
         raise SystemExit(message) from exc
     if not math.isfinite(number):
         raise SystemExit(message)
