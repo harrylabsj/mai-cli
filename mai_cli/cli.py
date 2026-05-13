@@ -152,7 +152,19 @@ def cmd_delivery_set(args: argparse.Namespace) -> None:
             radius_km=args.radius_km,
             notes=args.notes or "",
         )
+    if args.format == "text":
+        emit_delivery_rule_text(args.merchant, delivery)
+        return
     emit({"ok": True, "merchant_id": args.merchant, "delivery": delivery}, args.format)
+
+
+def emit_delivery_rule_text(merchant_id: str, delivery: dict[str, Any]) -> None:
+    print(f"Delivery rule updated: {merchant_id}")
+    print(f"Service area: {delivery.get('service_area') or '-'}")
+    print(f"Fee: {delivery.get('currency') or 'CNY'} {float(delivery.get('fee') or 0):g}")
+    print(f"ETA: {int(delivery.get('eta_minutes') or 0)} minutes")
+    print(f"Radius: {float(delivery.get('radius_km') or 0):g} km")
+    print(f"Notes: {delivery.get('notes') or '-'}")
 
 
 def cmd_product_add(args: argparse.Namespace) -> None:
