@@ -127,6 +127,16 @@ class FailingMarketplaceTools(FakeMarketplaceTools):
         raise RuntimeError("temporary catalog failure")
 
 
+class CorruptProductMarketplaceTools(FakeMarketplaceTools):
+    def product_summary(self, sku):
+        product = super().product_summary(sku)
+        product["price"] = "bad"
+        product["stock"] = "bad"
+        product["delivery"]["fee"] = "bad"
+        product["delivery"]["eta_minutes"] = "bad"
+        return product
+
+
 class AgentToolsBoundaryTest(unittest.TestCase):
     def test_record_heartbeat_rejects_fractional_runtime_counters(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -261,6 +271,17 @@ class AgentToolsBoundaryTest(unittest.TestCase):
         )
         self.assertEqual(tools.messages[0]["structured_payload"]["processed_message_id"], 1)
         self.assertEqual(tools.messages[0]["structured_payload"]["idempotency_key"], "mai-cli-merchant-agent:seller-a:1")
+
+    def test_process_once_tolerates_corrupt_remote_product_numbers(self):
+        tools = CorruptProductMarketplaceTools()
+
+        result = merchant_agent.process_once_with_tools(tools, "seller-a")
+
+        self.assertEqual(result["failed"], [])
+        self.assertEqual(result["replied"][0]["reason"], "low_stock")
+        self.assertTrue(result["replied"][0]["human_required"])
+        self.assertIn("0.00 CNY with 0 in stock", tools.messages[0]["text"])
+        self.assertIn(("add_flag", "CONV-0001", "low_stock", "tea-a"), tools.calls)
 
     def test_process_once_records_failed_message_for_retry_and_heartbeat_error(self):
         tools = FailingMarketplaceTools()

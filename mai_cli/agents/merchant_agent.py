@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import os
 import sqlite3
 from typing import Any
@@ -11,6 +12,28 @@ from mai_cli.agents.buyer_cli import MVP_WARNINGS
 from mai_cli.agents.tools import DEFAULT_CAPABILITIES, MerchantAgentTools, SQLiteMerchantAgentTools, record_heartbeat
 from mai_cli.core.harness import message_idempotency_key
 from mai_cli.core.risk import human_review_reason
+
+
+def _safe_non_negative_float(value: Any) -> float:
+    if isinstance(value, bool):
+        return 0.0
+    try:
+        number = float(value or 0)
+    except (TypeError, ValueError):
+        return 0.0
+    if not math.isfinite(number) or number < 0:
+        return 0.0
+    return number
+
+
+def _safe_non_negative_int(value: Any) -> int:
+    if isinstance(value, bool):
+        return 0
+    try:
+        number = int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+    return max(number, 0)
 
 
 def heartbeat(
@@ -64,26 +87,28 @@ def generate_reply(
     if product is None:
         return f"I need a merchant human to confirm which product this consultation refers to. {disclaimer}", True, reason
     delivery = product["delivery"]
-    if not reason and int(product["stock"]) <= 2:
+    price = _safe_non_negative_float(product.get("price"))
+    stock = _safe_non_negative_int(product.get("stock"))
+    if not reason and stock <= 2:
         reason = "low_stock"
     if not reason and buyer_message["intent"] == "ask_delivery" and not delivery.get("service_area"):
         reason = "unclear_delivery"
     if reason:
         return (
-            f"{product['title']} is listed at {product['price']:.2f} {product['currency']} with "
-            f"{product['stock']} in stock. This request needs merchant human review because: {reason}. {disclaimer}",
+            f"{product['title']} is listed at {price:.2f} {product['currency']} with "
+            f"{stock} in stock. This request needs merchant human review because: {reason}. {disclaimer}",
             True,
             reason,
         )
     delivery_text = "delivery rule is missing"
     if delivery.get("service_area"):
         delivery_text = (
-            f"delivery area {delivery['service_area']}, ETA {delivery['eta_minutes']} minutes, "
-            f"fee {delivery['fee']:.2f} {delivery['currency']}"
+            f"delivery area {delivery['service_area']}, ETA {_safe_non_negative_int(delivery.get('eta_minutes'))} minutes, "
+            f"fee {_safe_non_negative_float(delivery.get('fee')):.2f} {delivery['currency']}"
         )
     return (
-        f"{product['title']} has stock {product['stock']} and current price "
-        f"{product['price']:.2f} {product['currency']}; {delivery_text}. {disclaimer}",
+        f"{product['title']} has stock {stock} and current price "
+        f"{price:.2f} {product['currency']}; {delivery_text}. {disclaimer}",
         False,
         "",
     )
