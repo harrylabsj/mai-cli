@@ -2641,6 +2641,15 @@ class PublicMarketplaceTest(unittest.TestCase):
             self.assertEqual(status, 400)
             self.assertIn("ttl_seconds must be a whole number", fractional_issue["error"])
 
+            status, oversized_issue = self.request(
+                app,
+                "POST",
+                "/agents/tokens",
+                {"merchant_id": "seller-a", "merchant_token": merchant_token, "ttl_seconds": 10**100},
+            )
+            self.assertEqual(status, 400)
+            self.assertIn("ttl_seconds is too large", oversized_issue["error"])
+
             status, issued = self.request(
                 app,
                 "POST",
@@ -2661,6 +2670,20 @@ class PublicMarketplaceTest(unittest.TestCase):
             )
             self.assertEqual(status, 400)
             self.assertIn("ttl_seconds must be a whole number", fractional_rotate["error"])
+
+            status, oversized_rotate = self.request(
+                app,
+                "POST",
+                "/agents/tokens/rotate",
+                {
+                    "merchant_id": "seller-a",
+                    "merchant_token": merchant_token,
+                    "token": issued["agent_token"],
+                    "ttl_seconds": 10**100,
+                },
+            )
+            self.assertEqual(status, 400)
+            self.assertIn("ttl_seconds is too large", oversized_rotate["error"])
 
     def test_agent_token_list_api_reports_status_without_secret(self):
         with tempfile.TemporaryDirectory() as tmp:

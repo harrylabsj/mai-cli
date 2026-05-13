@@ -1168,7 +1168,10 @@ def cmd_agent_token(args: argparse.Namespace) -> None:
         if args.merchant_token:
             _require_merchant_token(conn, args.merchant, {"merchant_token": args.merchant_token})
         agent_id = _default_merchant_agent_id(args.merchant)
-        token, expires_at = _issue_agent_token(conn, args.merchant, agent_id, args.ttl_seconds)
+        try:
+            token, expires_at = _issue_agent_token(conn, args.merchant, agent_id, args.ttl_seconds)
+        except ValueError as exc:
+            raise SystemExit(str(exc)) from exc
         issued = _agent_token_row(conn, token)
         append_audit_event(
             conn,
@@ -1243,7 +1246,10 @@ def cmd_agent_rotate_token(args: argparse.Namespace) -> None:
         revoked_at = row["revoked_at"] or now_iso()
         if not row["revoked_at"]:
             conn.execute("update api_tokens set revoked_at = ? where token = ?", (revoked_at, token))
-        new_token, expires_at = _issue_agent_token(conn, args.merchant, row["agent_id"], args.ttl_seconds)
+        try:
+            new_token, expires_at = _issue_agent_token(conn, args.merchant, row["agent_id"], args.ttl_seconds)
+        except ValueError as exc:
+            raise SystemExit(str(exc)) from exc
         previous = _agent_token_row(conn, token)
         replacement = _agent_token_row(conn, new_token)
         append_audit_event(

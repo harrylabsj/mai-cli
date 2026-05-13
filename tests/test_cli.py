@@ -1904,6 +1904,24 @@ class MaiCliTest(unittest.TestCase):
                     "json",
                 )
 
+    def test_agent_token_command_rejects_oversized_ttl_seconds(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.run_cli(db_file, "merchant", "create", "--id", "seller-a", "--name", "West Lake Tea")
+            with self.assertRaises(SystemExit) as raised:
+                self.run_cli(
+                    db_file,
+                    "agent",
+                    "token",
+                    "--merchant",
+                    "seller-a",
+                    "--ttl-seconds",
+                    str(10**100),
+                    "--format",
+                    "json",
+                )
+            self.assertIn("ttl_seconds is too large", str(raised.exception))
+
     def test_agent_tokens_command_lists_status_without_secret(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"
@@ -2687,6 +2705,30 @@ class MaiCliTest(unittest.TestCase):
             self.assertTrue(old_row[0])
             self.assertEqual(new_row[0], rotated["expires_at"])
             self.assertEqual(new_row[1], "")
+
+    def test_agent_rotate_token_command_rejects_oversized_ttl_seconds(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.run_cli(db_file, "merchant", "create", "--id", "seller-a", "--name", "West Lake Tea")
+            issued = json.loads(
+                self.run_cli(db_file, "agent", "token", "--merchant", "seller-a", "--format", "json")
+            )
+
+            with self.assertRaises(SystemExit) as raised:
+                self.run_cli(
+                    db_file,
+                    "agent",
+                    "rotate-token",
+                    "--merchant",
+                    "seller-a",
+                    "--token",
+                    issued["agent_token"],
+                    "--ttl-seconds",
+                    str(10**100),
+                    "--format",
+                    "json",
+                )
+            self.assertIn("ttl_seconds is too large", str(raised.exception))
 
     def test_agent_token_cli_lifecycle_records_audit_without_secrets(self):
         with tempfile.TemporaryDirectory() as tmp:

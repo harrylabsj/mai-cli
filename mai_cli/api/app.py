@@ -205,7 +205,11 @@ def _expires_at_from_ttl(ttl_seconds: Any) -> str:
     seconds = _positive_whole_seconds(ttl_seconds, "ttl_seconds")
     if seconds is None:
         return ""
-    return (datetime.now() + timedelta(seconds=seconds)).replace(microsecond=0).isoformat()
+    try:
+        expires_at = datetime.now() + timedelta(seconds=seconds)
+    except OverflowError as exc:
+        raise ValueError("ttl_seconds is too large") from exc
+    return expires_at.replace(microsecond=0).isoformat()
 
 
 def _positive_whole_seconds(value: Any, field_name: str) -> int | None:
