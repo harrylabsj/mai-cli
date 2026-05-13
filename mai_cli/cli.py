@@ -787,8 +787,32 @@ def cmd_agent_status(args: argparse.Namespace) -> None:
     emit(result, args.format)
 
 
+def emit_agent_logs_text(result: dict[str, Any]) -> None:
+    print(f"Logs: {result.get('merchant_id') or '-'}")
+    print(f"File: {result.get('log_file') or '-'}")
+    entries = result.get("entries") or []
+    if not entries:
+        print("No log entries.")
+        return
+    for entry in entries:
+        if entry.get("event") == "raw":
+            print(str(entry.get("text") or ""))
+            continue
+        fields = [f"{entry.get('at') or '-'} {entry.get('event') or 'event'}"]
+        if "checked" in entry:
+            fields.append(f"checked={int(entry.get('checked') or 0)}")
+        if "replied_count" in entry:
+            fields.append(f"replied={int(entry.get('replied_count') or 0)}")
+        if entry.get("error"):
+            fields.append(f"error={entry['error']}")
+        print(" ".join(fields))
+
+
 def cmd_agent_logs(args: argparse.Namespace) -> None:
     result = merchant_daemon.logs_agent(args.merchant, tail=args.tail, state_dir=args.state_dir)
+    if args.format == "text":
+        emit_agent_logs_text(result)
+        return
     emit(result, args.format)
 
 

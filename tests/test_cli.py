@@ -1204,6 +1204,39 @@ class MaiCliTest(unittest.TestCase):
             self.assertIn("Log: /tmp/seller-a.log", output)
             self.assertNotIn('"running"', output)
 
+    def test_agent_logs_text_output_is_readable(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            logs = {
+                "ok": True,
+                "merchant_id": "seller-a",
+                "log_file": "/tmp/seller-a.log",
+                "entries": [
+                    {
+                        "event": "process_once",
+                        "at": "2026-05-13T12:00:00",
+                        "checked": 2,
+                        "replied_count": 1,
+                    },
+                    {
+                        "event": "error",
+                        "at": "2026-05-13T12:00:01",
+                        "error": "RuntimeError: temporary failure",
+                    },
+                    {"event": "raw", "text": "plain log line"},
+                ],
+            }
+
+            with patch("mai_cli.cli.merchant_daemon.logs_agent", return_value=logs):
+                output = self.run_cli(db_file, "agent", "logs", "--merchant", "seller-a", "--tail", "3")
+
+            self.assertIn("Logs: seller-a", output)
+            self.assertIn("File: /tmp/seller-a.log", output)
+            self.assertIn("2026-05-13T12:00:00 process_once checked=2 replied=1", output)
+            self.assertIn("2026-05-13T12:00:01 error error=RuntimeError: temporary failure", output)
+            self.assertIn("plain log line", output)
+            self.assertNotIn('"entries"', output)
+
     def test_conversation_list_text_output_is_readable(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"
