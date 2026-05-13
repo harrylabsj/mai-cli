@@ -1788,6 +1788,44 @@ class PublicMarketplaceTest(unittest.TestCase):
             self.assertEqual(status, 403)
             self.assertIn("expired", denied["error"])
 
+    def test_agent_token_ttl_api_rejects_fractional_seconds(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "marketplace.sqlite"
+            app = create_app(db_file)
+
+            status, merchant = self.request(app, "POST", "/merchants", {"id": "seller-a", "name": "West Lake Tea"})
+            self.assertEqual(status, 200)
+            merchant_token = merchant["merchant_token"]
+            status, fractional_issue = self.request(
+                app,
+                "POST",
+                "/agents/tokens",
+                {"merchant_id": "seller-a", "merchant_token": merchant_token, "ttl_seconds": 3600.5},
+            )
+            self.assertEqual(status, 400)
+            self.assertIn("ttl_seconds must be a whole number", fractional_issue["error"])
+
+            status, issued = self.request(
+                app,
+                "POST",
+                "/agents/tokens",
+                {"merchant_id": "seller-a", "merchant_token": merchant_token},
+            )
+            self.assertEqual(status, 200)
+            status, fractional_rotate = self.request(
+                app,
+                "POST",
+                "/agents/tokens/rotate",
+                {
+                    "merchant_id": "seller-a",
+                    "merchant_token": merchant_token,
+                    "token": issued["agent_token"],
+                    "ttl_seconds": 7200.5,
+                },
+            )
+            self.assertEqual(status, 400)
+            self.assertIn("ttl_seconds must be a whole number", fractional_rotate["error"])
+
     def test_agent_token_list_api_reports_status_without_secret(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "marketplace.sqlite"

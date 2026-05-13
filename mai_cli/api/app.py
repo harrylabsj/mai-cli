@@ -8,6 +8,7 @@ not been installed yet.
 from __future__ import annotations
 
 import json
+import math
 import secrets
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -189,7 +190,19 @@ def _payload_with_auth(payload: dict[str, Any], authorization: Any = "") -> dict
 def _expires_at_from_ttl(ttl_seconds: Any) -> str:
     if ttl_seconds in (None, ""):
         return ""
-    seconds = int(ttl_seconds)
+    if isinstance(ttl_seconds, bool):
+        raise ValueError("ttl_seconds must be a whole number")
+    if isinstance(ttl_seconds, int):
+        seconds = ttl_seconds
+    elif isinstance(ttl_seconds, float):
+        if not math.isfinite(ttl_seconds) or not ttl_seconds.is_integer():
+            raise ValueError("ttl_seconds must be a whole number")
+        seconds = int(ttl_seconds)
+    else:
+        try:
+            seconds = int(str(ttl_seconds).strip())
+        except ValueError as exc:
+            raise ValueError("ttl_seconds must be a whole number") from exc
     if seconds <= 0:
         raise ValueError("ttl_seconds must be greater than 0")
     return (datetime.now() + timedelta(seconds=seconds)).replace(microsecond=0).isoformat()
