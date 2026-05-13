@@ -727,8 +727,35 @@ def cmd_agent_stop(args: argparse.Namespace) -> None:
     emit(result, args.format)
 
 
+def emit_agent_status_text(result: dict[str, Any]) -> None:
+    heartbeat = result.get("heartbeat") or {}
+    counters = result.get("counters") or {}
+    print(f"Merchant: {result.get('merchant_id') or '-'}")
+    print(f"Running: {'yes' if result.get('running') else 'no'}")
+    print(f"PID: {result.get('pid') or '-'}")
+    print(f"Mode: {result.get('mode') or 'sqlite'}")
+    if result.get("api_url"):
+        print(f"API URL: {result['api_url']}")
+    if result.get("host"):
+        print(f"Host: {result['host']}")
+    if result.get("session_id"):
+        print(f"Session: {result['session_id']}")
+    print(f"Heartbeat: {heartbeat.get('status') or '-'}")
+    print(f"Last seen: {heartbeat.get('last_seen_at') or '-'}")
+    print(f"Checked: {int(counters.get('checked') or 0)}")
+    print(f"Replied: {int(counters.get('replied') or 0)}")
+    print(f"Last error: {result.get('last_error') or '-'}")
+    print(f"Started: {result.get('started_at') or '-'}")
+    print(f"Updated: {result.get('updated_at') or '-'}")
+    print(f"Log: {result.get('log_file') or '-'}")
+    print(f"State: {result.get('state_file') or '-'}")
+
+
 def cmd_agent_status(args: argparse.Namespace) -> None:
     result = merchant_daemon.status_agent(db_path_from_args(args), args.merchant, state_dir=args.state_dir)
+    if args.format == "text":
+        emit_agent_status_text(result)
+        return
     emit(result, args.format)
 
 
