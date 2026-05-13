@@ -696,6 +696,18 @@ class LlmContractTest(unittest.TestCase):
         self.assertEqual(calls[3]["payload"]["conversation_id"], "CONV-0001")
         self.assertEqual(calls[3]["payload"]["status"], "ok")
 
+    def test_http_marketplace_tool_dispatcher_tolerates_invalid_timeout(self):
+        dispatcher = HTTPMarketplaceToolDispatcher(
+            "http://127.0.0.1:8765",
+            auth_token="buyer-token",
+            actor="alice",
+            token_scope="buyer",
+            timeout="bad",
+            transport=lambda _method, _path, _payload, _query, _headers: {"ok": True},
+        )
+
+        self.assertEqual(dispatcher.timeout, 10.0)
+
     def test_http_marketplace_tool_dispatcher_enforces_scope_before_api_call(self):
         calls = []
         dispatcher = HTTPMarketplaceToolDispatcher(

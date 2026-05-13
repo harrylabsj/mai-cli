@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 from typing import Any, Callable
 import urllib.error
@@ -22,6 +23,19 @@ HTTPTransport = Callable[
     [str, str, dict[str, Any] | None, dict[str, Any] | None, dict[str, str]],
     dict[str, Any],
 ]
+
+
+def _safe_positive_float(value: Any, default: float) -> float:
+    if isinstance(value, bool):
+        return default
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return default
+    if not math.isfinite(number) or number <= 0:
+        return default
+    return number
+
 
 BUYER_SCOPES = {"buyer", "buyer_cli"}
 MERCHANT_SCOPES = {"merchant", "merchant_agent"}
@@ -259,7 +273,7 @@ class HTTPMarketplaceToolDispatcher:
         self.session_id = session_id
         self.actor = actor
         self.token_scope = token_scope
-        self.timeout = float(timeout or 10.0)
+        self.timeout = _safe_positive_float(timeout, 10.0)
         self.transport = transport
         self.allowed_tools = {tool.name for tool in marketplace_tool_schema_objects()}
 
