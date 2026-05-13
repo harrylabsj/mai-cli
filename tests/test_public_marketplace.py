@@ -89,7 +89,7 @@ class PublicMarketplaceTest(unittest.TestCase):
                 "type": "http",
                 "method": method,
                 "path": path,
-                "query_string": query_string.encode("utf-8"),
+                "query_string": query_string if isinstance(query_string, bytes) else query_string.encode("utf-8"),
                 "headers": request_headers,
             },
             receive,
@@ -103,6 +103,15 @@ class PublicMarketplaceTest(unittest.TestCase):
         return asyncio.run(
             self.asgi_request(app, method, path, payload=payload, query_string=query_string, headers=headers)
         )
+
+    def test_fallback_asgi_tolerates_invalid_query_encoding(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            app = create_app(Path(tmp) / "marketplace.sqlite")
+
+            status, body = asyncio.run(self.asgi_raw_request(app, "GET", "/health", query_string=b"\xff"))
+
+            self.assertEqual(status, 200)
+            self.assertTrue(body["ok"])
 
     def fastapi_request(self, app, method, path, *args):
         endpoint = next(

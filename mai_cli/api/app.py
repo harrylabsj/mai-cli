@@ -97,7 +97,11 @@ class MarketplaceASGIApp:
         authorization = headers.get("authorization", "")
         if authorization.lower().startswith("bearer "):
             payload["_auth_token"] = authorization.split(" ", 1)[1].strip()
-        query = parse_qs(scope.get("query_string", b"").decode("utf-8"), keep_blank_values=True)
+        try:
+            raw_query = scope.get("query_string", b"").decode("utf-8")
+        except UnicodeDecodeError:
+            raw_query = ""
+        query = parse_qs(raw_query, keep_blank_values=True)
         status, response = handle_request(
             self.state.db_path,
             method=str(scope.get("method") or "GET").upper(),
