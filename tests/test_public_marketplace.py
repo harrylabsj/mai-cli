@@ -296,6 +296,41 @@ class PublicMarketplaceTest(unittest.TestCase):
             self.assertEqual(resolved[0], 200)
             self.assertEqual(resolved[1]["conversation"]["status"], "waiting_buyer")
 
+    def test_fastapi_agent_status_reads_require_owner_token(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "marketplace.sqlite"
+            with patch("mai_cli.api.app.FastAPI", FakeFastAPI):
+                app = create_app(db_file)
+
+            _, merchant = self.fastapi_request(app, "POST", "/merchants", {"id": "seller-a", "name": "West Lake Tea"})
+            merchant_token = merchant["merchant_token"]
+            _, heartbeat = self.fastapi_request(
+                app,
+                "POST",
+                "/agents/heartbeat",
+                {"merchant_id": "seller-a", "status": "online", "merchant_token": merchant_token},
+            )
+            agent_id = heartbeat["agent"]["id"]
+
+            anonymous_list = self.fastapi_request(app, "GET", "/agents")
+            self.assertEqual(anonymous_list[0], 403)
+            owner_list = self.fastapi_request(app, "GET", "/agents", f"Bearer {merchant_token}")
+            self.assertEqual(owner_list[0], 200)
+            self.assertEqual(owner_list[1]["agents"][0]["id"], agent_id)
+            anonymous_detail = self.fastapi_request(app, "GET", "/agents/{agent_id}", agent_id)
+            self.assertEqual(anonymous_detail[0], 403)
+            owner_detail = self.fastapi_request(app, "GET", "/agents/{agent_id}", agent_id, f"Bearer {merchant_token}")
+            self.assertEqual(owner_detail[0], 200)
+            merchant_agents = self.fastapi_request(
+                app,
+                "GET",
+                "/merchants/{merchant_id}/agents",
+                "seller-a",
+                f"Bearer {merchant_token}",
+            )
+            self.assertEqual(merchant_agents[0], 200)
+            self.assertEqual(merchant_agents[1]["agents"][0]["id"], agent_id)
+
     def test_fastapi_product_search_honors_price_and_stock_filters(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "marketplace.sqlite"
@@ -709,6 +744,93 @@ class PublicMarketplaceTest(unittest.TestCase):
             )
             self.assertEqual(status, 200)
             self.assertEqual(agent_queue["reviews"][0]["conversation_id"], "CONV-0001")
+
+    def test_agent_status_reads_require_owner_tokens(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "marketplace.sqlite"
+            app = create_app(db_file)
+
+            status, merchant_a = self.request(app, "POST", "/merchants", {"id": "seller-a", "name": "West Lake Tea"})
+            self.assertEqual(status, 200)
+            status, merchant_b = self.request(app, "POST", "/merchants", {"id": "seller-b", "name": "Other Tea"})
+            self.assertEqual(status, 200)
+            status, heartbeat = self.request(
+                app,
+                "POST",
+                "/agents/heartbeat",
+                {
+                    "merchant_id": "seller-a",
+                    "status": "online",
+                    "pid": 1234,
+                    "last_error": "last private error",
+                    "merchant_token": merchant_a["merchant_token"],
+                },
+            )
+            self.assertEqual(status, 200)
+            agent_id = heartbeat["agent"]["id"]
+            status, issued = self.request(
+                app,
+                "POST",
+                "/agents/tokens",
+                {"merchant_id": "seller-a", "merchant_token": merchant_a["merchant_token"]},
+            )
+            self.assertEqual(status, 200)
+
+            status, anonymous_list = self.request(app, "GET", "/agents")
+            self.assertEqual(status, 403)
+            self.assertNotIn("last private error", json.dumps(anonymous_list))
+            status, owner_list = self.request(
+                app,
+                "GET",
+                "/agents",
+                headers={"authorization": f"Bearer {merchant_a['merchant_token']}"},
+            )
+            self.assertEqual(status, 200)
+            self.assertEqual([agent["id"] for agent in owner_list["agents"]], [agent_id])
+            status, other_list = self.request(
+                app,
+                "GET",
+                "/agents",
+                headers={"authorization": f"Bearer {merchant_b['merchant_token']}"},
+            )
+            self.assertEqual(status, 200)
+            self.assertEqual(other_list["agents"], [])
+
+            status, anonymous_detail = self.request(app, "GET", f"/agents/{agent_id}")
+            self.assertEqual(status, 403)
+            status, cross_detail = self.request(
+                app,
+                "GET",
+                f"/agents/{agent_id}",
+                headers={"authorization": f"Bearer {merchant_b['merchant_token']}"},
+            )
+            self.assertEqual(status, 403)
+            status, agent_detail = self.request(
+                app,
+                "GET",
+                f"/agents/{agent_id}",
+                headers={"authorization": f"Bearer {issued['agent_token']}"},
+            )
+            self.assertEqual(status, 200)
+            self.assertEqual(agent_detail["agent"]["owner_id"], "seller-a")
+
+            status, anonymous_merchant_agents = self.request(app, "GET", "/merchants/seller-a/agents")
+            self.assertEqual(status, 403)
+            status, cross_merchant_agents = self.request(
+                app,
+                "GET",
+                "/merchants/seller-a/agents",
+                headers={"authorization": f"Bearer {merchant_b['merchant_token']}"},
+            )
+            self.assertEqual(status, 403)
+            status, merchant_agents = self.request(
+                app,
+                "GET",
+                "/merchants/seller-a/agents",
+                headers={"authorization": f"Bearer {merchant_a['merchant_token']}"},
+            )
+            self.assertEqual(status, 200)
+            self.assertEqual(merchant_agents["agents"][0]["id"], agent_id)
 
     def test_tool_call_audit_api_requires_owner_token_and_records_event(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1924,15 +2046,30 @@ class PublicMarketplaceTest(unittest.TestCase):
             self.assertEqual(agent["agent"]["checked_count"], 2)
             agent_id = agent["agent"]["id"]
 
-            status, agent_list = self.request(app, "GET", "/agents")
+            status, agent_list = self.request(
+                app,
+                "GET",
+                "/agents",
+                headers={"authorization": f"Bearer {merchant_token}"},
+            )
             self.assertEqual(status, 200)
             self.assertEqual(agent_list["agents"][0]["id"], agent_id)
 
-            status, agent_detail = self.request(app, "GET", f"/agents/{agent_id}")
+            status, agent_detail = self.request(
+                app,
+                "GET",
+                f"/agents/{agent_id}",
+                headers={"authorization": f"Bearer {merchant_token}"},
+            )
             self.assertEqual(status, 200)
             self.assertEqual(agent_detail["agent"]["replied_count"], 1)
 
-            status, merchant_agents = self.request(app, "GET", "/merchants/seller-a/agents")
+            status, merchant_agents = self.request(
+                app,
+                "GET",
+                "/merchants/seller-a/agents",
+                headers={"authorization": f"Bearer {merchant_token}"},
+            )
             self.assertEqual(status, 200)
             self.assertEqual(merchant_agents["agents"][0]["id"], agent_id)
 
@@ -1942,7 +2079,12 @@ class PublicMarketplaceTest(unittest.TestCase):
                 conn.commit()
             finally:
                 conn.close()
-            status, stale_agent = self.request(app, "GET", f"/agents/{agent_id}")
+            status, stale_agent = self.request(
+                app,
+                "GET",
+                f"/agents/{agent_id}",
+                headers={"authorization": f"Bearer {merchant_token}"},
+            )
             self.assertEqual(status, 200)
             self.assertTrue(stale_agent["agent"]["stale"])
 
@@ -2016,7 +2158,7 @@ class PublicMarketplaceTest(unittest.TestCase):
                 )
 
             with patch.dict("os.environ", {"MAI_AGENT_STALE_TTL_SECONDS": "9999999999"}):
-                agents = _list_agents(db_file)
+                agents = _list_agents(db_file, {"merchant_token": merchant_token})
 
             self.assertFalse(agents["agents"][0]["stale"])
             self.assertEqual(agents["agents"][0]["stale_ttl_seconds"], 9999999999)

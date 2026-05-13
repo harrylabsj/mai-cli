@@ -651,6 +651,7 @@ Upgrade JSON file storage to SQLite, the dependency-free HTTP server to FastAPI,
 - FastAPI and fallback ASGI modes pass the same auth/error contract tests.
 - Public API conversation reads and human-review queues require owner tokens; buyer creation remains tokenless but returns a conversation-scoped buyer token instead of a buyer-wide credential.
 - Public API conversation message appends and close operations require buyer, merchant, or agent owner tokens instead of accepting anonymous conversation writes.
+- Public API agent status reads require owner tokens; the global `/agents` route is scoped to the caller's merchant, and detail/list reads reject anonymous or cross-merchant callers.
 - Scoped merchant-agent tokens can be issued with optional TTLs, listed without exposing full token secrets, rotated, revoked, audited, and queried by the owning merchant; expired or revoked tokens cannot be used for future agent/API-backed actions.
 - A merchant can create a shop, product, inventory attributes, and delivery rule.
 - A merchant agent can run as an independent process.
