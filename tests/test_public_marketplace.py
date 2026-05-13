@@ -7,7 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from mai_cli.api.app import AuthError, _list_agents, route_info
+from mai_cli.api.app import AuthError, MarketplaceASGIApp, _list_agents, route_info
 from mai_cli.api.app import create_app
 from mai_cli.db.session import db_session
 
@@ -58,6 +58,16 @@ class FakeFastAPI:
 class PublicMarketplaceTest(unittest.TestCase):
     async def asgi_request(self, app, method, path, payload=None, query_string="", headers=None):
         body = json.dumps(payload or {}).encode("utf-8") if payload is not None else b""
+        return await self.asgi_raw_request(
+            app,
+            method,
+            path,
+            body=body,
+            query_string=query_string,
+            headers=headers,
+        )
+
+    async def asgi_raw_request(self, app, method, path, body=b"", query_string="", headers=None):
         received = False
         sent = []
         request_headers = [(b"content-type", b"application/json")]
@@ -116,6 +126,19 @@ class PublicMarketplaceTest(unittest.TestCase):
                 continue
             routes.setdefault(route.path, set()).update(route.methods)
         return routes
+
+    def test_fallback_asgi_tolerates_invalid_utf8_json_body(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "marketplace.sqlite"
+            app = MarketplaceASGIApp(db_file)
+
+            status, body = asyncio.run(
+                self.asgi_raw_request(app, "POST", "/merchants", body=b"\xff")
+            )
+
+            self.assertEqual(status, 400)
+            self.assertFalse(body["ok"])
+            self.assertIn("id", body["error"])
 
     def test_api_factory_exposes_consultation_routes_and_initializes_sqlite(self):
         with tempfile.TemporaryDirectory() as tmp:

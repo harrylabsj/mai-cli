@@ -87,7 +87,7 @@ class MarketplaceASGIApp:
                 break
         try:
             payload = json.loads(b"".join(chunks).decode("utf-8") or "{}")
-        except json.JSONDecodeError:
+        except (UnicodeDecodeError, json.JSONDecodeError):
             payload = {}
         headers = {
             key.decode("latin1").lower(): value.decode("latin1")
