@@ -933,6 +933,14 @@ def _abandon_stale_agent_messages(db_path: str | Path, payload: dict[str, Any]) 
         return {"ok": True, "abandoned": abandoned}
 
 
+def _safe_non_negative_int(value: Any) -> int:
+    try:
+        number = int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+    return max(number, 0)
+
+
 def _agent_summary(row: Any) -> dict[str, Any]:
     stale_ttl = timedelta(seconds=agent_stale_ttl_seconds_from())
     last_seen_at = row["last_seen_at"]
@@ -949,11 +957,11 @@ def _agent_summary(row: Any) -> dict[str, Any]:
         "last_seen_at": last_seen_at,
         "stale": stale,
         "stale_ttl_seconds": int(stale_ttl.total_seconds()),
-        "pid": int(row["pid"] or 0),
+        "pid": _safe_non_negative_int(row["pid"]),
         "version": row["version"],
         "last_error": row["last_error"],
-        "checked_count": int(row["checked_count"] or 0),
-        "replied_count": int(row["replied_count"] or 0),
+        "checked_count": _safe_non_negative_int(row["checked_count"]),
+        "replied_count": _safe_non_negative_int(row["replied_count"]),
     }
 
 
