@@ -139,6 +139,16 @@ class CorruptProductMarketplaceTools(FakeMarketplaceTools):
         return product
 
 
+class NonFiniteProductMarketplaceTools(FakeMarketplaceTools):
+    def product_summary(self, sku):
+        product = super().product_summary(sku)
+        product["price"] = float("inf")
+        product["stock"] = float("inf")
+        product["delivery"]["fee"] = float("inf")
+        product["delivery"]["eta_minutes"] = float("inf")
+        return product
+
+
 class StaleAbandonMarketplaceTools(FakeMarketplaceTools):
     def abandon_stale_messages(self, agent_id, stale_after_seconds=300):
         self.calls.append(("abandon_stale_messages", agent_id, stale_after_seconds))
@@ -339,6 +349,17 @@ class AgentToolsBoundaryTest(unittest.TestCase):
 
     def test_process_once_tolerates_corrupt_remote_product_numbers(self):
         tools = CorruptProductMarketplaceTools()
+
+        result = merchant_agent.process_once_with_tools(tools, "seller-a")
+
+        self.assertEqual(result["failed"], [])
+        self.assertEqual(result["replied"][0]["reason"], "low_stock")
+        self.assertTrue(result["replied"][0]["human_required"])
+        self.assertIn("0.00 CNY with 0 in stock", tools.messages[0]["text"])
+        self.assertIn(("add_flag", "CONV-0001", "low_stock", "tea-a"), tools.calls)
+
+    def test_process_once_tolerates_non_finite_remote_product_numbers(self):
+        tools = NonFiniteProductMarketplaceTools()
 
         result = merchant_agent.process_once_with_tools(tools, "seller-a")
 
