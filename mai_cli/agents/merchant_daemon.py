@@ -411,7 +411,7 @@ def _run_process_loop(
         while not stop_requested and not (stop_path and stop_path.exists()):
             try:
                 result = process_once()
-                checked = int(result.get("checked") or 0)
+                checked = safe_non_negative_int(result.get("checked"))
                 replied_count = len(result.get("replied") or [])
                 counters["checked"] += checked
                 counters["replied"] += replied_count

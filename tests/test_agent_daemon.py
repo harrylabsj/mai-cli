@@ -143,6 +143,35 @@ class AgentDaemonLifecycleTest(unittest.TestCase):
             self.assertEqual(marked_away, [True])
             self.assertFalse(json.loads(state_file.read_text(encoding="utf-8"))["running"])
 
+    def test_process_loop_tolerates_corrupt_checked_count(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            state_file = tmp_path / "agent.state.json"
+            stop_file = tmp_path / "agent.stop"
+
+            def process_once():
+                stop_file.write_text("stop", encoding="utf-8")
+                return {"checked": "bad", "replied": [{"conversation_id": "CONV-0001"}]}
+
+            output = StringIO()
+            with redirect_stdout(output):
+                merchant_daemon._run_process_loop(
+                    "seller-a",
+                    process_once,
+                    lambda: None,
+                    interval=0.01,
+                    state_file=state_file,
+                    stop_file=stop_file,
+                )
+
+            entries = [json.loads(line) for line in output.getvalue().splitlines()]
+            self.assertEqual(entries[0]["event"], "process_once")
+            self.assertEqual(entries[0]["checked"], 0)
+            self.assertEqual(entries[0]["replied_count"], 1)
+            final_state = json.loads(state_file.read_text(encoding="utf-8"))
+            self.assertIsNone(final_state["last_error"])
+            self.assertEqual(final_state["counters"], {"checked": 0, "replied": 1})
+
     def wait_for_status(self, db_file, state_dir, predicate, timeout=5):
         deadline = time.time() + timeout
         last_status = None
