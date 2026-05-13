@@ -358,6 +358,8 @@ def status_agent(db_path: str | Path, merchant_id: str, state_dir: str | Path | 
 
 
 def logs_agent(merchant_id: str, tail: int = 20, state_dir: str | Path | None = None) -> dict[str, Any]:
+    if tail <= 0:
+        raise ValueError("tail must be greater than 0")
     paths = agent_paths(merchant_id, state_dir)
     entries: list[dict[str, Any]] = []
     raw_lines: list[str] = []

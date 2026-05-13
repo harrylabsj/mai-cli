@@ -80,6 +80,15 @@ class AgentDaemonLifecycleTest(unittest.TestCase):
             state_dir=state_dir,
         )
 
+    def test_logs_agent_rejects_non_positive_tail(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            state_dir = Path(tmp) / "state"
+
+            for tail in (0, -1):
+                with self.assertRaises(ValueError) as raised:
+                    merchant_daemon.logs_agent("seller-a", tail=tail, state_dir=state_dir)
+                self.assertIn("tail must be greater than 0", str(raised.exception))
+
     def wait_for_status(self, db_file, state_dir, predicate, timeout=5):
         deadline = time.time() + timeout
         last_status = None
