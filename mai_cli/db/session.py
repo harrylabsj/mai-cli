@@ -28,8 +28,10 @@ def decode_json(value: str | None, default: Any) -> Any:
         decoded = json.loads(value)
     except (TypeError, json.JSONDecodeError):
         return default
-    if isinstance(default, list) and not isinstance(decoded, list):
-        return default
+    if isinstance(default, list):
+        if not isinstance(decoded, list):
+            return default
+        return [str(item).strip() for item in decoded if str(item).strip()]
     if isinstance(default, dict) and not isinstance(decoded, dict):
         return default
     return decoded
