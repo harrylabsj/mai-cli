@@ -65,11 +65,15 @@ def emit(value: Any, fmt: str) -> None:
             print(json.dumps(value, ensure_ascii=False, sort_keys=True))
 
 
-def positive_seconds(value: str) -> int:
+def positive_int(value: str) -> int:
     seconds = int(value)
     if seconds <= 0:
         raise argparse.ArgumentTypeError("must be greater than 0")
     return seconds
+
+
+def positive_seconds(value: str) -> int:
+    return positive_int(value)
 
 
 def resolve_agent_token_for_cli(conn: Any, merchant_id: str, token: str | None, token_prefix: str | None) -> str:
@@ -1844,7 +1848,7 @@ def build_parser() -> argparse.ArgumentParser:
     agent_status.set_defaults(func=cmd_agent_status)
     agent_logs = agent_sub.add_parser("logs", help="Show merchant agent daemon logs")
     agent_logs.add_argument("--merchant", required=True)
-    agent_logs.add_argument("--tail", type=int, default=20)
+    agent_logs.add_argument("--tail", type=positive_int, default=20)
     agent_logs.add_argument("--format", choices=["text", "json"], default="text")
     add_agent_runtime_options(agent_logs, include_db=False)
     agent_logs.set_defaults(func=cmd_agent_logs)

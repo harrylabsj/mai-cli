@@ -1863,6 +1863,14 @@ class MaiCliTest(unittest.TestCase):
             self.assertNotIn("mai_agent_seller-a_secret", output)
             self.assertNotIn("mai_buyer_alice_secret", output)
 
+    def test_agent_logs_tail_must_be_positive(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+
+            for tail in ("0", "-1"):
+                with self.assertRaises(SystemExit), redirect_stderr(StringIO()):
+                    self.run_cli(db_file, "agent", "logs", "--merchant", "seller-a", "--tail", tail)
+
     def test_conversation_list_text_output_is_readable(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"
