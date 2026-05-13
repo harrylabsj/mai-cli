@@ -7,6 +7,38 @@ from pathlib import Path
 from typing import Any
 
 
+def _safe_path_exists(path: Path) -> bool:
+    try:
+        return path.exists()
+    except OSError:
+        return False
+
+
+def _safe_is_symlink(path: Path) -> bool:
+    try:
+        return path.is_symlink()
+    except OSError:
+        return False
+
+
+def _is_self_symlink(path: Path) -> bool:
+    try:
+        target = path.readlink()
+    except OSError:
+        return False
+    absolute_target = target if target.is_absolute() else path.parent / target
+    return absolute_target.absolute() == path.absolute()
+
+
+def _safe_resolve(path: Path) -> str:
+    if _safe_is_symlink(path) and _is_self_symlink(path):
+        return ""
+    try:
+        return str(path.resolve())
+    except (OSError, RuntimeError):
+        return ""
+
+
 def inspect_host(
     host: str,
     command_name: str,
@@ -18,11 +50,12 @@ def inspect_host(
     root = Path(project_root).expanduser() if project_root is not None else Path(__file__).resolve().parents[2]
     skill = Path(skill_root).expanduser() if skill_root is not None else default_skill_root.expanduser()
     command_path = shutil.which(command_name)
-    project_root_valid = (root / "scripts" / "mai.py").exists()
-    skill_installed = skill.exists()
-    skill_is_symlink = skill.is_symlink()
-    skill_target = str(skill.resolve()) if skill_installed or skill_is_symlink else ""
-    skill_points_to_project = bool(skill_target and Path(skill_target) == root.resolve())
+    project_root_valid = _safe_path_exists(root / "scripts" / "mai.py")
+    skill_installed = _safe_path_exists(skill)
+    skill_is_symlink = _safe_is_symlink(skill)
+    skill_target = _safe_resolve(skill) if skill_installed or skill_is_symlink else ""
+    project_target = _safe_resolve(root)
+    skill_points_to_project = bool(skill_target and project_target and Path(skill_target) == Path(project_target))
     return {
         "ok": bool(command_path and project_root_valid and skill_installed and (not skill_is_symlink or skill_points_to_project)),
         "host": host,

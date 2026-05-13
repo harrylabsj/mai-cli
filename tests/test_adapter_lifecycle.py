@@ -59,6 +59,25 @@ class AdapterLifecycleTest(unittest.TestCase):
             self.assertFalse(doctor["ok"])
             self.assertIn("OpenClaw skill points to a different project root", doctor["issues"])
 
+    def test_inspect_tolerates_skill_symlink_loop(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            bin_dir = tmp_path / "bin"
+            bin_dir.mkdir()
+            self.make_fake_command(bin_dir, "openclaw")
+            skill_root = tmp_path / ".openclaw" / "workspace" / "skills" / "mai"
+            skill_root.parent.mkdir(parents=True)
+            skill_root.symlink_to(skill_root, target_is_directory=True)
+
+            with patch.dict(os.environ, {"PATH": f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}"}):
+                info = openclaw.inspect_host(project_root=Path.cwd(), skill_root=skill_root)
+                doctor = openclaw.doctor(project_root=Path.cwd(), skill_root=skill_root)
+
+            self.assertTrue(info["skill_is_symlink"])
+            self.assertEqual(info["skill_target"], "")
+            self.assertFalse(info["skill_points_to_project"])
+            self.assertFalse(doctor["ok"])
+
     def test_hermes_inspect_reports_missing_host_or_skill(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
