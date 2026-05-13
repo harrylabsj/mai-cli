@@ -76,6 +76,14 @@ ABANDONED_STATUS = "abandoned"
 RETRYABLE_PROCESS_STATUSES = {FAILED_STATUS, ABANDONED_STATUS}
 
 
+def _safe_non_negative_int(value: Any) -> int:
+    try:
+        number = int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+    return max(number, 0)
+
+
 def claim_agent_message(
     conn: sqlite3.Connection,
     agent_id: str,
@@ -92,7 +100,7 @@ def claim_agent_message(
         return {
             "claimed": False,
             "status": row["status"],
-            "attempts": int(row["attempts"] or 0),
+            "attempts": _safe_non_negative_int(row["attempts"]),
             "idempotency_key": row["idempotency_key"],
         }
 
@@ -118,7 +126,7 @@ def claim_agent_message(
                 "idempotency_key": current["idempotency_key"],
             }
     else:
-        attempts = int(row["attempts"] or 0) + 1
+        attempts = _safe_non_negative_int(row["attempts"]) + 1
         cursor = conn.execute(
             """
             update agent_message_processes
@@ -270,7 +278,7 @@ def agent_message_process_summary(conn: sqlite3.Connection, agent_id: str, messa
         "conversation_id": row["conversation_id"],
         "idempotency_key": row["idempotency_key"],
         "status": row["status"],
-        "attempts": int(row["attempts"] or 0),
+        "attempts": _safe_non_negative_int(row["attempts"]),
         "last_error": row["last_error"],
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],

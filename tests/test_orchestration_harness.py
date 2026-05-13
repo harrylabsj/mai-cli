@@ -91,6 +91,28 @@ class OrchestrationHarnessTest(unittest.TestCase):
                 self.assertEqual(int(process["attempts"]), 1)
                 self.assertEqual(process["status"], "processing")
 
+    def test_processing_claim_tolerates_corrupt_attempts_counter(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.seed_conversation(db_file)
+
+            with db_session(db_file) as conn:
+                claim_agent_message(conn, "merchant-agent", "CONV-0001", 1, "merchant-agent:1")
+                conn.execute(
+                    """
+                    update agent_message_processes
+                    set attempts = 'bad'
+                    where agent_id = ? and message_id = ?
+                    """,
+                    ("merchant-agent", 1),
+                )
+
+                second = claim_agent_message(conn, "merchant-agent", "CONV-0001", 1, "merchant-agent:1")
+
+                self.assertFalse(second["claimed"])
+                self.assertEqual(second["status"], "processing")
+                self.assertEqual(second["attempts"], 0)
+
     def test_abandoned_processing_claim_can_be_retried_explicitly(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"
