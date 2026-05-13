@@ -1329,6 +1329,41 @@ class PublicMarketplaceTest(unittest.TestCase):
             self.assertEqual(final["conversation"]["status"], "waiting_buyer")
             self.assertEqual(final["conversation"]["messages"][-1]["structured_payload"]["review_id"], second_review_id)
 
+    def test_human_review_api_normalizes_blank_reason_and_severity(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "marketplace.sqlite"
+            app = create_app(db_file)
+
+            status, merchant = self.request(app, "POST", "/merchants", {"id": "seller-a", "name": "West Lake Tea"})
+            self.assertEqual(status, 200)
+            status, created = self.request(
+                app,
+                "POST",
+                "/conversations",
+                {
+                    "buyer_id": "alice",
+                    "merchant_id": "seller-a",
+                    "text": "Can I get a private discount?",
+                },
+            )
+            self.assertEqual(status, 200)
+            self.assertEqual(created["conversation"]["id"], "CONV-0001")
+
+            status, review = self.request(
+                app,
+                "POST",
+                "/conversations/CONV-0001/human-review",
+                {
+                    "reason": "   ",
+                    "severity": "   ",
+                    "merchant_token": merchant["merchant_token"],
+                },
+            )
+
+            self.assertEqual(status, 200)
+            self.assertEqual(review["review"]["reason"], "human_required")
+            self.assertEqual(review["review"]["severity"], "review")
+
     def test_channel_message_api_ingests_external_buyer_messages(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "marketplace.sqlite"

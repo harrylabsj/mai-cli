@@ -131,6 +131,9 @@ def add_flag(
     severity: str = "review",
     sku: str = "",
 ) -> dict[str, Any]:
+    reason = str(reason or "").strip() or "human_required"
+    severity = str(severity or "").strip() or "review"
+    sku = str(sku or "").strip()
     now = now_iso()
     cursor = conn.execute(
         """
