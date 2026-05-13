@@ -2211,6 +2211,25 @@ class MaiCliTest(unittest.TestCase):
 
             self.assertIn("2026-05-13T12:00:00 process_once checked=0 replied=0", output)
 
+    def test_agent_logs_text_output_tolerates_non_object_entries(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            logs = {
+                "ok": True,
+                "merchant_id": "seller-a",
+                "log_file": "/tmp/seller-a.log",
+                "entries": ["plain string", [1]],
+            }
+
+            with patch("mai_cli.cli.merchant_daemon.logs_agent", return_value=logs):
+                try:
+                    output = self.run_cli(db_file, "agent", "logs", "--merchant", "seller-a", "--tail", "2")
+                except AttributeError as exc:
+                    self.fail(f"agent logs text output should tolerate non-object entries: {exc}")
+
+            self.assertIn("plain string", output)
+            self.assertIn("[1]", output)
+
     def test_agent_logs_text_output_redacts_tokens_from_errors(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"

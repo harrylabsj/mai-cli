@@ -938,6 +938,9 @@ def emit_agent_logs_text(result: dict[str, Any]) -> None:
         print("No log entries.")
         return
     for entry in entries:
+        if not isinstance(entry, dict):
+            print(redact_secret_text(entry))
+            continue
         if entry.get("event") == "raw":
             print(redact_secret_text(entry.get("text")))
             continue
