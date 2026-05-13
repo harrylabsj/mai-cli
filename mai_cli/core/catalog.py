@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import re
 import sqlite3
 from typing import Any
@@ -34,6 +35,13 @@ def require_product(conn: sqlite3.Connection, sku: str) -> sqlite3.Row:
     if row is None:
         raise SystemExit(f"Unknown product SKU: {sku}")
     return row
+
+
+def _finite_float(value: float, message: str) -> float:
+    number = float(value)
+    if not math.isfinite(number):
+        raise SystemExit(message)
+    return number
 
 
 def create_merchant(
@@ -156,6 +164,8 @@ def upsert_delivery_rule(
     notes: str = "",
     currency: str = "CNY",
 ) -> dict[str, Any]:
+    fee = _finite_float(fee, "delivery fee must be finite")
+    radius_km = _finite_float(radius_km, "delivery radius must be finite")
     if fee < 0:
         raise SystemExit("delivery fee must be non-negative")
     if eta_minutes < 0:
@@ -207,6 +217,7 @@ def create_product(
         raise SystemExit("product sku is required")
     if not title:
         raise SystemExit("product title is required")
+    price = _finite_float(price, "--price must be finite")
     if price < 0:
         raise SystemExit("--price must be non-negative")
     if stock < 0:
@@ -228,7 +239,7 @@ def create_product(
             description,
             category,
             encode_json(parse_tags(tags)),
-            float(price),
+            price,
             currency,
             int(stock),
             encode_json(parse_tags(delivery_attributes)),
@@ -259,6 +270,8 @@ def update_product(
         title = str(title or "").strip()
         if not title:
             raise SystemExit("product title is required")
+    if price is not None:
+        price = _finite_float(price, "--price must be finite")
     if price is not None and price < 0:
         raise SystemExit("--price must be non-negative")
     if stock is not None and stock < 0:
@@ -423,6 +436,8 @@ def search_products(
     query = str(query or "").strip()
     city = str(city or "").strip()
     area = str(area or "").strip()
+    if max_price is not None:
+        max_price = _finite_float(max_price, "--max-price must be finite")
     rows = conn.execute(
         """
         select p.*, m.name as merchant_name, m.city as merchant_city, m.service_area as merchant_service_area,

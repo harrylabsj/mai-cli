@@ -212,6 +212,106 @@ class MaiCliTest(unittest.TestCase):
             self.assertIn("merchant name is required", str(merchant_error.exception))
             self.assertIn("product title is required", str(product_error.exception))
 
+    def test_product_prices_must_be_finite(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.run_cli(db_file, "merchant", "create", "--id", "seller-a", "--name", "West Lake Tea")
+            self.run_cli(
+                db_file,
+                "product",
+                "add",
+                "--merchant",
+                "seller-a",
+                "--sku",
+                "tea-a",
+                "--title",
+                "Longjing Gift Box",
+                "--price",
+                "88",
+                "--stock",
+                "5",
+            )
+
+            for bad_price in ("nan", "inf"):
+                with self.assertRaises(SystemExit) as price_error:
+                    self.run_cli(
+                        db_file,
+                        "product",
+                        "add",
+                        "--merchant",
+                        "seller-a",
+                        "--sku",
+                        f"tea-{bad_price}",
+                        "--title",
+                        "Longjing Gift Box",
+                        "--price",
+                        bad_price,
+                        "--stock",
+                        "5",
+                    )
+                self.assertIn("--price must be finite", str(price_error.exception))
+
+                with self.assertRaises(SystemExit) as update_error:
+                    self.run_cli(db_file, "product", "update", "--sku", "tea-a", "--price", bad_price)
+                self.assertIn("--price must be finite", str(update_error.exception))
+
+    def test_delivery_numeric_values_must_be_finite(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+
+            for bad_fee in ("nan", "inf"):
+                with self.assertRaises(SystemExit) as fee_error:
+                    self.run_cli(
+                        db_file,
+                        "merchant",
+                        "create",
+                        "--id",
+                        f"seller-{bad_fee}",
+                        "--name",
+                        "West Lake Tea",
+                        "--delivery-fee",
+                        bad_fee,
+                    )
+                self.assertIn("delivery fee must be finite", str(fee_error.exception))
+
+            self.run_cli(db_file, "merchant", "create", "--id", "seller-a", "--name", "West Lake Tea")
+            for bad_radius in ("nan", "inf"):
+                with self.assertRaises(SystemExit) as radius_error:
+                    self.run_cli(
+                        db_file,
+                        "merchant",
+                        "update",
+                        "--id",
+                        "seller-a",
+                        "--delivery-radius-km",
+                        bad_radius,
+                    )
+                self.assertIn("delivery radius must be finite", str(radius_error.exception))
+
+    def test_search_max_price_must_be_finite(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.run_cli(db_file, "merchant", "create", "--id", "seller-a", "--name", "West Lake Tea")
+            self.run_cli(
+                db_file,
+                "product",
+                "add",
+                "--merchant",
+                "seller-a",
+                "--sku",
+                "tea-a",
+                "--title",
+                "Longjing Gift Box",
+                "--price",
+                "88",
+                "--stock",
+                "5",
+            )
+
+            with self.assertRaises(SystemExit) as max_price_error:
+                self.run_cli(db_file, "search", "products", "--query", "longjing", "--max-price", "nan")
+            self.assertIn("--max-price must be finite", str(max_price_error.exception))
+
     def test_search_products_text_output_lists_matching_products(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"
