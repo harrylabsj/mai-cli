@@ -386,11 +386,25 @@ class HTTPMarketplaceToolDispatcher:
         return result
 
     @staticmethod
+    def _response_object(result: dict[str, Any], key: str) -> dict[str, Any]:
+        value = result.get(key)
+        if not isinstance(value, dict):
+            raise HTTPMarketplaceError(f"Marketplace API response missing object: {key}")
+        return dict(value)
+
+    @staticmethod
+    def _response_list(result: dict[str, Any], key: str) -> list[Any]:
+        value = result.get(key)
+        if not isinstance(value, list):
+            raise HTTPMarketplaceError(f"Marketplace API response missing list: {key}")
+        return list(value)
+
+    @staticmethod
     def _conversation_path(conversation_id: str) -> str:
         return f"/conversations/{urllib.parse.quote(str(conversation_id), safe='')}"
 
     def conversation_summary(self, conversation_id: str) -> dict[str, Any]:
-        return dict(self._request("GET", self._conversation_path(conversation_id))["conversation"])
+        return self._response_object(self._request("GET", self._conversation_path(conversation_id)), "conversation")
 
     def _dispatch_catalog_search(self, arguments: dict[str, Any]) -> dict[str, Any]:
         result = self._request(
@@ -404,14 +418,14 @@ class HTTPMarketplaceToolDispatcher:
                 "include_out_of_stock": bool(arguments.get("include_out_of_stock") or False),
             },
         )
-        return {"ok": True, "query": str(arguments["query"]), "results": list(result.get("results") or [])}
+        return {"ok": True, "query": str(arguments["query"]), "results": self._response_list(result, "results")}
 
     def _dispatch_conversation_send(self, arguments: dict[str, Any]) -> dict[str, Any]:
         sender = str(arguments["sender"])
         if sender not in {"buyer", "buyer_cli"}:
             raise SystemExit("conversation_send only supports buyer or buyer_cli senders")
         conversation_id = str(arguments["conversation_id"])
-        return self._request(
+        result = self._request(
             "POST",
             f"{self._conversation_path(conversation_id)}/messages",
             {
@@ -421,11 +435,16 @@ class HTTPMarketplaceToolDispatcher:
                 "source_id": self.source_id,
             },
         )
+        return {
+            "ok": True,
+            "message": self._response_object(result, "message"),
+            "conversation": self._response_object(result, "conversation"),
+        }
 
     def _dispatch_conversation_summarize(self, arguments: dict[str, Any]) -> dict[str, Any]:
         conversation_id = str(arguments["conversation_id"])
         result = self._request("GET", self._conversation_path(conversation_id))
-        conversation = dict(result["conversation"])
+        conversation = self._response_object(result, "conversation")
         warnings = list(buyer_cli.MVP_WARNINGS)
         if conversation.get("status") == "human_required":
             warnings.append("Merchant human review is required before any commitment.")
@@ -449,7 +468,7 @@ class HTTPMarketplaceToolDispatcher:
 
     def _dispatch_human_review_flag(self, arguments: dict[str, Any]) -> dict[str, Any]:
         conversation_id = str(arguments["conversation_id"])
-        return self._request(
+        result = self._request(
             "POST",
             f"{self._conversation_path(conversation_id)}/human-review",
             {
@@ -458,6 +477,11 @@ class HTTPMarketplaceToolDispatcher:
                 "source_id": self.source_id,
             },
         )
+        return {
+            "ok": True,
+            "review": self._response_object(result, "review"),
+            "conversation": self._response_object(result, "conversation"),
+        }
 
     def _dispatch_merchant_reply(self, arguments: dict[str, Any]) -> dict[str, Any]:
         conversation_id = str(arguments["conversation_id"])
@@ -482,7 +506,8 @@ class HTTPMarketplaceToolDispatcher:
             },
         )
         flags = []
-        conversation = message_result.get("conversation")
+        message = self._response_object(message_result, "message")
+        conversation = self._response_object(message_result, "conversation")
         if human_required:
             review_result = self._request(
                 "POST",
@@ -492,11 +517,11 @@ class HTTPMarketplaceToolDispatcher:
                     "source_id": self.source_id,
                 },
             )
-            flags.append(review_result["review"])
-            conversation = review_result.get("conversation")
+            flags.append(self._response_object(review_result, "review"))
+            conversation = self._response_object(review_result, "conversation")
         return {
             "ok": True,
-            "message": message_result["message"],
+            "message": message,
             "flags": flags,
             "conversation": conversation,
         }

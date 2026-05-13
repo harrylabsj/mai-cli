@@ -7,7 +7,12 @@ from unittest.mock import patch
 from mai_cli.core.catalog import create_merchant, create_product
 from mai_cli.core.conversations import append_message, conversation_summary, ensure_conversation
 from mai_cli.db.session import db_session
-from mai_cli.llm.dispatcher import HTTPMarketplaceToolDispatcher, MarketplaceToolDispatcher, dispatch_marketplace_tool
+from mai_cli.llm.dispatcher import (
+    HTTPMarketplaceError,
+    HTTPMarketplaceToolDispatcher,
+    MarketplaceToolDispatcher,
+    dispatch_marketplace_tool,
+)
 from mai_cli.llm.prompts import buyer_system_prompt, merchant_system_prompt
 from mai_cli.llm.providers import OpenAICompatibleProvider, provider_from_env
 from mai_cli.llm.runner import run_marketplace_tool_loop
@@ -933,6 +938,40 @@ class LlmContractTest(unittest.TestCase):
         )
 
         self.assertEqual(dispatcher.timeout, 60.0)
+
+    def test_http_marketplace_tool_dispatcher_reports_malformed_conversation_response_cleanly(self):
+        dispatcher = HTTPMarketplaceToolDispatcher(
+            "http://127.0.0.1:8765",
+            auth_token="buyer-token",
+            actor="alice",
+            token_scope="buyer",
+            transport=lambda _method, _path, _payload, _query, _headers: {"ok": True},
+        )
+
+        with self.assertRaises(HTTPMarketplaceError) as raised:
+            dispatcher.dispatch("conversation_summarize", {"conversation_id": "CONV-0001"})
+        self.assertIn("Marketplace API response missing object: conversation", str(raised.exception))
+
+    def test_http_marketplace_tool_dispatcher_reports_malformed_message_response_cleanly(self):
+        def fake_transport(_method, path, _payload, _query, _headers):
+            if path == "/audit/tool-calls":
+                return {"ok": True, "event": {"event": "llm_tool_call"}}
+            return {"ok": True, "conversation": {"id": "CONV-0001"}}
+
+        dispatcher = HTTPMarketplaceToolDispatcher(
+            "http://127.0.0.1:8765",
+            auth_token="merchant-token",
+            actor="mai-cli-merchant-agent:seller-a",
+            token_scope="merchant_agent",
+            transport=fake_transport,
+        )
+
+        with self.assertRaises(HTTPMarketplaceError) as raised:
+            dispatcher.dispatch(
+                "merchant_reply",
+                {"conversation_id": "CONV-0001", "intent": "answer", "text": "Available."},
+            )
+        self.assertIn("Marketplace API response missing object: message", str(raised.exception))
 
     def test_http_marketplace_tool_dispatcher_preserves_denial_when_audit_fails(self):
         dispatcher = HTTPMarketplaceToolDispatcher(
