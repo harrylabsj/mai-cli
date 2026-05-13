@@ -927,9 +927,9 @@ def emit_agent_logs_text(result: dict[str, Any]) -> None:
             continue
         fields = [f"{entry.get('at') or '-'} {entry.get('event') or 'event'}"]
         if "checked" in entry:
-            fields.append(f"checked={int(entry.get('checked') or 0)}")
+            fields.append(f"checked={_safe_non_negative_int(entry.get('checked'))}")
         if "replied_count" in entry:
-            fields.append(f"replied={int(entry.get('replied_count') or 0)}")
+            fields.append(f"replied={_safe_non_negative_int(entry.get('replied_count'))}")
         if entry.get("error"):
             fields.append(f"error={redact_secret_text(entry['error'])}")
         print(" ".join(fields))

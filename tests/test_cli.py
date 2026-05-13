@@ -1949,6 +1949,28 @@ class MaiCliTest(unittest.TestCase):
             self.assertIn("plain log line", output)
             self.assertNotIn('"entries"', output)
 
+    def test_agent_logs_text_output_tolerates_corrupt_counters(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            logs = {
+                "ok": True,
+                "merchant_id": "seller-a",
+                "log_file": "/tmp/seller-a.log",
+                "entries": [
+                    {
+                        "event": "process_once",
+                        "at": "2026-05-13T12:00:00",
+                        "checked": "bad",
+                        "replied_count": "bad",
+                    }
+                ],
+            }
+
+            with patch("mai_cli.cli.merchant_daemon.logs_agent", return_value=logs):
+                output = self.run_cli(db_file, "agent", "logs", "--merchant", "seller-a", "--tail", "1")
+
+            self.assertIn("2026-05-13T12:00:00 process_once checked=0 replied=0", output)
+
     def test_agent_logs_text_output_redacts_tokens_from_errors(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"
