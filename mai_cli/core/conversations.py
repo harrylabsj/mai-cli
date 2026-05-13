@@ -29,6 +29,13 @@ def ensure_conversation(
     merchant_id: str,
     sku: str = "",
 ) -> dict[str, Any]:
+    buyer_id = str(buyer_id or "").strip()
+    merchant_id = str(merchant_id or "").strip()
+    sku = str(sku or "").strip()
+    if not buyer_id:
+        raise SystemExit("buyer id is required")
+    if not merchant_id:
+        raise SystemExit("merchant id is required")
     require_merchant(conn, merchant_id)
     if sku:
         product = require_product(conn, sku)

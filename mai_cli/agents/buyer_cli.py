@@ -27,6 +27,9 @@ def ask(
     host: str = "",
     session_id: str = "",
 ) -> dict[str, Any]:
+    buyer_id = str(buyer_id or "").strip()
+    if not buyer_id:
+        raise SystemExit("buyer id is required")
     candidates = search_products(conn, query=text, city=city, area=area, limit=limit)
     if not candidates:
         return {

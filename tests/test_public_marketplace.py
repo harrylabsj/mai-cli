@@ -681,6 +681,69 @@ class PublicMarketplaceTest(unittest.TestCase):
             self.assertEqual(status, 200)
             self.assertEqual(conversation["conversation"]["status"], "waiting_merchant")
 
+    def test_create_conversation_rejects_blank_buyer_id(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "marketplace.sqlite"
+            app = create_app(db_file)
+
+            status, merchant = self.request(app, "POST", "/merchants", {"id": "seller-a", "name": "West Lake Tea"})
+            self.assertEqual(status, 200)
+            status, created = self.request(
+                app,
+                "POST",
+                "/conversations",
+                {
+                    "buyer_id": "   ",
+                    "merchant_id": "seller-a",
+                    "text": "Can I get a private discount?",
+                },
+            )
+
+            self.assertEqual(status, 400)
+            self.assertIn("buyer id is required", created["error"])
+
+    def test_buyer_ask_trims_buyer_id_for_tokens_and_history(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "marketplace.sqlite"
+            app = create_app(db_file)
+
+            status, merchant = self.request(app, "POST", "/merchants", {"id": "seller-a", "name": "West Lake Tea"})
+            self.assertEqual(status, 200)
+            status, product = self.request(
+                app,
+                "POST",
+                "/products",
+                {
+                    "merchant_id": "seller-a",
+                    "sku": "tea-a",
+                    "title": "Longjing Gift Box",
+                    "price": 88,
+                    "stock": 5,
+                    "tags": ["longjing"],
+                    "merchant_token": merchant["merchant_token"],
+                },
+            )
+            self.assertEqual(status, 200)
+
+            status, ask = self.request(
+                app,
+                "POST",
+                "/buyer/ask",
+                {"buyer_id": " alice ", "text": "longjing delivery today"},
+            )
+            self.assertEqual(status, 200)
+            self.assertEqual(ask["buyer_id"], "alice")
+            self.assertEqual(ask["conversation"]["buyer_id"], "alice")
+
+            status, history = self.request(
+                app,
+                "GET",
+                "/buyers/alice/conversations",
+                headers={"authorization": f"Bearer {ask['buyer_token']}"},
+            )
+            self.assertEqual(status, 200)
+            self.assertEqual(history["conversations"][0]["buyer_id"], "alice")
+
     def test_conversation_reads_and_review_queues_require_owner_tokens(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "marketplace.sqlite"

@@ -604,7 +604,7 @@ def _buyer_ask(db_path: str | Path, payload: dict[str, Any]) -> dict[str, Any]:
             session_id=str(payload.get("session_id") or ""),
         )
         if result.get("conversation"):
-            result["buyer_token"] = _issue_buyer_token(conn, buyer_id, result["conversation"]["id"])
+            result["buyer_token"] = _issue_buyer_token(conn, result["buyer_id"], result["conversation"]["id"])
         return result
 
 
@@ -650,7 +650,11 @@ def _create_conversation(db_path: str | Path, payload: dict[str, Any]) -> dict[s
                 structured_payload={"source_id": payload.get("source_id") or ""},
             )
             conversation = conversation_summary(conn, conversation["id"])
-        return {"ok": True, "conversation": conversation, "buyer_token": _issue_buyer_token(conn, buyer_id, conversation["id"])}
+        return {
+            "ok": True,
+            "conversation": conversation,
+            "buyer_token": _issue_buyer_token(conn, conversation["buyer_id"], conversation["id"]),
+        }
 
 
 def _append_conversation_message(db_path: str | Path, conversation_id: str, payload: dict[str, Any]) -> dict[str, Any]:
