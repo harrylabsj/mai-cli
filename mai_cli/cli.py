@@ -138,6 +138,9 @@ def cmd_merchant_update(args: argparse.Namespace) -> None:
 def cmd_merchant_human_review(args: argparse.Namespace) -> None:
     with db_session(db_path_from_args(args)) as conn:
         conversations = merchant_conversations(conn, args.merchant, "human_required")
+    if args.format == "text":
+        emit_conversation_table(conversations, f"No human-review conversations for {args.merchant}.")
+        return
     emit({"ok": True, "merchant_id": args.merchant, "conversations": conversations}, args.format)
 
 
@@ -543,21 +546,25 @@ def cmd_conversation_list(args: argparse.Namespace) -> None:
         rows = conn.execute(sql, values).fetchall()
         conversations = [conversation_summary(conn, row["id"]) for row in rows]
     if args.format == "text":
-        if not conversations:
-            print("No conversations found.")
-            return
-        print(f"{'ID':<12} {'BUYER':<14} {'MERCHANT':<14} {'STATUS':<18} {'NEXT_ACTOR':<16} UPDATED_AT")
-        for conversation in conversations:
-            print(
-                f"{conversation['id']:<12} "
-                f"{conversation['buyer_id']:<14} "
-                f"{conversation['merchant_id']:<14} "
-                f"{conversation['status']:<18} "
-                f"{conversation['next_actor']:<16} "
-                f"{conversation['updated_at']}"
-            )
+        emit_conversation_table(conversations, "No conversations found.")
         return
     emit({"ok": True, "conversations": conversations}, args.format)
+
+
+def emit_conversation_table(conversations: list[dict[str, Any]], empty_message: str) -> None:
+    if not conversations:
+        print(empty_message)
+        return
+    print(f"{'ID':<12} {'BUYER':<14} {'MERCHANT':<14} {'STATUS':<18} {'NEXT_ACTOR':<16} UPDATED_AT")
+    for conversation in conversations:
+        print(
+            f"{conversation['id']:<12} "
+            f"{conversation['buyer_id']:<14} "
+            f"{conversation['merchant_id']:<14} "
+            f"{conversation['status']:<18} "
+            f"{conversation['next_actor']:<16} "
+            f"{conversation['updated_at']}"
+        )
 
 
 def cmd_conversation_message(args: argparse.Namespace) -> None:

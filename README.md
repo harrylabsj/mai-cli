@@ -130,6 +130,7 @@ python3 scripts/mai.py --db ./mai-cli.sqlite conversation close --conversation C
 python3 scripts/mai.py --db ./mai-cli.sqlite conversation close --conversation CONV-0001 --sender operator --text "Closed." --format json
 python3 scripts/mai.py --db ./mai-cli.sqlite conversation list --buyer alice --status waiting_buyer
 python3 scripts/mai.py --db ./mai-cli.sqlite conversation list --buyer alice --status waiting_buyer --format json
+python3 scripts/mai.py --db ./mai-cli.sqlite merchant human-review --merchant seller-a
 python3 scripts/mai.py --db ./mai-cli.sqlite human-review queue
 python3 scripts/mai.py --db ./mai-cli.sqlite human-review queue --format json
 python3 scripts/mai.py --db ./mai-cli.sqlite human-review show --review 1
@@ -148,7 +149,7 @@ The default `conversation message` text output confirms the appended message id 
 The default `conversation human-review` text output confirms the review id and human-routing state.
 The default `conversation resolve-review` text output confirms the resolution count and resulting routing state.
 The default `conversation close` text output confirms the final status.
-The default `conversation list` text output is a compact status table for quick buyer/merchant queue scans.
+The default `conversation list` text output is a compact status table for quick buyer/merchant queue scans; `merchant human-review` uses the same table for one merchant's human-required conversations.
 The default `human-review queue` text output is a concise merchant workbench table, `human-review show` prints the review summary plus recent conversation messages, and `human-review resolve` summarizes the resulting conversation status. `--format json` keeps the stable adapter/script output.
 The default `agent start`, `agent stop`, and `agent status` text outputs summarize daemon mode, API URL, host/session metadata, running state, log path, and state path; `agent status` also includes counters and heartbeat state. `agent logs` prints compact recent log lines. `agent heartbeat` confirms the recorded heartbeat in a readable summary. `agent list` prints a compact heartbeat table for operations checks, while `agent show` prints one heartbeat in detail.
 
