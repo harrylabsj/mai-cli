@@ -271,7 +271,17 @@ def _positive_whole_int(value: Any, field_name: str) -> int:
 
 
 def _token_is_expired(expires_at: str) -> bool:
-    return bool(expires_at and expires_at <= now_iso())
+    if not expires_at:
+        return False
+    try:
+        expires = datetime.fromisoformat(str(expires_at))
+    except (TypeError, ValueError):
+        return True
+    try:
+        current = datetime.now(tz=expires.tzinfo) if expires.tzinfo is not None else datetime.now()
+        return expires <= current
+    except TypeError:
+        return True
 
 
 def _agent_token_summary(row: Any) -> dict[str, Any]:

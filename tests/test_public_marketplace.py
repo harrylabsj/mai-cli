@@ -2705,6 +2705,49 @@ class PublicMarketplaceTest(unittest.TestCase):
             self.assertEqual(status, 403)
             self.assertIn("expired", denied["error"])
 
+    def test_agent_token_ttl_api_treats_malformed_expiry_as_expired(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "marketplace.sqlite"
+            app = create_app(db_file)
+
+            status, merchant = self.request(app, "POST", "/merchants", {"id": "seller-a", "name": "West Lake Tea"})
+            self.assertEqual(status, 200)
+            status, issued = self.request(
+                app,
+                "POST",
+                "/agents/tokens",
+                {"merchant_id": "seller-a", "merchant_token": merchant["merchant_token"], "ttl_seconds": 3600},
+            )
+            self.assertEqual(status, 200)
+            agent_token = issued["agent_token"]
+
+            conn = sqlite3.connect(db_file)
+            try:
+                conn.execute("update api_tokens set expires_at = ? where token = ?", ("not-a-date", agent_token))
+                conn.commit()
+            finally:
+                conn.close()
+
+            status, denied = self.request(
+                app,
+                "POST",
+                "/agents/heartbeat",
+                {"merchant_id": "seller-a", "_auth_token": agent_token},
+            )
+            self.assertEqual(status, 403)
+            self.assertIn("expired", denied["error"])
+
+            status, listed = self.request(
+                app,
+                "GET",
+                "/agents/tokens",
+                query_string="merchant_id=seller-a",
+                headers={"authorization": f"Bearer {merchant['merchant_token']}"},
+            )
+            self.assertEqual(status, 200)
+            self.assertTrue(listed["tokens"][0]["expired"])
+            self.assertFalse(listed["tokens"][0]["active"])
+
     def test_agent_token_ttl_api_rejects_fractional_seconds(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "marketplace.sqlite"
