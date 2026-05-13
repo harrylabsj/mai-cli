@@ -669,7 +669,10 @@ def cmd_agent_run(args: argparse.Namespace) -> None:
         token = args.agent_token or os.environ.get("MAI_AGENT_TOKEN") or args.merchant_token or os.environ.get("MAI_MERCHANT_TOKEN")
         if not token:
             raise SystemExit("--merchant-token or --agent-token is required with --api-url")
-        tools = HTTPMerchantAgentTools(api_url, args.merchant, token)
+        host = args.host or os.environ.get("MAI_AGENT_HOST") or ""
+        session_id = args.session_id or os.environ.get("MAI_AGENT_SESSION_ID") or ""
+        tool_kwargs = {"host": host, "session_id": session_id} if host or session_id else {}
+        tools = HTTPMerchantAgentTools(api_url, args.merchant, token, **tool_kwargs)
         if args.once:
             result = merchant_agent.process_once_with_tools(tools, args.merchant)
             emit(result, args.format)
@@ -708,6 +711,8 @@ def cmd_agent_start(args: argparse.Namespace) -> None:
         api_url=api_url,
         agent_token=agent_token,
         merchant_token=merchant_token,
+        host=args.host or os.environ.get("MAI_AGENT_HOST") or "",
+        session_id=args.session_id or os.environ.get("MAI_AGENT_SESSION_ID") or "",
     )
     emit(result, args.format)
 
@@ -1538,6 +1543,8 @@ def build_parser() -> argparse.ArgumentParser:
     agent_start.add_argument("--api-url", default="", help="Start a background agent through the marketplace API")
     agent_start.add_argument("--merchant-token", default="", help="Merchant API token for --api-url")
     agent_start.add_argument("--agent-token", default="", help="Scoped agent API token for --api-url")
+    agent_start.add_argument("--host", default="", help="Host name for API-backed tool-call audit metadata")
+    agent_start.add_argument("--session-id", default="", help="Host session id for API-backed tool-call audit metadata")
     agent_start.add_argument("--format", choices=["text", "json"], default="text")
     add_agent_runtime_options(agent_start)
     agent_start.set_defaults(func=cmd_agent_start)
@@ -1573,6 +1580,8 @@ def build_parser() -> argparse.ArgumentParser:
     agent_run.add_argument("--api-url", default="", help="Run through the marketplace API instead of direct SQLite")
     agent_run.add_argument("--merchant-token", default="", help="Merchant API token for --api-url")
     agent_run.add_argument("--agent-token", default="", help="Scoped agent API token for --api-url")
+    agent_run.add_argument("--host", default="", help="Host name for API-backed tool-call audit metadata")
+    agent_run.add_argument("--session-id", default="", help="Host session id for API-backed tool-call audit metadata")
     agent_run.add_argument("--format", choices=["text", "json"], default="text")
     agent_run.add_argument("--state-file", default=None, help=argparse.SUPPRESS)
     agent_run.add_argument("--stop-file", default=None, help=argparse.SUPPRESS)

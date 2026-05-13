@@ -56,12 +56,17 @@ class ProjectShapeTest(unittest.TestCase):
                 "seller-a",
                 api_url="http://mai.test",
                 agent_token="agent-token",
+                session_id="openclaw-session-1",
                 once=True,
             )
             self.assertIn("--api-url", api_agent_command)
             self.assertIn("http://mai.test", api_agent_command)
             self.assertIn("--agent-token", api_agent_command)
             self.assertIn("agent-token", api_agent_command)
+            self.assertIn("--host", api_agent_command)
+            self.assertIn("openclaw", api_agent_command)
+            self.assertIn("--session-id", api_agent_command)
+            self.assertIn("openclaw-session-1", api_agent_command)
             self.assertNotIn("--db", api_agent_command)
 
             agent_context = openclaw.merchant_agent_context("seller-a", session_id="openclaw-session-1")

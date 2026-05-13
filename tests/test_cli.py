@@ -362,12 +362,14 @@ class MaiCliTest(unittest.TestCase):
             constructed = []
 
             class FakeHTTPMerchantAgentTools:
-                def __init__(self, base_url, merchant_id, merchant_token):
+                def __init__(self, base_url, merchant_id, merchant_token, host="", session_id=""):
                     constructed.append(
                         {
                             "base_url": base_url,
                             "merchant_id": merchant_id,
                             "merchant_token": merchant_token,
+                            "host": host,
+                            "session_id": session_id,
                         }
                     )
 
@@ -389,6 +391,10 @@ class MaiCliTest(unittest.TestCase):
                     "http://127.0.0.1:8765",
                     "--agent-token",
                     "agent_tok_seller_a",
+                    "--host",
+                    "openclaw",
+                    "--session-id",
+                    "openclaw-session-1",
                     "--format",
                     "json",
                 )
@@ -401,6 +407,8 @@ class MaiCliTest(unittest.TestCase):
                         "base_url": "http://127.0.0.1:8765",
                         "merchant_id": "seller-a",
                         "merchant_token": "agent_tok_seller_a",
+                        "host": "openclaw",
+                        "session_id": "openclaw-session-1",
                     }
                 ],
             )
@@ -412,7 +420,7 @@ class MaiCliTest(unittest.TestCase):
             constructed = []
 
             class FakeHTTPMerchantAgentTools:
-                def __init__(self, base_url, merchant_id, merchant_token):
+                def __init__(self, base_url, merchant_id, merchant_token, host="", session_id=""):
                     constructed.append(
                         {
                             "base_url": base_url,
@@ -450,7 +458,7 @@ class MaiCliTest(unittest.TestCase):
             constructed = []
 
             class FakeHTTPMerchantAgentTools:
-                def __init__(self, base_url, merchant_id, merchant_token):
+                def __init__(self, base_url, merchant_id, merchant_token, host="", session_id=""):
                     constructed.append(
                         {
                             "base_url": base_url,
@@ -518,7 +526,7 @@ class MaiCliTest(unittest.TestCase):
             calls = []
 
             class FakeHTTPMerchantAgentTools:
-                def __init__(self, base_url, merchant_id, merchant_token):
+                def __init__(self, base_url, merchant_id, merchant_token, host="", session_id=""):
                     calls.append(("init", base_url, merchant_id, merchant_token))
 
                 def heartbeat(self, merchant_id, status="online", **kwargs):
@@ -569,6 +577,10 @@ class MaiCliTest(unittest.TestCase):
                     "http://127.0.0.1:8765",
                     "--agent-token",
                     "agent_secret",
+                    "--host",
+                    "openclaw",
+                    "--session-id",
+                    "openclaw-session-1",
                     "--state-dir",
                     str(state_dir),
                     "--format",
@@ -579,6 +591,8 @@ class MaiCliTest(unittest.TestCase):
             self.assertEqual(calls[0]["api_url"], "http://127.0.0.1:8765")
             self.assertEqual(calls[0]["agent_token"], "agent_secret")
             self.assertEqual(calls[0]["merchant_token"], "")
+            self.assertEqual(calls[0]["host"], "openclaw")
+            self.assertEqual(calls[0]["session_id"], "openclaw-session-1")
 
     def test_llm_run_cli_invokes_tool_loop_with_role_prompt_and_budgets(self):
         with tempfile.TemporaryDirectory() as tmp:

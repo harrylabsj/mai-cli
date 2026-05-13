@@ -43,6 +43,8 @@ def merchant_agent_command(
     interval: float | None = None,
     api_url: str = "",
     agent_token: str = "",
+    host: str = "openclaw",
+    session_id: str = "",
 ) -> list[str]:
     args: list[object] = ["agent", "run", "--merchant", merchant_id, "--format", "json"]
     if once:
@@ -53,6 +55,10 @@ def merchant_agent_command(
         args.extend(["--api-url", api_url])
     if agent_token:
         args.extend(["--agent-token", agent_token])
+    if api_url and host:
+        args.extend(["--host", host])
+    if api_url and session_id:
+        args.extend(["--session-id", session_id])
     if api_url:
         return build_mai_command(args, project_root=project_root)
     return build_mai_command(args, db_path=db_path, project_root=project_root)

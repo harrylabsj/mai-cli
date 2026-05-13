@@ -135,10 +135,14 @@ def start_agent(
     api_url: str = "",
     agent_token: str = "",
     merchant_token: str = "",
+    host: str = "",
+    session_id: str = "",
 ) -> dict[str, Any]:
     api_url = str(api_url or "").strip()
     agent_token = str(agent_token or "").strip()
     merchant_token = str(merchant_token or "").strip()
+    host = str(host or "").strip()
+    session_id = str(session_id or "").strip()
     mode = "api" if api_url else "sqlite"
     if api_url and not (agent_token or merchant_token):
         raise SystemExit("--merchant-token or --agent-token is required with --api-url")
@@ -177,10 +181,18 @@ def start_agent(
         "--stop-file",
         str(paths["stop_file"]),
     ]
+    if host:
+        command.extend(["--host", host])
+    if session_id:
+        command.extend(["--session-id", session_id])
     env = os.environ.copy()
     env["MAI_CLI_STATE_DIR"] = str(paths["state_dir"])
     if api_url:
         env["MAI_MARKETPLACE_API_URL"] = api_url
+        if host:
+            env["MAI_AGENT_HOST"] = host
+        if session_id:
+            env["MAI_AGENT_SESSION_ID"] = session_id
         if agent_token:
             env["MAI_AGENT_TOKEN"] = agent_token
             env.pop("MAI_MERCHANT_TOKEN", None)
@@ -206,6 +218,8 @@ def start_agent(
         "interval": interval,
         "mode": mode,
         "api_url": api_url,
+        "host": host,
+        "session_id": session_id,
         "started_at": started_at,
         "command": command,
         "log_file": str(paths["log_file"]),
@@ -219,7 +233,7 @@ def start_agent(
         running=True,
         counters={"checked": 0, "replied": 0},
         pid=process.pid,
-        extra={"started_at": started_at, "mode": mode, "api_url": api_url},
+        extra={"started_at": started_at, "mode": mode, "api_url": api_url, "host": host, "session_id": session_id},
     )
     return {
         "ok": True,
@@ -228,6 +242,8 @@ def start_agent(
         "running": True,
         "mode": mode,
         "api_url": api_url,
+        "host": host,
+        "session_id": session_id,
         "stale_replaced": stale_replaced,
         "pid_file": str(paths["pid_file"]),
         "state_file": str(paths["state_file"]),
