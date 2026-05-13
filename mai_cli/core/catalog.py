@@ -391,6 +391,9 @@ def search_products(
     include_out_of_stock: bool = False,
     limit: int = 10,
 ) -> list[dict[str, Any]]:
+    query = str(query or "").strip()
+    city = str(city or "").strip()
+    area = str(area or "").strip()
     rows = conn.execute(
         """
         select p.*, m.name as merchant_name, m.city as merchant_city, m.service_area as merchant_service_area,
@@ -426,6 +429,8 @@ def search_merchants(
     city: str = "",
     limit: int = 10,
 ) -> list[dict[str, Any]]:
+    query = str(query or "").strip()
+    city = str(city or "").strip()
     query_lower = query.lower()
     query_tokens = tokenize(query_lower)
     rows = conn.execute("select * from merchants order by name, id").fetchall()

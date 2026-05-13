@@ -199,6 +199,73 @@ class MaiCliTest(unittest.TestCase):
             self.assertIn("5", output)
             self.assertNotIn('"results"', output)
 
+    def test_search_filters_ignore_surrounding_whitespace(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.run_cli(
+                db_file,
+                "merchant",
+                "create",
+                "--id",
+                "seller-a",
+                "--name",
+                "West Lake Tea",
+                "--city",
+                "Hangzhou",
+                "--service-area",
+                "West Lake",
+            )
+            self.run_cli(
+                db_file,
+                "product",
+                "add",
+                "--merchant",
+                "seller-a",
+                "--sku",
+                "tea-a",
+                "--title",
+                "Longjing Gift Box",
+                "--price",
+                "88",
+                "--stock",
+                "5",
+                "--tags",
+                "longjing,gift",
+            )
+
+            products = json.loads(
+                self.run_cli(
+                    db_file,
+                    "search",
+                    "products",
+                    "--query",
+                    " longjing ",
+                    "--city",
+                    " hangzhou ",
+                    "--area",
+                    " West Lake ",
+                    "--format",
+                    "json",
+                )
+            )
+            merchants = json.loads(
+                self.run_cli(
+                    db_file,
+                    "search",
+                    "merchants",
+                    "--query",
+                    " west lake ",
+                    "--city",
+                    " hangzhou ",
+                    "--format",
+                    "json",
+                )
+            )
+
+            self.assertEqual(products["results"][0]["sku"], "tea-a")
+            self.assertNotIn("requested area may need merchant confirmation", products["results"][0]["warnings"])
+            self.assertEqual(merchants["results"][0]["id"], "seller-a")
+
     def test_search_merchants_text_output_lists_matching_merchants(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"
