@@ -9,6 +9,8 @@ from mai_cli.core.catalog import product_summary, require_merchant, require_prod
 from mai_cli.core.harness import append_audit_event, conversation_audit_events, next_actor_for_status
 from mai_cli.db.session import decode_json, encode_json, now_iso
 
+CONVERSATION_STATUSES = {"open", "waiting_merchant", "waiting_buyer", "human_required", "closed"}
+
 
 def next_conversation_id(conn: sqlite3.Connection) -> str:
     rows = conn.execute("select id from conversations where id like 'CONV-%'").fetchall()
@@ -73,6 +75,13 @@ def _normalize_review_text(value: Any, default: str) -> str:
     return str(value or "").strip() or default
 
 
+def _normalize_conversation_status(value: Any) -> str:
+    status = str(value or "").strip()
+    if status not in CONVERSATION_STATUSES:
+        raise SystemExit(f"Unknown conversation status: {status or '-'}")
+    return status
+
+
 def append_message(
     conn: sqlite3.Connection,
     conversation_id: str,
@@ -94,6 +103,7 @@ def append_message(
             status = "waiting_buyer"
         else:
             status = conversation["status"]
+    status = _normalize_conversation_status(status)
     if status == "human_required":
         payload["reason"] = _normalize_review_text(payload.get("reason"), "human_required")
     next_actor = next_actor_for_status(status, str(payload.get("reason") or ""))
