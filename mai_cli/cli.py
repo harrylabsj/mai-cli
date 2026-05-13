@@ -54,7 +54,7 @@ from mai_cli.llm.runner import run_marketplace_tool_loop
 
 
 def emit_json(value: Any) -> None:
-    print(json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True))
+    print(json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True, default=str))
 
 
 def emit(value: Any, fmt: str) -> None:
@@ -64,7 +64,7 @@ def emit(value: Any, fmt: str) -> None:
         if isinstance(value, dict) and isinstance(value.get("message"), str):
             print(value["message"])
         else:
-            print(json.dumps(value, ensure_ascii=False, sort_keys=True))
+            print(json.dumps(value, ensure_ascii=False, sort_keys=True, default=str))
 
 
 def positive_int(value: str) -> int:

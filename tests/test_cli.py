@@ -35,6 +35,16 @@ class MaiCliTest(unittest.TestCase):
         self.assertIn('"id": 1', rendered)
         self.assertNotIn("{'id': 1}", rendered)
 
+    def test_emit_json_tolerates_non_json_native_values(self):
+        from mai_cli import cli
+
+        output = StringIO()
+        with redirect_stdout(output):
+            cli.emit({"ok": True, "payload": b"\xff"}, "json")
+
+        rendered = json.loads(output.getvalue())
+        self.assertEqual(rendered["payload"], "b'\\xff'")
+
     def test_legacy_import_text_output_is_readable(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"
