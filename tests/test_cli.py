@@ -1022,6 +1022,51 @@ class MaiCliTest(unittest.TestCase):
             self.assertIn("Next action:", output)
             self.assertNotIn('"conversation"', output)
 
+    def test_buyer_summarize_tolerates_missing_product_reference(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.run_cli(db_file, "merchant", "create", "--id", "seller-a", "--name", "West Lake Tea")
+            self.run_cli(
+                db_file,
+                "product",
+                "add",
+                "--merchant",
+                "seller-a",
+                "--sku",
+                "tea-a",
+                "--title",
+                "Longjing Gift Box",
+                "--price",
+                "88",
+                "--stock",
+                "5",
+                "--tags",
+                "longjing,gift",
+            )
+            self.run_cli(
+                db_file,
+                "buyer",
+                "ask",
+                "--buyer",
+                "alice",
+                "--text",
+                "longjing gift delivery today",
+                "--format",
+                "json",
+            )
+            conn = sqlite3.connect(db_file)
+            try:
+                conn.execute("delete from products where sku = 'tea-a'")
+                conn.commit()
+            finally:
+                conn.close()
+
+            output = self.run_cli(db_file, "buyer", "summarize", "--conversation", "CONV-0001")
+
+            self.assertIn("Conversation: CONV-0001", output)
+            self.assertIn("Missing facts: product", output)
+            self.assertNotIn("Option: tea-a", output)
+
     def test_buyer_intent_text_output_summarizes_recorded_intent(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"

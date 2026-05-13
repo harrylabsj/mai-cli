@@ -70,7 +70,12 @@ def ask(
 
 def summarize(conn: sqlite3.Connection, conversation_id: str) -> dict[str, Any]:
     conversation = conversation_summary(conn, conversation_id)
-    option = product_summary(conn, conversation["sku"]) if conversation.get("sku") else None
+    option = conversation.get("product")
+    if option is None and conversation.get("sku"):
+        try:
+            option = product_summary(conn, conversation["sku"])
+        except SystemExit:
+            option = None
     missing_facts: list[str] = []
     warnings = list(MVP_WARNINGS)
     if option is None:
