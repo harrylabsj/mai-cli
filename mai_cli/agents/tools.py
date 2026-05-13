@@ -330,7 +330,10 @@ class HTTPMerchantAgentTools:
         )
         if conversation_id:
             payload["conversation_id"] = conversation_id
-        self._request("POST", "/audit/tool-calls", payload)
+        try:
+            self._request("POST", "/audit/tool-calls", payload)
+        except HTTPMarketplaceError:
+            return
 
     def _request(
         self,
