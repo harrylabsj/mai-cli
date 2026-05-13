@@ -61,6 +61,18 @@ def safe_non_negative_int(value: Any) -> int:
     return max(number, 0)
 
 
+def safe_positive_float(value: Any, default: float) -> float:
+    if isinstance(value, bool):
+        return default
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return default
+    if not math.isfinite(number) or number <= 0:
+        return default
+    return number
+
+
 def safe_replied_count(value: Any) -> int:
     if not isinstance(value, list):
         return 0
@@ -163,6 +175,7 @@ def start_agent(
     mode = "api" if api_url else "sqlite"
     if api_url and not (agent_token or merchant_token):
         raise SystemExit("--merchant-token or --agent-token is required with --api-url")
+    interval = safe_positive_float(interval, 3.0)
 
     paths = agent_paths(merchant_id, state_dir)
     ensure_agent_dirs(paths)

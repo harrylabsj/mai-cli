@@ -432,6 +432,31 @@ class AgentDaemonLifecycleTest(unittest.TestCase):
             self.assertEqual(status["host"], "openclaw")
             self.assertEqual(status["session_id"], "openclaw-session-1")
 
+    def test_agent_start_tolerates_non_finite_interval(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            db_file = tmp_path / "mai-cli.sqlite"
+            state_dir = tmp_path / "state"
+
+            class FakeProcess:
+                pid = 12345
+
+            with patch("mai_cli.agents.merchant_daemon.subprocess.Popen", return_value=FakeProcess()):
+                started = merchant_daemon.start_agent(
+                    db_file,
+                    "seller-a",
+                    interval=float("nan"),
+                    state_dir=state_dir,
+                    api_url="http://127.0.0.1:8765",
+                    agent_token="agent_secret",
+                )
+
+            pid_record = json.loads(Path(started["pid_file"]).read_text(encoding="utf-8"))
+            command_text = " ".join(pid_record["command"])
+            self.assertEqual(pid_record["interval"], 3.0)
+            self.assertIn("--interval 3.0", command_text)
+            self.assertNotIn("nan", command_text.lower())
+
 
 if __name__ == "__main__":
     unittest.main()
