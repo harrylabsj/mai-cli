@@ -146,6 +146,12 @@ def upsert_delivery_rule(
     notes: str = "",
     currency: str = "CNY",
 ) -> dict[str, Any]:
+    if fee < 0:
+        raise SystemExit("delivery fee must be non-negative")
+    if eta_minutes < 0:
+        raise SystemExit("delivery eta minutes must be non-negative")
+    if radius_km < 0:
+        raise SystemExit("delivery radius must be non-negative")
     require_merchant(conn, merchant_id)
     now = now_iso()
     conn.execute(

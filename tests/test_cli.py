@@ -352,6 +352,16 @@ class MaiCliTest(unittest.TestCase):
             self.assertIn("Notes: same-day courier", output)
             self.assertNotIn('"delivery"', output)
 
+    def test_delivery_values_must_be_non_negative(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.run_cli(db_file, "merchant", "create", "--id", "seller-a", "--name", "West Lake Tea")
+
+            with self.assertRaises(SystemExit) as raised:
+                self.run_cli(db_file, "delivery", "set", "--merchant", "seller-a", "--fee", "-1")
+
+            self.assertIn("delivery fee must be non-negative", str(raised.exception))
+
     def test_merchant_human_review_text_output_lists_conversations(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"
