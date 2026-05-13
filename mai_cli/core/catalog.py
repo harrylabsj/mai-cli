@@ -418,9 +418,9 @@ def product_summary(conn: sqlite3.Connection, sku: str) -> dict[str, Any]:
         "description": product["description"],
         "category": product["category"],
         "tags": decode_json(product["tags_json"], []),
-        "price": float(product["price"]),
+        "price": _safe_non_negative_float(product["price"]),
         "currency": product["currency"],
-        "stock": int(product["stock"]),
+        "stock": _safe_non_negative_int(product["stock"]),
         "delivery_attributes": decode_json(product["delivery_attributes_json"], []),
         "merchant": merchant,
         "delivery": merchant["delivery"],
@@ -430,9 +430,10 @@ def product_summary(conn: sqlite3.Connection, sku: str) -> dict[str, Any]:
 
 def product_warnings(product: sqlite3.Row, merchant: dict[str, Any]) -> list[str]:
     warnings: list[str] = []
-    if int(product["stock"]) <= 0:
+    stock = _safe_non_negative_int(product["stock"])
+    if stock <= 0:
         warnings.append("out of stock")
-    elif int(product["stock"]) <= 2:
+    elif stock <= 2:
         warnings.append("low stock")
     if not merchant.get("contact"):
         warnings.append("merchant contact missing")

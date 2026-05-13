@@ -997,6 +997,37 @@ class PublicMarketplaceTest(unittest.TestCase):
             self.assertEqual(shown["merchant"]["delivery"]["eta_minutes"], 0)
             self.assertEqual(shown["merchant"]["delivery"]["radius_km"], 0.0)
 
+    def test_product_read_tolerates_corrupt_price_and_stock(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "marketplace.sqlite"
+            app = create_app(db_file)
+
+            status, merchant = self.request(app, "POST", "/merchants", {"id": "seller-a", "name": "West Lake Tea"})
+            self.assertEqual(status, 200)
+            status, created = self.request(
+                app,
+                "POST",
+                "/products",
+                {
+                    "merchant_id": "seller-a",
+                    "sku": "tea-a",
+                    "title": "Longjing Gift Box",
+                    "price": 88,
+                    "stock": 5,
+                    "merchant_token": merchant["merchant_token"],
+                },
+            )
+            self.assertEqual(status, 200)
+            with sqlite3.connect(db_file) as conn:
+                conn.execute("update products set price = 'bad', stock = 'bad' where sku = 'tea-a'")
+
+            status, shown = self.request(app, "GET", "/products/tea-a")
+
+            self.assertEqual(status, 200)
+            self.assertEqual(shown["product"]["price"], 0.0)
+            self.assertEqual(shown["product"]["stock"], 0)
+            self.assertIn("out of stock", shown["product"]["warnings"])
+
     def test_agent_status_reads_require_owner_tokens(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "marketplace.sqlite"
