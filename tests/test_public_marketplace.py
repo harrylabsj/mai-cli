@@ -974,6 +974,49 @@ class PublicMarketplaceTest(unittest.TestCase):
             self.assertEqual(status, 200)
             self.assertEqual(buyer_view["conversation"]["messages"][0]["structured_payload"], {})
 
+    def test_conversation_read_tolerates_missing_product_reference(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "marketplace.sqlite"
+            app = create_app(db_file)
+
+            status, merchant = self.request(app, "POST", "/merchants", {"id": "seller-a", "name": "West Lake Tea"})
+            self.assertEqual(status, 200)
+            status, _product = self.request(
+                app,
+                "POST",
+                "/products",
+                {
+                    "merchant_id": "seller-a",
+                    "sku": "tea-a",
+                    "title": "Longjing Gift Box",
+                    "price": 88,
+                    "stock": 5,
+                    "tags": ["longjing"],
+                    "merchant_token": merchant["merchant_token"],
+                },
+            )
+            self.assertEqual(status, 200)
+            status, ask = self.request(
+                app,
+                "POST",
+                "/buyer/ask",
+                {"buyer_id": "alice", "text": "longjing delivery today"},
+            )
+            self.assertEqual(status, 200)
+            with sqlite3.connect(db_file) as conn:
+                conn.execute("delete from products where sku = 'tea-a'")
+
+            status, buyer_view = self.request(
+                app,
+                "GET",
+                "/conversations/CONV-0001",
+                headers={"authorization": f"Bearer {ask['buyer_token']}"},
+            )
+
+            self.assertEqual(status, 200)
+            self.assertEqual(buyer_view["conversation"]["sku"], "tea-a")
+            self.assertNotIn("product", buyer_view["conversation"])
+
     def test_merchant_read_tolerates_corrupt_delivery_numbers(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "marketplace.sqlite"

@@ -241,7 +241,10 @@ def conversation_summary(conn: sqlite3.Connection, conversation_id: str) -> dict
         "audit_events": conversation_audit_events(conn, conversation_id),
     }
     if row["sku"]:
-        summary["product"] = product_summary(conn, row["sku"])
+        try:
+            summary["product"] = product_summary(conn, row["sku"])
+        except SystemExit:
+            pass
     return summary
 
 
