@@ -35,6 +35,34 @@ class MaiCliTest(unittest.TestCase):
         self.assertIn('"id": 1', rendered)
         self.assertNotIn("{'id': 1}", rendered)
 
+    def test_legacy_import_text_output_is_readable(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            legacy_file = Path(tmp) / "mai.json"
+            legacy_file.write_text(
+                json.dumps(
+                    {
+                        "merchants": {"seller-a": {"name": "West Lake Tea"}},
+                        "products": {
+                            "tea-a": {
+                                "merchant_id": "seller-a",
+                                "title": "Longjing Gift Box",
+                                "price": 88,
+                                "stock": 5,
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            output = self.run_cli(db_file, "legacy", "import", "--from-json", str(legacy_file))
+
+            self.assertIn("Legacy import complete.", output)
+            self.assertIn("Merchants: 1", output)
+            self.assertIn("Products: 1", output)
+            self.assertNotIn('"imported"', output)
+
     def test_catalog_search_and_stock_management_use_sqlite(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"

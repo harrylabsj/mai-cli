@@ -1527,6 +1527,12 @@ def cmd_audit_events(args: argparse.Namespace) -> None:
 def cmd_legacy_import(args: argparse.Namespace) -> None:
     with db_session(db_path_from_args(args)) as conn:
         result = import_json_store(conn, args.from_json)
+    if args.format == "text":
+        imported = result.get("imported") or {}
+        print("Legacy import complete.")
+        print(f"Merchants: {int(imported.get('merchants') or 0)}")
+        print(f"Products: {int(imported.get('products') or 0)}")
+        return
     emit(result, args.format)
 
 

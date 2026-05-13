@@ -229,4 +229,4 @@ Existing Mai JSON catalogs can be imported:
 python3 scripts/mai.py --db ./mai-cli.sqlite legacy import --from-json ./mai.json --format json
 ```
 
-Only merchants and products are imported. Legacy transaction data is ignored by design.
+Only merchants and products are imported. Legacy transaction data is ignored by design. The default text output reports imported merchant/product counts; `--format json` keeps the structured import result.
