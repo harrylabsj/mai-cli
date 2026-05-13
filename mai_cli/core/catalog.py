@@ -72,7 +72,7 @@ def _safe_non_negative_float(value: Any) -> float:
         return 0.0
     try:
         number = float(value or 0)
-    except (TypeError, ValueError):
+    except (OverflowError, TypeError, ValueError):
         return 0.0
     if not math.isfinite(number) or number < 0:
         return 0.0
@@ -82,9 +82,11 @@ def _safe_non_negative_float(value: Any) -> float:
 def _safe_non_negative_int(value: Any) -> int:
     if isinstance(value, bool):
         return 0
+    if isinstance(value, float) and not math.isfinite(value):
+        return 0
     try:
         number = int(value or 0)
-    except (TypeError, ValueError):
+    except (OverflowError, TypeError, ValueError):
         return 0
     return max(number, 0)
 

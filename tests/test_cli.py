@@ -680,6 +680,49 @@ class MaiCliTest(unittest.TestCase):
             self.assertEqual(mixed_type_products["results"][0]["delivery_attributes"], ["same-day", "3"])
             self.assertEqual(mixed_type_products["results"][0]["merchant"]["tags"], ["tea", "7"])
 
+    def test_corrupt_catalog_non_finite_integer_fields_fall_back_to_defaults(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.run_cli(db_file, "merchant", "create", "--id", "seller-a", "--name", "West Lake Tea")
+            self.run_cli(
+                db_file,
+                "product",
+                "add",
+                "--merchant",
+                "seller-a",
+                "--sku",
+                "tea-a",
+                "--title",
+                "Longjing Gift Box",
+                "--price",
+                "88",
+                "--stock",
+                "5",
+            )
+            conn = sqlite3.connect(db_file)
+            try:
+                conn.execute("update products set stock = ? where sku = ?", (float("inf"), "tea-a"))
+                conn.execute("update delivery_rules set eta_minutes = ? where merchant_id = ?", (float("inf"), "seller-a"))
+                conn.commit()
+            finally:
+                conn.close()
+
+            products = json.loads(
+                self.run_cli(
+                    db_file,
+                    "search",
+                    "products",
+                    "--query",
+                    "longjing",
+                    "--include-out-of-stock",
+                    "--format",
+                    "json",
+                )
+            )
+
+            self.assertEqual(products["results"][0]["stock"], 0)
+            self.assertEqual(products["results"][0]["delivery"]["eta_minutes"], 0)
+
     def test_search_merchants_text_output_lists_matching_merchants(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"
