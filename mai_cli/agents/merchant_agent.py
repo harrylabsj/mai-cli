@@ -36,6 +36,14 @@ def _safe_non_negative_int(value: Any) -> int:
     return max(number, 0)
 
 
+def _claim_ttl_seconds_from_env() -> int:
+    try:
+        seconds = int(os.environ.get("MAI_AGENT_CLAIM_TTL_SECONDS") or "300")
+    except ValueError:
+        return 300
+    return seconds if seconds > 0 else 300
+
+
 def heartbeat(
     conn: sqlite3.Connection,
     merchant_id: str,
@@ -118,8 +126,7 @@ def process_once_with_tools(tools: MerchantAgentTools, merchant_id: str) -> dict
     agent = tools.heartbeat(merchant_id)
     abandoned: list[dict[str, Any]] = []
     if hasattr(tools, "abandon_stale_messages"):
-        stale_after = int(os.environ.get("MAI_AGENT_CLAIM_TTL_SECONDS") or "300")
-        abandoned = tools.abandon_stale_messages(agent["id"], stale_after_seconds=stale_after)
+        abandoned = tools.abandon_stale_messages(agent["id"], stale_after_seconds=_claim_ttl_seconds_from_env())
     conversations = tools.waiting_merchant_conversations(merchant_id)
     replied: list[dict[str, Any]] = []
     failed: list[dict[str, Any]] = []

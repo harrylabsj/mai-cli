@@ -1,7 +1,9 @@
+import os
 import tempfile
 import unittest
 import urllib.error
 from pathlib import Path
+from unittest.mock import patch
 from urllib.parse import parse_qs, urlparse
 
 from mai_cli.agents import merchant_agent
@@ -135,6 +137,12 @@ class CorruptProductMarketplaceTools(FakeMarketplaceTools):
         product["delivery"]["fee"] = "bad"
         product["delivery"]["eta_minutes"] = "bad"
         return product
+
+
+class StaleAbandonMarketplaceTools(FakeMarketplaceTools):
+    def abandon_stale_messages(self, agent_id, stale_after_seconds=300):
+        self.calls.append(("abandon_stale_messages", agent_id, stale_after_seconds))
+        return []
 
 
 class AgentToolsBoundaryTest(unittest.TestCase):
@@ -282,6 +290,15 @@ class AgentToolsBoundaryTest(unittest.TestCase):
         self.assertTrue(result["replied"][0]["human_required"])
         self.assertIn("0.00 CNY with 0 in stock", tools.messages[0]["text"])
         self.assertIn(("add_flag", "CONV-0001", "low_stock", "tea-a"), tools.calls)
+
+    def test_process_once_tolerates_invalid_claim_ttl_env(self):
+        tools = StaleAbandonMarketplaceTools()
+
+        with patch.dict(os.environ, {"MAI_AGENT_CLAIM_TTL_SECONDS": "bad"}, clear=False):
+            result = merchant_agent.process_once_with_tools(tools, "seller-a")
+
+        self.assertEqual(result["failed"], [])
+        self.assertIn(("abandon_stale_messages", "mai-cli-merchant-agent:seller-a", 300), tools.calls)
 
     def test_process_once_records_failed_message_for_retry_and_heartbeat_error(self):
         tools = FailingMarketplaceTools()
