@@ -35,6 +35,26 @@ def _assistant_message_from_raw(raw: Any) -> dict[str, Any]:
     return message
 
 
+def _safe_positive_int(value: Any, default: int) -> int:
+    if isinstance(value, bool):
+        return default
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return default
+    return number if number > 0 else default
+
+
+def _safe_optional_positive_int(value: Any) -> int | None:
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return None
+    return number if number > 0 else None
+
+
 def _default_transport(url: str, headers: dict[str, str], payload: dict[str, Any], timeout: int) -> dict[str, Any]:
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     request = urllib.request.Request(url, data=body, headers=headers, method="POST")
@@ -55,8 +75,8 @@ class OpenAICompatibleProvider:
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.model = model
-        self.timeout = int(timeout or 30)
-        self.max_tokens = int(max_tokens) if max_tokens is not None else None
+        self.timeout = _safe_positive_int(timeout, 30)
+        self.max_tokens = _safe_optional_positive_int(max_tokens)
         self.transport = transport or _default_transport
 
     def complete(

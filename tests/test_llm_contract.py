@@ -95,6 +95,28 @@ class LlmContractTest(unittest.TestCase):
         self.assertEqual(payload["tools"][0]["function"]["name"], "catalog_search")
         self.assertNotIn("secret-token", str(payload))
 
+    def test_openai_compatible_provider_tolerates_invalid_numeric_options(self):
+        calls = []
+
+        def fake_transport(url, headers, payload, timeout):
+            calls.append({"url": url, "headers": headers, "payload": payload, "timeout": timeout})
+            return {"choices": [{"message": {"content": "consultation reply"}}]}
+
+        provider = OpenAICompatibleProvider(
+            base_url="https://llm.example/v1/",
+            api_key="secret-token",
+            model="mai-test-model",
+            timeout="bad",
+            max_tokens="bad",
+            transport=fake_transport,
+        )
+
+        response = provider.complete([{"role": "user", "content": "Can this merchant deliver today?"}])
+
+        self.assertEqual(response.content, "consultation reply")
+        self.assertEqual(calls[0]["timeout"], 30)
+        self.assertNotIn("max_tokens", calls[0]["payload"])
+
     def test_provider_from_env_reads_openai_compatible_settings(self):
         env = {
             "MAI_LLM_BASE_URL": "https://llm.example/custom",
