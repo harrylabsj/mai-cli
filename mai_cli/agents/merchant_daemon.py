@@ -262,6 +262,8 @@ def stop_agent(
     pid_record = read_json(paths["pid_file"], {})
     pid = int(pid_record.get("pid") or 0)
     mode = str(pid_record.get("mode") or "sqlite")
+    host = str(pid_record.get("host") or "")
+    session_id = str(pid_record.get("session_id") or "")
     was_running = is_process_running(pid)
     paths["stop_file"].parent.mkdir(parents=True, exist_ok=True)
     paths["stop_file"].write_text(now_iso(), encoding="utf-8")
@@ -299,6 +301,8 @@ def stop_agent(
             "stop_timeout": running,
             "mode": mode,
             "api_url": str(pid_record.get("api_url") or ""),
+            "host": host,
+            "session_id": session_id,
         },
     )
     return {
@@ -307,6 +311,8 @@ def stop_agent(
         "pid": pid or None,
         "mode": mode,
         "api_url": str(pid_record.get("api_url") or ""),
+        "host": host,
+        "session_id": session_id,
         "was_running": was_running,
         "running": running,
         "pid_file": str(paths["pid_file"]),
@@ -322,6 +328,8 @@ def status_agent(db_path: str | Path, merchant_id: str, state_dir: str | Path | 
     pid = int(pid_record.get("pid") or 0)
     state = read_json(paths["state_file"], {})
     mode = str(pid_record.get("mode") or state.get("mode") or "sqlite")
+    host = str(pid_record.get("host") or state.get("host") or "")
+    session_id = str(pid_record.get("session_id") or state.get("session_id") or "")
     running = is_process_running(pid) and state.get("running") is not False
     counters = state.get("counters") or {"checked": 0, "replied": 0}
     return {
@@ -330,6 +338,8 @@ def status_agent(db_path: str | Path, merchant_id: str, state_dir: str | Path | 
         "pid": pid or None,
         "mode": mode,
         "api_url": str(pid_record.get("api_url") or state.get("api_url") or ""),
+        "host": host,
+        "session_id": session_id,
         "running": running,
         "stale_pid": bool(pid and not running),
         "pid_file": str(paths["pid_file"]),
@@ -500,5 +510,7 @@ def run_tools_forever(
         state_extra={
             "mode": "api",
             "api_url": str(getattr(tools, "base_url", "") or ""),
+            "host": str(getattr(tools, "host", "") or ""),
+            "session_id": str(getattr(tools, "session_id", "") or ""),
         },
     )

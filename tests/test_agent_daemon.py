@@ -220,27 +220,41 @@ class AgentDaemonLifecycleTest(unittest.TestCase):
                     state_dir=state_dir,
                     api_url="http://127.0.0.1:8765",
                     agent_token="agent_secret",
+                    host="openclaw",
+                    session_id="openclaw-session-1",
                 )
 
             self.assertEqual(started["mode"], "api")
+            self.assertEqual(started["host"], "openclaw")
+            self.assertEqual(started["session_id"], "openclaw-session-1")
             pid_record = json.loads(Path(started["pid_file"]).read_text(encoding="utf-8"))
             command_text = " ".join(pid_record["command"])
             self.assertIn("--state-file", command_text)
+            self.assertIn("--host openclaw", command_text)
+            self.assertIn("--session-id openclaw-session-1", command_text)
             self.assertNotIn("agent_secret", command_text)
             self.assertEqual(pid_record["api_url"], "http://127.0.0.1:8765")
+            self.assertEqual(pid_record["host"], "openclaw")
+            self.assertEqual(pid_record["session_id"], "openclaw-session-1")
 
             child_env = popen.call_args.kwargs["env"]
             self.assertEqual(child_env["MAI_MARKETPLACE_API_URL"], "http://127.0.0.1:8765")
             self.assertEqual(child_env["MAI_AGENT_TOKEN"], "agent_secret")
+            self.assertEqual(child_env["MAI_AGENT_HOST"], "openclaw")
+            self.assertEqual(child_env["MAI_AGENT_SESSION_ID"], "openclaw-session-1")
             self.assertNotIn("MAI_MERCHANT_TOKEN", child_env)
 
             stopped = merchant_daemon.stop_agent(db_file, "seller-a", state_dir=state_dir, timeout=0)
             self.assertTrue(stopped["ok"])
             self.assertEqual(stopped["mode"], "api")
+            self.assertEqual(stopped["host"], "openclaw")
+            self.assertEqual(stopped["session_id"], "openclaw-session-1")
 
             status = merchant_daemon.status_agent(db_file, "seller-a", state_dir=state_dir)
             self.assertFalse(status["running"])
             self.assertEqual(status["mode"], "api")
+            self.assertEqual(status["host"], "openclaw")
+            self.assertEqual(status["session_id"], "openclaw-session-1")
 
 
 if __name__ == "__main__":
