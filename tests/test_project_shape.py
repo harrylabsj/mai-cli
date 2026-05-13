@@ -56,3 +56,25 @@ class ProjectShapeTest(unittest.TestCase):
             self.assertIn("buyer", buyer_command)
             self.assertIn("ask", buyer_command)
             self.assertIn("--city", buyer_command)
+
+            buyer_request = hermes.buyer_ask_request(
+                "alice",
+                "longjing gift",
+                city="Hangzhou",
+                area="West Lake",
+                session_id="hermes-session-1",
+            )
+            self.assertEqual(buyer_request["method"], "POST")
+            self.assertEqual(buyer_request["path"], "/buyer/ask")
+            self.assertEqual(
+                buyer_request["payload"],
+                {
+                    "buyer_id": "alice",
+                    "text": "longjing gift",
+                    "city": "Hangzhou",
+                    "area": "West Lake",
+                    "source_id": "hermes-buyer:alice",
+                    "host": "hermes",
+                    "session_id": "hermes-session-1",
+                },
+            )

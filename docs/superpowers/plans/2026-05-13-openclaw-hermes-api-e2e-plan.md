@@ -42,7 +42,7 @@ Remaining gap:
 - Modify: `mai_cli/adapters/hermes.py`
 - Test: `tests/test_project_shape.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add this assertion block to `ProjectShapeTest.test_config_and_host_adapters_expose_stable_entrypoints` after the existing `buyer_command` assertions:
 
@@ -70,17 +70,17 @@ Add this assertion block to `ProjectShapeTest.test_config_and_host_adapters_expo
             )
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run:
 
 ```bash
-python3 -m unittest tests.test_project_shape.ProjectShapeTest.test_config_and_host_adapters_expose_stable_entrypoints
+python3 -m unittest discover -s tests -p test_project_shape.py -k config_and_host_adapters
 ```
 
 Expected: FAIL with `AttributeError: module 'mai_cli.adapters.hermes' has no attribute 'buyer_ask_request'`.
 
-- [ ] **Step 3: Add the minimal implementation**
+- [x] **Step 3: Add the minimal implementation**
 
 Add this function to `mai_cli/adapters/hermes.py` below `buyer_ask_command`:
 
@@ -109,17 +109,17 @@ def buyer_ask_request(
 
 Add `"buyer_ask_request"` to `__all__`.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run:
 
 ```bash
-python3 -m unittest tests.test_project_shape.ProjectShapeTest.test_config_and_host_adapters_expose_stable_entrypoints
+python3 -m unittest discover -s tests -p test_project_shape.py -k config_and_host_adapters
 ```
 
 Expected: `OK`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add mai_cli/adapters/hermes.py tests/test_project_shape.py
@@ -167,7 +167,7 @@ Add this assertion block to `ProjectShapeTest.test_config_and_host_adapters_expo
 Run:
 
 ```bash
-python3 -m unittest tests.test_project_shape.ProjectShapeTest.test_config_and_host_adapters_expose_stable_entrypoints
+python3 -m unittest discover -s tests -p test_project_shape.py -k config_and_host_adapters
 ```
 
 Expected: FAIL with `TypeError: merchant_agent_command() got an unexpected keyword argument 'api_url'`.
@@ -219,7 +219,7 @@ Add `"merchant_agent_context"` to `__all__`.
 Run:
 
 ```bash
-python3 -m unittest tests.test_project_shape.ProjectShapeTest.test_config_and_host_adapters_expose_stable_entrypoints
+python3 -m unittest discover -s tests -p test_project_shape.py -k config_and_host_adapters
 ```
 
 Expected: `OK`.
@@ -408,7 +408,7 @@ class HostAdapterAPIE2ETest(unittest.TestCase):
 Run:
 
 ```bash
-python3 -m unittest tests.test_host_adapter_api_e2e
+python3 -m unittest discover -s tests -p test_host_adapter_api_e2e.py
 ```
 
 Expected before Tasks 1 and 2 are complete: FAIL because `hermes.buyer_ask_request` is missing. Expected after Tasks 1 and 2 but before API payload support is complete: FAIL on any missing host/session preservation assertion.
@@ -432,7 +432,7 @@ Keep the existing tokenless buyer creation behavior and returned `buyer_token` u
 Run:
 
 ```bash
-python3 -m unittest tests.test_host_adapter_api_e2e
+python3 -m unittest discover -s tests -p test_host_adapter_api_e2e.py
 ```
 
 Expected: `OK`.
@@ -482,7 +482,7 @@ Append this assertion to `test_openclaw_merchant_and_hermes_buyer_complete_consu
 Run:
 
 ```bash
-python3 -m unittest tests.test_host_adapter_api_e2e
+python3 -m unittest discover -s tests -p test_host_adapter_api_e2e.py
 ```
 
 Expected: FAIL because HTTP merchant-agent tool calls do not yet record host/session audit metadata.
@@ -533,7 +533,7 @@ Change the tools construction in `tests/test_host_adapter_api_e2e.py` to:
 Run:
 
 ```bash
-python3 -m unittest tests.test_host_adapter_api_e2e
+python3 -m unittest discover -s tests -p test_host_adapter_api_e2e.py
 ```
 
 Expected: `OK`.
@@ -572,7 +572,9 @@ In `docs/superpowers/specs/2026-05-09-mai-cli-design.md`, under "Current OpenCla
 Run:
 
 ```bash
-python3 -m unittest tests.test_project_shape tests.test_host_adapter_e2e tests.test_host_adapter_api_e2e
+python3 -m unittest discover -s tests -p test_project_shape.py
+python3 -m unittest discover -s tests -p test_host_adapter_e2e.py
+python3 -m unittest discover -s tests -p test_host_adapter_api_e2e.py
 ```
 
 Expected: all tests pass.

@@ -51,6 +51,28 @@ def buyer_ask_command(
     return build_mai_command(args, db_path=db_path, project_root=project_root)
 
 
+def buyer_ask_request(
+    buyer_id: str,
+    text: str,
+    city: str = "",
+    area: str = "",
+    session_id: str = "",
+) -> dict:
+    return {
+        "method": "POST",
+        "path": "/buyer/ask",
+        "payload": {
+            "buyer_id": buyer_id,
+            "text": text,
+            "city": city,
+            "area": area,
+            "source_id": f"hermes-buyer:{buyer_id}",
+            "host": "hermes",
+            "session_id": session_id,
+        },
+    }
+
+
 def record_intent_command(
     conversation_id: str,
     intent: str,
@@ -119,6 +141,7 @@ __all__ = [
     "DEFAULT_SKILL_ROOT",
     "build_mai_command",
     "buyer_ask_command",
+    "buyer_ask_request",
     "buyer_summarize_command",
     "doctor",
     "inspect_host",
