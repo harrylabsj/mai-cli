@@ -64,7 +64,10 @@ def _default_transport(url: str, headers: dict[str, str], payload: dict[str, Any
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     request = urllib.request.Request(url, data=body, headers=headers, method="POST")
     with urllib.request.urlopen(request, timeout=timeout) as response:  # pragma: no cover - network path
-        return json.loads(response.read().decode("utf-8") or "{}")
+        try:
+            return json.loads(response.read().decode("utf-8") or "{}")
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ValueError("LLM provider returned invalid JSON") from exc
 
 
 class OpenAICompatibleProvider:

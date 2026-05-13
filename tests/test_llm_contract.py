@@ -142,6 +142,29 @@ class LlmContractTest(unittest.TestCase):
         self.assertEqual(calls[0]["timeout"], 30)
         self.assertNotIn("max_tokens", calls[0]["payload"])
 
+    def test_openai_compatible_provider_reports_invalid_default_transport_json_cleanly(self):
+        class FakeResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def read(self):
+                return b"\xff"
+
+        provider = OpenAICompatibleProvider(
+            base_url="https://llm.example/v1/",
+            api_key="secret-token",
+            model="mai-test-model",
+        )
+
+        with patch("mai_cli.llm.providers.urllib.request.urlopen", return_value=FakeResponse()):
+            with self.assertRaises(ValueError) as raised:
+                provider.complete([{"role": "user", "content": "Can this merchant deliver today?"}])
+
+        self.assertIn("LLM provider returned invalid JSON", str(raised.exception))
+
     def test_provider_from_env_reads_openai_compatible_settings(self):
         env = {
             "MAI_LLM_BASE_URL": "https://llm.example/custom",
