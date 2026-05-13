@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import sqlite3
 from typing import Any
 
@@ -22,9 +23,13 @@ PROCESSED_STATUS = "processed"
 
 
 def _safe_non_negative_int(value: Any) -> int:
+    if isinstance(value, bool):
+        return 0
+    if isinstance(value, float) and not math.isfinite(value):
+        return 0
     try:
         number = int(value or 0)
-    except (TypeError, ValueError):
+    except (OverflowError, TypeError, ValueError):
         return 0
     return max(number, 0)
 
