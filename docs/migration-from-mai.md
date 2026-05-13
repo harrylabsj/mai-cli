@@ -14,3 +14,5 @@ The legacy adapter imports:
 - product stock
 
 It intentionally ignores legacy transaction records and payment-like records because the mai-cli MVP is consultation-only. After import, configure delivery rules with `merchant create` fields or `delivery set`.
+
+The import can be retried safely. Existing merchants are skipped by merchant id, existing products are skipped by sku, and the command reports imported and skipped counts instead of creating duplicates.
