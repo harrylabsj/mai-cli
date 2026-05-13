@@ -35,9 +35,11 @@ def _fallback(messages: list[dict[str, Any]], tool_results: list[dict[str, Any]]
 def _safe_non_negative_int(value: Any, default: int) -> int:
     if isinstance(value, bool):
         return default
+    if isinstance(value, float) and not math.isfinite(value):
+        return default
     try:
         number = int(value)
-    except (TypeError, ValueError):
+    except (OverflowError, TypeError, ValueError):
         return default
     return max(number, 0)
 
@@ -49,9 +51,11 @@ def _safe_positive_int(value: Any, default: int) -> int:
 def _safe_optional_non_negative_int(value: Any) -> int | None:
     if value is None or isinstance(value, bool):
         return None
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
     try:
         number = int(value)
-    except (TypeError, ValueError):
+    except (OverflowError, TypeError, ValueError):
         return None
     return max(number, 0)
 

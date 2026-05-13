@@ -270,6 +270,34 @@ class LlmContractTest(unittest.TestCase):
             self.assertTrue(result["ok"])
             self.assertEqual(result["content"], "Recovered response.")
 
+    def test_llm_tool_loop_tolerates_non_finite_runtime_integer_options(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.seed_consultation(db_file)
+
+            provider = OpenAICompatibleProvider(
+                base_url="https://llm.example/v1",
+                api_key="secret-token",
+                model="mai-test-model",
+                transport=lambda *_args: {"choices": [{"message": {"role": "assistant", "content": "Recovered response."}}]},
+            )
+            dispatcher = MarketplaceToolDispatcher(db_file, source_id="llm-loop", actor="alice", token_scope="buyer")
+
+            try:
+                result = run_marketplace_tool_loop(
+                    provider,
+                    dispatcher,
+                    [{"role": "user", "content": "Find longjing near Hangzhou."}],
+                    max_steps=float("inf"),
+                    max_tool_calls=float("nan"),
+                    provider_retries=float("inf"),
+                )
+            except OverflowError as exc:
+                self.fail(f"non-finite runtime integer options should fall back safely: {exc}")
+
+            self.assertTrue(result["ok"])
+            self.assertEqual(result["content"], "Recovered response.")
+
     def test_llm_tool_loop_tolerates_nan_retry_delay(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"
