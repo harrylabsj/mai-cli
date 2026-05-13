@@ -1126,6 +1126,84 @@ class MaiCliTest(unittest.TestCase):
             self.assertIn("Replied: 1", output)
             self.assertNotIn('"heartbeat"', output)
 
+    def test_agent_start_text_output_is_readable(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            started = {
+                "ok": True,
+                "merchant_id": "seller-a",
+                "pid": 12345,
+                "running": True,
+                "mode": "api",
+                "api_url": "http://127.0.0.1:8765",
+                "host": "openclaw",
+                "session_id": "openclaw-session-1",
+                "stale_replaced": False,
+                "pid_file": "/tmp/seller-a.pid",
+                "state_file": "/tmp/seller-a.state.json",
+                "stop_file": "/tmp/seller-a.stop",
+                "log_file": "/tmp/seller-a.log",
+            }
+
+            with patch("mai_cli.cli.merchant_daemon.start_agent", return_value=started):
+                output = self.run_cli(
+                    db_file,
+                    "agent",
+                    "start",
+                    "--merchant",
+                    "seller-a",
+                    "--api-url",
+                    "http://127.0.0.1:8765",
+                    "--agent-token",
+                    "agent-token",
+                    "--host",
+                    "openclaw",
+                    "--session-id",
+                    "openclaw-session-1",
+                )
+
+            self.assertIn("Agent started: seller-a", output)
+            self.assertIn("Running: yes", output)
+            self.assertIn("Mode: api", output)
+            self.assertIn("API URL: http://127.0.0.1:8765", output)
+            self.assertIn("Host: openclaw", output)
+            self.assertIn("Session: openclaw-session-1", output)
+            self.assertIn("PID: 12345", output)
+            self.assertIn("Log: /tmp/seller-a.log", output)
+            self.assertNotIn('"pid"', output)
+
+    def test_agent_stop_text_output_is_readable(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            stopped = {
+                "ok": True,
+                "merchant_id": "seller-a",
+                "pid": 12345,
+                "mode": "api",
+                "api_url": "http://127.0.0.1:8765",
+                "host": "openclaw",
+                "session_id": "openclaw-session-1",
+                "was_running": True,
+                "running": False,
+                "pid_file": "/tmp/seller-a.pid",
+                "state_file": "/tmp/seller-a.state.json",
+                "stop_file": "/tmp/seller-a.stop",
+                "log_file": "/tmp/seller-a.log",
+            }
+
+            with patch("mai_cli.cli.merchant_daemon.stop_agent", return_value=stopped):
+                output = self.run_cli(db_file, "agent", "stop", "--merchant", "seller-a")
+
+            self.assertIn("Agent stopped: seller-a", output)
+            self.assertIn("Stopped: yes", output)
+            self.assertIn("Was running: yes", output)
+            self.assertIn("Running: no", output)
+            self.assertIn("Mode: api", output)
+            self.assertIn("Host: openclaw", output)
+            self.assertIn("Session: openclaw-session-1", output)
+            self.assertIn("Log: /tmp/seller-a.log", output)
+            self.assertNotIn('"running"', output)
+
     def test_conversation_list_text_output_is_readable(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"

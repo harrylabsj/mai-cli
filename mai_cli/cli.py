@@ -699,6 +699,38 @@ def cmd_agent_run(args: argparse.Namespace) -> None:
     )
 
 
+def yes_no(value: Any) -> str:
+    return "yes" if value else "no"
+
+
+def emit_agent_runtime_metadata(result: dict[str, Any]) -> None:
+    print(f"Running: {yes_no(result.get('running'))}")
+    print(f"PID: {result.get('pid') or '-'}")
+    print(f"Mode: {result.get('mode') or 'sqlite'}")
+    if result.get("api_url"):
+        print(f"API URL: {result['api_url']}")
+    if result.get("host"):
+        print(f"Host: {result['host']}")
+    if result.get("session_id"):
+        print(f"Session: {result['session_id']}")
+    print(f"Log: {result.get('log_file') or '-'}")
+    print(f"State: {result.get('state_file') or '-'}")
+
+
+def emit_agent_start_text(result: dict[str, Any]) -> None:
+    print(f"Agent started: {result.get('merchant_id') or '-'}")
+    emit_agent_runtime_metadata(result)
+    if result.get("stale_replaced"):
+        print("Stale pid replaced: yes")
+
+
+def emit_agent_stop_text(result: dict[str, Any]) -> None:
+    print(f"Agent stopped: {result.get('merchant_id') or '-'}")
+    print(f"Stopped: {yes_no(result.get('ok'))}")
+    print(f"Was running: {yes_no(result.get('was_running'))}")
+    emit_agent_runtime_metadata(result)
+
+
 def cmd_agent_start(args: argparse.Namespace) -> None:
     api_url = args.api_url or os.environ.get("MAI_MARKETPLACE_API_URL") or os.environ.get("MAI_API_URL") or ""
     agent_token = args.agent_token or os.environ.get("MAI_AGENT_TOKEN") or ""
@@ -714,6 +746,9 @@ def cmd_agent_start(args: argparse.Namespace) -> None:
         host=args.host or os.environ.get("MAI_AGENT_HOST") or "",
         session_id=args.session_id or os.environ.get("MAI_AGENT_SESSION_ID") or "",
     )
+    if args.format == "text":
+        emit_agent_start_text(result)
+        return
     emit(result, args.format)
 
 
@@ -724,6 +759,9 @@ def cmd_agent_stop(args: argparse.Namespace) -> None:
         state_dir=args.state_dir,
         timeout=args.timeout,
     )
+    if args.format == "text":
+        emit_agent_stop_text(result)
+        return
     emit(result, args.format)
 
 
@@ -731,15 +769,7 @@ def emit_agent_status_text(result: dict[str, Any]) -> None:
     heartbeat = result.get("heartbeat") or {}
     counters = result.get("counters") or {}
     print(f"Merchant: {result.get('merchant_id') or '-'}")
-    print(f"Running: {'yes' if result.get('running') else 'no'}")
-    print(f"PID: {result.get('pid') or '-'}")
-    print(f"Mode: {result.get('mode') or 'sqlite'}")
-    if result.get("api_url"):
-        print(f"API URL: {result['api_url']}")
-    if result.get("host"):
-        print(f"Host: {result['host']}")
-    if result.get("session_id"):
-        print(f"Session: {result['session_id']}")
+    emit_agent_runtime_metadata(result)
     print(f"Heartbeat: {heartbeat.get('status') or '-'}")
     print(f"Last seen: {heartbeat.get('last_seen_at') or '-'}")
     print(f"Checked: {int(counters.get('checked') or 0)}")
@@ -747,8 +777,6 @@ def emit_agent_status_text(result: dict[str, Any]) -> None:
     print(f"Last error: {result.get('last_error') or '-'}")
     print(f"Started: {result.get('started_at') or '-'}")
     print(f"Updated: {result.get('updated_at') or '-'}")
-    print(f"Log: {result.get('log_file') or '-'}")
-    print(f"State: {result.get('state_file') or '-'}")
 
 
 def cmd_agent_status(args: argparse.Namespace) -> None:
