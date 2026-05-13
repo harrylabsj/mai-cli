@@ -504,6 +504,30 @@ class AgentDaemonLifecycleTest(unittest.TestCase):
             self.assertIn("--interval 3.0", command_text)
             self.assertNotIn("nan", command_text.lower())
 
+    def test_agent_start_caps_oversized_interval(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            db_file = tmp_path / "mai-cli.sqlite"
+            state_dir = tmp_path / "state"
+
+            class FakeProcess:
+                pid = 12345
+
+            with patch("mai_cli.agents.merchant_daemon.subprocess.Popen", return_value=FakeProcess()):
+                started = merchant_daemon.start_agent(
+                    db_file,
+                    "seller-a",
+                    interval=10**100,
+                    state_dir=state_dir,
+                    api_url="http://127.0.0.1:8765",
+                    agent_token="agent_secret",
+                )
+
+            pid_record = json.loads(Path(started["pid_file"]).read_text(encoding="utf-8"))
+            command_text = " ".join(pid_record["command"])
+            self.assertEqual(pid_record["interval"], 3600.0)
+            self.assertIn("--interval 3600.0", command_text)
+
     def test_agent_stop_tolerates_non_finite_timeout(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -541,6 +565,52 @@ class AgentDaemonLifecycleTest(unittest.TestCase):
             self.assertTrue(sleep_durations)
             self.assertGreater(sleep_durations[0], 0)
             self.assertTrue(stopped["ok"])
+
+    def test_agent_stop_caps_oversized_timeout(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            db_file = tmp_path / "mai-cli.sqlite"
+            state_dir = tmp_path / "state"
+            paths = merchant_daemon.agent_paths("seller-a", state_dir=state_dir)
+            merchant_daemon.ensure_agent_dirs(paths)
+            paths["pid_file"].write_text(json.dumps({"pid": 12345}), encoding="utf-8")
+            paths["state_file"].write_text(
+                json.dumps({"running": True, "counters": {"checked": 1, "replied": 0}}),
+                encoding="utf-8",
+            )
+            sleep_durations = []
+
+            def fake_sleep(duration):
+                sleep_durations.append(duration)
+                paths["state_file"].write_text(
+                    json.dumps({"running": False, "counters": {"checked": 1, "replied": 0}}),
+                    encoding="utf-8",
+                )
+
+            time_calls = 0
+
+            def fake_time():
+                nonlocal time_calls
+                time_calls += 1
+                return 0 if time_calls == 1 else 1000
+
+            with (
+                patch("mai_cli.agents.merchant_daemon.is_process_running", return_value=True),
+                patch("mai_cli.agents.merchant_daemon.os.kill"),
+                patch("mai_cli.agents.merchant_daemon.time.time", side_effect=fake_time),
+                patch("mai_cli.agents.merchant_daemon.time.sleep", side_effect=fake_sleep),
+                patch("mai_cli.agents.merchant_agent.heartbeat"),
+            ):
+                stopped = merchant_daemon.stop_agent(
+                    db_file,
+                    "seller-a",
+                    state_dir=state_dir,
+                    timeout=10**100,
+                )
+
+            self.assertEqual(sleep_durations, [])
+            self.assertFalse(stopped["ok"])
+            self.assertTrue(stopped["running"])
 
 
 if __name__ == "__main__":

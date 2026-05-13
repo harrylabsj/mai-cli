@@ -16,6 +16,8 @@ from mai_cli.agents import merchant_agent
 from mai_cli.db.session import db_session, decode_json, now_iso
 
 DEFAULT_STATE_DIR = Path.home() / ".local" / "state" / "mai-cli"
+MAX_AGENT_INTERVAL_SECONDS = 3600.0
+MAX_AGENT_STOP_TIMEOUT_SECONDS = 300.0
 
 
 def state_dir_from(value: str | Path | None = None) -> Path:
@@ -61,7 +63,7 @@ def safe_non_negative_int(value: Any) -> int:
     return max(number, 0)
 
 
-def safe_positive_float(value: Any, default: float) -> float:
+def safe_positive_float(value: Any, default: float, maximum: float | None = None) -> float:
     if isinstance(value, bool):
         return default
     try:
@@ -70,10 +72,12 @@ def safe_positive_float(value: Any, default: float) -> float:
         return default
     if not math.isfinite(number) or number <= 0:
         return default
+    if maximum is not None:
+        return min(number, maximum)
     return number
 
 
-def safe_non_negative_float(value: Any, default: float) -> float:
+def safe_non_negative_float(value: Any, default: float, maximum: float | None = None) -> float:
     if isinstance(value, bool):
         return default
     try:
@@ -82,7 +86,10 @@ def safe_non_negative_float(value: Any, default: float) -> float:
         return default
     if not math.isfinite(number):
         return default
-    return max(number, 0.0)
+    number = max(number, 0.0)
+    if maximum is not None:
+        return min(number, maximum)
+    return number
 
 
 def safe_replied_count(value: Any) -> int:
@@ -187,7 +194,7 @@ def start_agent(
     mode = "api" if api_url else "sqlite"
     if api_url and not (agent_token or merchant_token):
         raise SystemExit("--merchant-token or --agent-token is required with --api-url")
-    interval = safe_positive_float(interval, 3.0)
+    interval = safe_positive_float(interval, 3.0, maximum=MAX_AGENT_INTERVAL_SECONDS)
 
     paths = agent_paths(merchant_id, state_dir)
     ensure_agent_dirs(paths)
@@ -300,7 +307,7 @@ def stop_agent(
     state_dir: str | Path | None = None,
     timeout: float = 5.0,
 ) -> dict[str, Any]:
-    timeout = safe_non_negative_float(timeout, 5.0)
+    timeout = safe_non_negative_float(timeout, 5.0, maximum=MAX_AGENT_STOP_TIMEOUT_SECONDS)
     paths = agent_paths(merchant_id, state_dir)
     pid_record = read_json(paths["pid_file"], {})
     pid = safe_non_negative_int(pid_record.get("pid"))
@@ -435,7 +442,7 @@ def _run_process_loop(
     last_error: str | None = None
     state_path = Path(state_file).expanduser() if state_file else None
     stop_path = Path(stop_file).expanduser() if stop_file else None
-    interval = safe_positive_float(interval, 3.0)
+    interval = safe_positive_float(interval, 3.0, maximum=MAX_AGENT_INTERVAL_SECONDS)
 
     def request_stop(_signum: int, _frame: Any) -> None:
         nonlocal stop_requested
