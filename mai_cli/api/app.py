@@ -315,9 +315,7 @@ def _append_agent_token_audit(conn: Any, merchant_id: str, event: str, details: 
 def _audit_event_limit(value: Any) -> int:
     if value in (None, ""):
         return 50
-    limit = int(value)
-    if limit <= 0:
-        raise ValueError("limit must be greater than 0")
+    limit = _positive_whole_int(value, "limit")
     return min(limit, 200)
 
 

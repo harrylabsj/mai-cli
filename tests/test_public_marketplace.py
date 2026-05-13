@@ -2737,6 +2737,26 @@ class PublicMarketplaceTest(unittest.TestCase):
             self.assertNotIn(issued["agent_token"], serialized)
             self.assertEqual(event["details"]["token"]["token_prefix"], issued["agent_token"][:24])
 
+    def test_audit_events_api_reports_invalid_limit_cleanly(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "marketplace.sqlite"
+            app = create_app(db_file)
+
+            status, merchant = self.request(app, "POST", "/merchants", {"id": "seller-a", "name": "West Lake Tea"})
+            self.assertEqual(status, 200)
+            merchant_token = merchant["merchant_token"]
+
+            status, body = self.request(
+                app,
+                "GET",
+                "/audit/events",
+                query_string="merchant_id=seller-a&limit=bad",
+                headers={"authorization": f"Bearer {merchant_token}"},
+            )
+
+            self.assertEqual(status, 400)
+            self.assertIn("limit must be a whole number", body["error"])
+
     def test_api_exposes_conversation_agent_and_human_review_lifecycle(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "marketplace.sqlite"
