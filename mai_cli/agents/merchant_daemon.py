@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import signal
 import subprocess
@@ -51,9 +52,11 @@ def read_json(path: Path, default: Any) -> Any:
 
 
 def safe_non_negative_int(value: Any) -> int:
+    if isinstance(value, float) and not math.isfinite(value):
+        return 0
     try:
         number = int(value or 0)
-    except (TypeError, ValueError):
+    except (OverflowError, TypeError, ValueError):
         return 0
     return max(number, 0)
 

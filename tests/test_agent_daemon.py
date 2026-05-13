@@ -124,6 +124,28 @@ class AgentDaemonLifecycleTest(unittest.TestCase):
             self.assertFalse(status["running"])
             self.assertEqual(status["counters"], {"checked": 0, "replied": 0})
 
+    def test_status_agent_tolerates_non_finite_pid_and_counters(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            db_file = tmp_path / "mai.sqlite"
+            state_dir = tmp_path / "state"
+            paths = merchant_daemon.agent_paths("seller-a", state_dir=state_dir)
+            merchant_daemon.ensure_agent_dirs(paths)
+            paths["pid_file"].write_text('{"pid": Infinity}', encoding="utf-8")
+            paths["state_file"].write_text(
+                '{"running": true, "counters": {"checked": Infinity, "replied": NaN}}',
+                encoding="utf-8",
+            )
+
+            try:
+                status = merchant_daemon.status_agent(db_file, "seller-a", state_dir=state_dir)
+            except OverflowError as exc:
+                self.fail(f"status_agent should tolerate non-finite state counters: {exc}")
+
+            self.assertIsNone(status["pid"])
+            self.assertFalse(status["running"])
+            self.assertEqual(status["counters"], {"checked": 0, "replied": 0})
+
     def test_status_agent_tolerates_invalid_utf8_state_files(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
