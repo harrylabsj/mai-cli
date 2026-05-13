@@ -178,6 +178,31 @@ class AgentToolsBoundaryTest(unittest.TestCase):
         self.assertEqual(opener.requests[3]["body"]["status"], "waiting_buyer")
         self.assertEqual(opener.requests[3]["body"]["merchant_token"], "tok_seller_a")
 
+    def test_http_merchant_agent_tools_reject_fractional_agent_numbers_before_request(self):
+        from mai_cli.agents.tools import HTTPMerchantAgentTools
+
+        opener = CapturingHTTPOpener([])
+        tools = HTTPMerchantAgentTools(
+            "http://127.0.0.1:8765/",
+            merchant_id="seller-a",
+            merchant_token="tok_seller_a",
+            opener=opener,
+        )
+
+        cases = (
+            lambda: tools.heartbeat("seller-a", checked_count=1.5),
+            lambda: tools.claim_message("mai-cli-merchant-agent:seller-a", "CONV-0001", 1.5, "claim-key"),
+            lambda: tools.complete_message("mai-cli-merchant-agent:seller-a", 1.5),
+            lambda: tools.fail_message("mai-cli-merchant-agent:seller-a", 1.5, "failed"),
+            lambda: tools.abandon_message("mai-cli-merchant-agent:seller-a", 1.5, "abandoned"),
+            lambda: tools.abandon_stale_messages("mai-cli-merchant-agent:seller-a", stale_after_seconds=0.5),
+            lambda: tools.abandon_stale_messages("mai-cli-merchant-agent:seller-a", stale_after_seconds=0),
+        )
+        for call in cases:
+            with self.assertRaises(ValueError):
+                call()
+        self.assertEqual(opener.requests, [])
+
     def test_http_merchant_agent_tools_wrap_transport_errors(self):
         from mai_cli.agents.tools import HTTPMarketplaceError, HTTPMerchantAgentTools
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import sqlite3
 import urllib.error
 import urllib.parse
@@ -16,6 +17,34 @@ from mai_cli.core.harness import abandon_agent_message, abandon_stale_agent_mess
 from mai_cli.db.session import encode_json, now_iso
 
 DEFAULT_CAPABILITIES = ["catalog", "inventory", "delivery", "consultation"]
+
+
+def _non_negative_whole_int(value: Any, field_name: str, default: int = 0) -> int:
+    if value in (None, ""):
+        return default
+    if isinstance(value, bool):
+        raise ValueError(f"{field_name} must be a whole number")
+    if isinstance(value, int):
+        number = value
+    elif isinstance(value, float):
+        if not math.isfinite(value) or not value.is_integer():
+            raise ValueError(f"{field_name} must be a whole number")
+        number = int(value)
+    else:
+        try:
+            number = int(str(value).strip())
+        except ValueError as exc:
+            raise ValueError(f"{field_name} must be a whole number") from exc
+    if number < 0:
+        raise ValueError(f"{field_name} must be non-negative")
+    return number
+
+
+def _positive_whole_int(value: Any, field_name: str) -> int:
+    number = _non_negative_whole_int(value, field_name)
+    if number <= 0:
+        raise ValueError(f"{field_name} must be greater than 0")
+    return number
 
 
 class MerchantAgentTools(Protocol):
@@ -329,8 +358,8 @@ class HTTPMerchantAgentTools:
                 {
                     "status": status,
                     "last_error": last_error,
-                    "checked_count": int(checked_count or 0),
-                    "replied_count": int(replied_count or 0),
+                    "checked_count": _non_negative_whole_int(checked_count, "checked_count"),
+                    "replied_count": _non_negative_whole_int(replied_count, "replied_count"),
                 }
             ),
         )
@@ -389,7 +418,7 @@ class HTTPMerchantAgentTools:
                 {
                     "agent_id": agent_id,
                     "conversation_id": conversation_id,
-                    "message_id": int(message_id),
+                    "message_id": _positive_whole_int(message_id, "message_id"),
                     "idempotency_key": idempotency_key,
                 }
             ),
@@ -401,7 +430,9 @@ class HTTPMerchantAgentTools:
         result = self._request(
             "POST",
             "/agents/messages/complete",
-            self._merchant_payload({"agent_id": agent_id, "message_id": int(message_id)}),
+            self._merchant_payload(
+                {"agent_id": agent_id, "message_id": _positive_whole_int(message_id, "message_id")}
+            ),
         )
         self._record_tool_call("agent_message_complete")
         return dict(result["process"])
@@ -410,7 +441,9 @@ class HTTPMerchantAgentTools:
         result = self._request(
             "POST",
             "/agents/messages/fail",
-            self._merchant_payload({"agent_id": agent_id, "message_id": int(message_id), "error": error}),
+            self._merchant_payload(
+                {"agent_id": agent_id, "message_id": _positive_whole_int(message_id, "message_id"), "error": error}
+            ),
         )
         self._record_tool_call("agent_message_fail", status="failed", error=error)
         return dict(result["process"])
@@ -419,7 +452,9 @@ class HTTPMerchantAgentTools:
         result = self._request(
             "POST",
             "/agents/messages/abandon",
-            self._merchant_payload({"agent_id": agent_id, "message_id": int(message_id), "error": error}),
+            self._merchant_payload(
+                {"agent_id": agent_id, "message_id": _positive_whole_int(message_id, "message_id"), "error": error}
+            ),
         )
         self._record_tool_call("agent_message_abandon", error=error)
         return dict(result["process"])
@@ -428,7 +463,12 @@ class HTTPMerchantAgentTools:
         result = self._request(
             "POST",
             "/agents/messages/abandon-stale",
-            self._merchant_payload({"agent_id": agent_id, "stale_after_seconds": int(stale_after_seconds or 300)}),
+            self._merchant_payload(
+                {
+                    "agent_id": agent_id,
+                    "stale_after_seconds": _positive_whole_int(stale_after_seconds, "stale_after_seconds"),
+                }
+            ),
         )
         self._record_tool_call("agent_message_abandon_stale")
         return list(result["abandoned"])
