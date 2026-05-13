@@ -9,6 +9,8 @@ from typing import Any
 
 from mai_cli.db.session import decode_json, encode_json, now_iso
 
+MAX_SQLITE_INTEGER = 2**63 - 1
+
 
 def parse_tags(value: str | list[str] | None) -> list[str]:
     if value is None:
@@ -53,18 +55,22 @@ def _whole_int(value: Any, message: str) -> int:
     if isinstance(value, bool):
         raise SystemExit(message)
     if isinstance(value, int):
-        return value
-    if isinstance(value, float):
+        number = value
+    elif isinstance(value, float):
         if not math.isfinite(value) or not value.is_integer():
             raise SystemExit(message)
-        return int(value)
-    text = str(value or "").strip()
-    if not text:
-        raise SystemExit(message)
-    try:
-        return int(text)
-    except ValueError as exc:
-        raise SystemExit(message) from exc
+        number = int(value)
+    else:
+        text = str(value or "").strip()
+        if not text:
+            raise SystemExit(message)
+        try:
+            number = int(text)
+        except ValueError as exc:
+            raise SystemExit(message) from exc
+    if number > MAX_SQLITE_INTEGER:
+        raise SystemExit(f"{message}; must be <= {MAX_SQLITE_INTEGER}")
+    return number
 
 
 def _safe_non_negative_float(value: Any) -> float:

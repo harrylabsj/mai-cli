@@ -1422,6 +1422,19 @@ class PublicMarketplaceTest(unittest.TestCase):
             self.assertEqual(status, 400)
             self.assertIn("delivery eta minutes must be a whole number", fractional_eta["error"])
 
+            status, oversized_eta = self.request(
+                app,
+                "POST",
+                "/merchants",
+                {
+                    "id": "seller-oversized-eta",
+                    "name": "West Lake Tea",
+                    "delivery_eta_minutes": 10**100,
+                },
+            )
+            self.assertEqual(status, 400)
+            self.assertIn("must be <= 9223372036854775807", oversized_eta["error"])
+
             status, merchant = self.request(app, "POST", "/merchants", {"id": "seller-a", "name": "West Lake Tea"})
             self.assertEqual(status, 200)
             status, fractional_eta_update = self.request(
@@ -1451,6 +1464,22 @@ class PublicMarketplaceTest(unittest.TestCase):
             )
             self.assertEqual(status, 400)
             self.assertIn("--stock must be a whole number", fractional_stock["error"])
+
+            status, oversized_stock = self.request(
+                app,
+                "POST",
+                "/products",
+                {
+                    "merchant_id": "seller-a",
+                    "sku": "tea-oversized",
+                    "title": "Longjing",
+                    "price": 88,
+                    "stock": 10**100,
+                    "merchant_token": merchant["merchant_token"],
+                },
+            )
+            self.assertEqual(status, 400)
+            self.assertIn("must be <= 9223372036854775807", oversized_stock["error"])
 
             status, product = self.request(
                 app,
