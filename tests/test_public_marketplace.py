@@ -140,6 +140,19 @@ class PublicMarketplaceTest(unittest.TestCase):
             self.assertFalse(body["ok"])
             self.assertIn("id", body["error"])
 
+    def test_fallback_asgi_rejects_non_object_json_body(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "marketplace.sqlite"
+            app = MarketplaceASGIApp(db_file)
+
+            status, body = asyncio.run(
+                self.asgi_raw_request(app, "POST", "/merchants", body=b"[1]")
+            )
+
+            self.assertEqual(status, 400)
+            self.assertFalse(body["ok"])
+            self.assertIn("id", body["error"])
+
     def test_api_factory_exposes_consultation_routes_and_initializes_sqlite(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "marketplace.sqlite"

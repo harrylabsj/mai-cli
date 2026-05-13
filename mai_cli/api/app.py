@@ -86,7 +86,8 @@ class MarketplaceASGIApp:
             if not message.get("more_body", False):
                 break
         try:
-            payload = json.loads(b"".join(chunks).decode("utf-8") or "{}")
+            decoded_payload = json.loads(b"".join(chunks).decode("utf-8") or "{}")
+            payload = decoded_payload if isinstance(decoded_payload, dict) else {}
         except (UnicodeDecodeError, json.JSONDecodeError):
             payload = {}
         headers = {
