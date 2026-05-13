@@ -12,6 +12,10 @@ from mai_cli.llm.providers import OpenAICompatibleProvider, LLMResponse
 from mai_cli.llm.tools import marketplace_tool_schemas
 
 FALLBACK_CONTENT = "I could not safely complete this consultation tool loop. A human should review before replying."
+MAX_LLM_TOOL_LOOP_STEPS = 16
+MAX_LLM_TOOL_CALL_BUDGET = 64
+MAX_LLM_PROVIDER_RETRIES = 5
+MAX_LLM_PROVIDER_RETRY_DELAY_SECONDS = 60.0
 
 
 def _assistant_message(response: LLMResponse) -> dict[str, Any]:
@@ -32,7 +36,7 @@ def _fallback(messages: list[dict[str, Any]], tool_results: list[dict[str, Any]]
     }
 
 
-def _safe_non_negative_int(value: Any, default: int) -> int:
+def _safe_non_negative_int(value: Any, default: int, maximum: int | None = None) -> int:
     if isinstance(value, bool):
         return default
     if isinstance(value, float) and not math.isfinite(value):
@@ -41,14 +45,17 @@ def _safe_non_negative_int(value: Any, default: int) -> int:
         number = int(value)
     except (OverflowError, TypeError, ValueError):
         return default
-    return max(number, 0)
+    number = max(number, 0)
+    if maximum is not None:
+        return min(number, maximum)
+    return number
 
 
-def _safe_positive_int(value: Any, default: int) -> int:
-    return max(_safe_non_negative_int(value, default), 1)
+def _safe_positive_int(value: Any, default: int, maximum: int | None = None) -> int:
+    return max(_safe_non_negative_int(value, default, maximum=maximum), 1)
 
 
-def _safe_optional_non_negative_int(value: Any) -> int | None:
+def _safe_optional_non_negative_int(value: Any, maximum: int | None = None) -> int | None:
     if value is None or isinstance(value, bool):
         return None
     if isinstance(value, float) and not math.isfinite(value):
@@ -57,10 +64,13 @@ def _safe_optional_non_negative_int(value: Any) -> int | None:
         number = int(value)
     except (OverflowError, TypeError, ValueError):
         return None
-    return max(number, 0)
+    number = max(number, 0)
+    if maximum is not None:
+        return min(number, maximum)
+    return number
 
 
-def _safe_non_negative_float(value: Any, default: float) -> float:
+def _safe_non_negative_float(value: Any, default: float, maximum: float | None = None) -> float:
     if isinstance(value, bool):
         return default
     try:
@@ -69,7 +79,10 @@ def _safe_non_negative_float(value: Any, default: float) -> float:
         return default
     if not math.isfinite(number):
         return default
-    return max(number, 0.0)
+    number = max(number, 0.0)
+    if maximum is not None:
+        return min(number, maximum)
+    return number
 
 
 def _tool_call_name_and_arguments(tool_call: dict[str, Any]) -> tuple[str, dict[str, Any]]:
@@ -99,10 +112,14 @@ def run_marketplace_tool_loop(
     conversation_messages = [dict(message) for message in messages]
     tool_results: list[dict[str, Any]] = []
     tools = marketplace_tool_schemas()
-    retries = _safe_non_negative_int(provider_retries, 0)
-    tool_call_budget = _safe_optional_non_negative_int(max_tool_calls)
-    steps = _safe_positive_int(max_steps, 4)
-    retry_delay = _safe_non_negative_float(provider_retry_delay_seconds, 0.0)
+    retries = _safe_non_negative_int(provider_retries, 0, maximum=MAX_LLM_PROVIDER_RETRIES)
+    tool_call_budget = _safe_optional_non_negative_int(max_tool_calls, maximum=MAX_LLM_TOOL_CALL_BUDGET)
+    steps = _safe_positive_int(max_steps, 4, maximum=MAX_LLM_TOOL_LOOP_STEPS)
+    retry_delay = _safe_non_negative_float(
+        provider_retry_delay_seconds,
+        0.0,
+        maximum=MAX_LLM_PROVIDER_RETRY_DELAY_SECONDS,
+    )
 
     for _step in range(steps):
         response: LLMResponse | None = None

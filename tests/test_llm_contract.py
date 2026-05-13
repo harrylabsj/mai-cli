@@ -321,6 +321,87 @@ class LlmContractTest(unittest.TestCase):
             self.assertTrue(result["ok"])
             self.assertEqual(result["content"], "Recovered response.")
 
+    def test_llm_tool_loop_caps_oversized_provider_retries(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.seed_consultation(db_file)
+            calls = []
+
+            def flaky_transport(*_args):
+                calls.append(True)
+                if len(calls) <= 8:
+                    raise TimeoutError("temporary provider timeout")
+                return {"choices": [{"message": {"role": "assistant", "content": "Recovered response."}}]}
+
+            provider = OpenAICompatibleProvider(
+                base_url="https://llm.example/v1",
+                api_key="secret-token",
+                model="mai-test-model",
+                transport=flaky_transport,
+            )
+            dispatcher = MarketplaceToolDispatcher(db_file, source_id="llm-loop", actor="alice", token_scope="buyer")
+
+            result = run_marketplace_tool_loop(
+                provider,
+                dispatcher,
+                [{"role": "user", "content": "Find longjing near Hangzhou."}],
+                provider_retries=10**100,
+            )
+
+            self.assertFalse(result["ok"])
+            self.assertIn("TimeoutError", result["error"])
+            self.assertLess(len(calls), 9)
+
+    def test_llm_tool_loop_caps_oversized_max_steps(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.seed_consultation(db_file)
+            calls = []
+
+            def looping_transport(*_args):
+                calls.append(True)
+                if len(calls) <= 20:
+                    return {
+                        "choices": [
+                            {
+                                "message": {
+                                    "role": "assistant",
+                                    "content": "",
+                                    "tool_calls": [
+                                        {
+                                            "id": f"call-{len(calls)}",
+                                            "type": "function",
+                                            "function": {
+                                                "name": "catalog_search",
+                                                "arguments": "{\"query\":\"longjing\"}",
+                                            },
+                                        }
+                                    ],
+                                }
+                            }
+                        ]
+                    }
+                return {"choices": [{"message": {"role": "assistant", "content": "Recovered response."}}]}
+
+            provider = OpenAICompatibleProvider(
+                base_url="https://llm.example/v1",
+                api_key="secret-token",
+                model="mai-test-model",
+                transport=looping_transport,
+            )
+            dispatcher = MarketplaceToolDispatcher(db_file, source_id="llm-loop", actor="alice", token_scope="buyer")
+
+            result = run_marketplace_tool_loop(
+                provider,
+                dispatcher,
+                [{"role": "user", "content": "Find longjing near Hangzhou."}],
+                max_steps=10**100,
+            )
+
+            self.assertFalse(result["ok"])
+            self.assertIn("LLM tool loop exceeded max_steps", result["error"])
+            self.assertLess(len(calls), 20)
+
     def test_llm_tool_loop_tolerates_nan_retry_delay(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"
