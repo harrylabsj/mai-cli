@@ -11,6 +11,8 @@ from typing import Any, Callable
 
 
 Transport = Callable[[str, dict[str, str], dict[str, Any], int], dict[str, Any]]
+MAX_PROVIDER_TIMEOUT_SECONDS = 300
+MAX_PROVIDER_MAX_TOKENS = 32768
 
 
 @dataclass(frozen=True)
@@ -36,7 +38,7 @@ def _assistant_message_from_raw(raw: Any) -> dict[str, Any]:
     return message
 
 
-def _safe_positive_int(value: Any, default: int) -> int:
+def _safe_positive_int(value: Any, default: int, maximum: int | None = None) -> int:
     if isinstance(value, bool):
         return default
     if isinstance(value, float) and not math.isfinite(value):
@@ -45,10 +47,14 @@ def _safe_positive_int(value: Any, default: int) -> int:
         number = int(value)
     except (OverflowError, TypeError, ValueError):
         return default
-    return number if number > 0 else default
+    if number <= 0:
+        return default
+    if maximum is not None:
+        return min(number, maximum)
+    return number
 
 
-def _safe_optional_positive_int(value: Any) -> int | None:
+def _safe_optional_positive_int(value: Any, maximum: int | None = None) -> int | None:
     if value is None or isinstance(value, bool):
         return None
     if isinstance(value, float) and not math.isfinite(value):
@@ -57,7 +63,11 @@ def _safe_optional_positive_int(value: Any) -> int | None:
         number = int(value)
     except (OverflowError, TypeError, ValueError):
         return None
-    return number if number > 0 else None
+    if number <= 0:
+        return None
+    if maximum is not None:
+        return min(number, maximum)
+    return number
 
 
 def _default_transport(url: str, headers: dict[str, str], payload: dict[str, Any], timeout: int) -> dict[str, Any]:
@@ -83,8 +93,8 @@ class OpenAICompatibleProvider:
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.model = model
-        self.timeout = _safe_positive_int(timeout, 30)
-        self.max_tokens = _safe_optional_positive_int(max_tokens)
+        self.timeout = _safe_positive_int(timeout, 30, maximum=MAX_PROVIDER_TIMEOUT_SECONDS)
+        self.max_tokens = _safe_optional_positive_int(max_tokens, maximum=MAX_PROVIDER_MAX_TOKENS)
         self.transport = transport or _default_transport
 
     def complete(

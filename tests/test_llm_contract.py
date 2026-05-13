@@ -142,6 +142,28 @@ class LlmContractTest(unittest.TestCase):
         self.assertEqual(calls[0]["timeout"], 30)
         self.assertNotIn("max_tokens", calls[0]["payload"])
 
+    def test_openai_compatible_provider_caps_oversized_numeric_options(self):
+        calls = []
+
+        def fake_transport(url, headers, payload, timeout):
+            calls.append({"url": url, "headers": headers, "payload": payload, "timeout": timeout})
+            return {"choices": [{"message": {"content": "consultation reply"}}]}
+
+        provider = OpenAICompatibleProvider(
+            base_url="https://llm.example/v1/",
+            api_key="secret-token",
+            model="mai-test-model",
+            timeout=10**100,
+            max_tokens=10**100,
+            transport=fake_transport,
+        )
+
+        response = provider.complete([{"role": "user", "content": "Can this merchant deliver today?"}])
+
+        self.assertEqual(response.content, "consultation reply")
+        self.assertEqual(calls[0]["timeout"], 300)
+        self.assertEqual(calls[0]["payload"]["max_tokens"], 32768)
+
     def test_openai_compatible_provider_reports_invalid_default_transport_json_cleanly(self):
         class FakeResponse:
             def __enter__(self):
