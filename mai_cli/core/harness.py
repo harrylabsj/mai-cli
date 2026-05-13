@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import sqlite3
 from datetime import datetime, timedelta
 from typing import Any
@@ -77,17 +78,25 @@ RETRYABLE_PROCESS_STATUSES = {FAILED_STATUS, ABANDONED_STATUS}
 
 
 def _safe_non_negative_int(value: Any) -> int:
+    if isinstance(value, bool):
+        return 0
+    if isinstance(value, float) and not math.isfinite(value):
+        return 0
     try:
         number = int(value or 0)
-    except (TypeError, ValueError):
+    except (OverflowError, TypeError, ValueError):
         return 0
     return max(number, 0)
 
 
 def _safe_positive_int(value: Any, default: int) -> int:
+    if isinstance(value, bool):
+        return max(default, 1)
+    if isinstance(value, float) and not math.isfinite(value):
+        return max(default, 1)
     try:
         number = int(value or default)
-    except (TypeError, ValueError):
+    except (OverflowError, TypeError, ValueError):
         number = default
     return max(number, 1)
 
