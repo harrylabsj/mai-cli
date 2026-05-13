@@ -293,6 +293,32 @@ class OrchestrationHarnessTest(unittest.TestCase):
                 self.assertEqual(len(abandoned), 1)
                 self.assertIn("300 seconds", abandoned[0]["last_error"])
 
+    def test_stale_processing_claim_recovery_tolerates_oversized_ttl(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.seed_conversation(db_file)
+
+            with db_session(db_file) as conn:
+                claim_agent_message(conn, "merchant-agent", "CONV-0001", 1, "merchant-agent:1")
+                conn.execute(
+                    """
+                    update agent_message_processes
+                    set updated_at = '2026-05-11T00:00:00'
+                    where agent_id = ? and message_id = ?
+                    """,
+                    ("merchant-agent", 1),
+                )
+
+                abandoned = abandon_stale_agent_messages(
+                    conn,
+                    "merchant-agent",
+                    stale_after_seconds=10**100,
+                    now="2026-05-11T00:10:01",
+                )
+
+                self.assertEqual(len(abandoned), 1)
+                self.assertIn("300 seconds", abandoned[0]["last_error"])
+
     def test_schema_migration_adds_harness_tables_to_existing_database(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "old.sqlite"

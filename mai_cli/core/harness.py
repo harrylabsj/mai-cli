@@ -75,6 +75,7 @@ PROCESSED_STATUS = "processed"
 FAILED_STATUS = "failed"
 ABANDONED_STATUS = "abandoned"
 RETRYABLE_PROCESS_STATUSES = {FAILED_STATUS, ABANDONED_STATUS}
+MAX_STALE_TTL_SECONDS = 9_999_999_999
 
 
 def _safe_non_negative_int(value: Any) -> int:
@@ -243,6 +244,8 @@ def abandon_stale_agent_messages(
 ) -> list[dict[str, Any]]:
     current = datetime.fromisoformat(now) if isinstance(now, str) else now or datetime.fromisoformat(now_iso())
     ttl_seconds = _safe_positive_int(stale_after_seconds, 300)
+    if ttl_seconds > MAX_STALE_TTL_SECONDS:
+        ttl_seconds = 300
     cutoff = current - timedelta(seconds=ttl_seconds)
     rows = conn.execute(
         """
