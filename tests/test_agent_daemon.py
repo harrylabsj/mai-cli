@@ -91,6 +91,20 @@ class AgentDaemonLifecycleTest(unittest.TestCase):
                     merchant_daemon.logs_agent("seller-a", tail=tail, state_dir=state_dir)
                 self.assertIn("tail must be greater than 0", str(raised.exception))
 
+    def test_logs_agent_tolerates_invalid_utf8_log_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            state_dir = Path(tmp) / "state"
+            paths = merchant_daemon.agent_paths("seller-a", state_dir=state_dir)
+            merchant_daemon.ensure_agent_dirs(paths)
+            paths["log_file"].write_bytes(b"\xff")
+
+            try:
+                logs = merchant_daemon.logs_agent("seller-a", state_dir=state_dir)
+            except UnicodeDecodeError as exc:
+                self.fail(f"logs_agent should tolerate invalid UTF-8 log files: {exc}")
+
+            self.assertEqual(logs["entries"], [])
+
     def test_status_agent_tolerates_corrupt_pid_and_counters(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)

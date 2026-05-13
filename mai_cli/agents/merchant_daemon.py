@@ -379,7 +379,7 @@ def logs_agent(merchant_id: str, tail: int = 20, state_dir: str | Path | None = 
     raw_lines: list[str] = []
     try:
         raw_lines = paths["log_file"].read_text(encoding="utf-8").splitlines()[-tail:]
-    except FileNotFoundError:
+    except (OSError, UnicodeDecodeError):
         raw_lines = []
     for line in raw_lines:
         try:
