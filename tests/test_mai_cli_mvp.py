@@ -305,6 +305,56 @@ class MaiCliMvpTest(unittest.TestCase):
             self.assertEqual(retried["message"]["id"], delivered["message"]["id"])
             self.assertEqual(len(retried["conversation"]["messages"]), 3)
 
+    def test_channel_ingest_normalizes_channel_names_for_retries(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai-cli.sqlite"
+            self.seed_longjing_shop(db_file)
+
+            opened = json.loads(
+                self.run_cli(
+                    db_file,
+                    "channel",
+                    "ingest",
+                    "--channel",
+                    " Telegram ",
+                    "--external-user",
+                    "@alice",
+                    "--external-message-id",
+                    "tg-msg-1",
+                    "--text",
+                    "longjing gift delivery today",
+                    "--city",
+                    "Hangzhou",
+                    "--format",
+                    "json",
+                )
+            )
+            retried = json.loads(
+                self.run_cli(
+                    db_file,
+                    "channel",
+                    "ingest",
+                    "--channel",
+                    "telegram",
+                    "--external-user",
+                    "@alice",
+                    "--external-message-id",
+                    "tg-msg-1",
+                    "--text",
+                    "longjing gift delivery today",
+                    "--city",
+                    "Hangzhou",
+                    "--format",
+                    "json",
+                )
+            )
+
+            self.assertEqual(opened["buyer_id"], "telegram:@alice")
+            self.assertEqual(opened["message"]["structured_payload"]["source_id"], "channel:telegram")
+            self.assertTrue(retried["idempotent"])
+            self.assertEqual(retried["message"]["id"], opened["message"]["id"])
+            self.assertEqual(len(retried["conversation"]["messages"]), 1)
+
     def test_bargaining_is_marked_for_human_review(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai-cli.sqlite"

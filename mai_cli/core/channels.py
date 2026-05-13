@@ -21,8 +21,12 @@ PROCESSING_STATUS = "processing"
 PROCESSED_STATUS = "processed"
 
 
+def normalize_channel(channel: str) -> str:
+    return str(channel or "").strip().lower()
+
+
 def channel_buyer_id(channel: str, external_user_id: str) -> str:
-    channel = str(channel or "").strip()
+    channel = normalize_channel(channel)
     external_user_id = str(external_user_id or "").strip()
     if not channel:
         raise SystemExit("channel is required")
@@ -177,7 +181,7 @@ def ingest_buyer_message(
     external_message_id: str = "",
     limit: int = 3,
 ) -> dict[str, Any]:
-    channel = str(channel or "").strip()
+    channel = normalize_channel(channel)
     external_user_id = str(external_user_id or "").strip()
     text = str(text or "")
     if not text.strip():
