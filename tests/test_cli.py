@@ -575,6 +575,37 @@ class MaiCliTest(unittest.TestCase):
             )
             self.assertEqual(process_once.call_args.args[1], "seller-a")
 
+    def test_agent_run_once_text_output_is_readable(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            result = {
+                "ok": True,
+                "merchant_id": "seller-a",
+                "checked": 2,
+                "replied": [
+                    {
+                        "conversation_id": "CONV-0001",
+                        "message_id": 2,
+                        "human_required": False,
+                        "reason": "",
+                    }
+                ],
+                "failed": [{"conversation_id": "CONV-0002", "message_id": 3, "error": "temporary failure"}],
+                "abandoned": [{"message_id": 4}],
+            }
+
+            with patch("mai_cli.cli.merchant_agent.process_once", return_value=result):
+                output = self.run_cli(db_file, "agent", "run", "--merchant", "seller-a", "--once")
+
+            self.assertIn("Agent run: seller-a", output)
+            self.assertIn("Checked: 2", output)
+            self.assertIn("Replied: 1", output)
+            self.assertIn("Failed: 1", output)
+            self.assertIn("Abandoned: 1", output)
+            self.assertIn("- replied CONV-0001 message=2 human_required=no", output)
+            self.assertIn("- failed CONV-0002 message=3 error=temporary failure", output)
+            self.assertNotIn('"replied"', output)
+
     def test_agent_run_once_can_read_api_token_from_env(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"

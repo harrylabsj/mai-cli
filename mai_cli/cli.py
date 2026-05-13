@@ -743,6 +743,9 @@ def cmd_agent_run(args: argparse.Namespace) -> None:
         tools = HTTPMerchantAgentTools(api_url, args.merchant, token, **tool_kwargs)
         if args.once:
             result = merchant_agent.process_once_with_tools(tools, args.merchant)
+            if args.format == "text":
+                emit_agent_run_once_text(result)
+                return
             emit(result, args.format)
             return
         merchant_daemon.run_tools_forever(
@@ -756,6 +759,9 @@ def cmd_agent_run(args: argparse.Namespace) -> None:
     if args.once:
         with db_session(db_path_from_args(args)) as conn:
             result = merchant_agent.process_once(conn, args.merchant)
+        if args.format == "text":
+            emit_agent_run_once_text(result)
+            return
         emit(result, args.format)
         return
     merchant_daemon.run_forever(
@@ -765,6 +771,35 @@ def cmd_agent_run(args: argparse.Namespace) -> None:
         state_file=args.state_file,
         stop_file=args.stop_file,
     )
+
+
+def emit_agent_run_once_text(result: dict[str, Any]) -> None:
+    replied = result.get("replied") or []
+    failed = result.get("failed") or []
+    abandoned = result.get("abandoned") or []
+    print(f"Agent run: {result.get('merchant_id') or '-'}")
+    print(f"Checked: {int(result.get('checked') or 0)}")
+    print(f"Replied: {len(replied)}")
+    print(f"Failed: {len(failed)}")
+    print(f"Abandoned: {len(abandoned)}")
+    for item in replied:
+        line = (
+            f"- replied {item.get('conversation_id') or '-'} "
+            f"message={item.get('message_id') or '-'} "
+            f"human_required={yes_no(item.get('human_required'))}"
+        )
+        if item.get("reason"):
+            line = f"{line} reason={item['reason']}"
+        print(line)
+    for item in failed:
+        print(
+            f"- failed {item.get('conversation_id') or '-'} "
+            f"message={item.get('message_id') or '-'} "
+            f"error={item.get('error') or '-'}"
+        )
+    for item in abandoned:
+        target = item.get("conversation_id") or "-"
+        print(f"- abandoned {target} message={item.get('message_id') or '-'}")
 
 
 def yes_no(value: Any) -> str:

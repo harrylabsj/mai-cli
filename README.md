@@ -152,7 +152,7 @@ The default `conversation resolve-review` text output confirms the resolution co
 The default `conversation close` text output confirms the final status.
 The default `conversation list` text output is a compact status table for quick buyer/merchant queue scans; `merchant human-review` uses the same table for one merchant's human-required conversations.
 The default `human-review queue` text output is a concise merchant workbench table, `human-review show` prints the review summary plus recent conversation messages, and `human-review resolve` summarizes the resulting conversation status. `--format json` keeps the stable adapter/script output.
-The default `agent start`, `agent stop`, and `agent status` text outputs summarize daemon mode, API URL, host/session metadata, running state, log path, and state path; `agent status` also includes counters and heartbeat state. `agent logs` prints compact recent log lines. `agent heartbeat` confirms the recorded heartbeat in a readable summary. `agent list` prints a compact heartbeat table for operations checks, while `agent show` prints one heartbeat in detail.
+The default `agent run --once` text output summarizes checked, replied, failed, and abandoned work. `agent start`, `agent stop`, and `agent status` summarize daemon mode, API URL, host/session metadata, running state, log path, and state path; `agent status` also includes counters and heartbeat state. `agent logs` prints compact recent log lines. `agent heartbeat` confirms the recorded heartbeat in a readable summary. `agent list` prints a compact heartbeat table for operations checks, while `agent show` prints one heartbeat in detail.
 
 ## Resident Agent Daemon
 
