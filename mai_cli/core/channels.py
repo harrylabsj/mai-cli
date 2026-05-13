@@ -21,6 +21,14 @@ PROCESSING_STATUS = "processing"
 PROCESSED_STATUS = "processed"
 
 
+def _safe_non_negative_int(value: Any) -> int:
+    try:
+        number = int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+    return max(number, 0)
+
+
 def normalize_channel(channel: str) -> str:
     return str(channel or "").strip().lower()
 
@@ -62,7 +70,7 @@ def _channel_payload(
 
 def _record_ingress_replay(conn: sqlite3.Connection, row: sqlite3.Row, channel: str) -> None:
     conversation_id = str(row["conversation_id"] or "")
-    message_id = int(row["message_id"] or 0)
+    message_id = _safe_non_negative_int(row["message_id"])
     if not conversation_id or message_id <= 0:
         return
     conn.execute(
@@ -92,7 +100,8 @@ def _existing_ingress_response(conn: sqlite3.Connection, row: sqlite3.Row, buyer
         raise SystemExit(
             f"Channel message {row['external_message_id']} is already being processed for {channel}:{row['external_user_id']}"
         )
-    if int(row["message_id"] or 0) <= 0:
+    message_id = _safe_non_negative_int(row["message_id"])
+    if message_id <= 0:
         return {
             "ok": True,
             "idempotent": True,
@@ -104,7 +113,7 @@ def _existing_ingress_response(conn: sqlite3.Connection, row: sqlite3.Row, buyer
             "missing_facts": ["merchant", "product"],
         }
     conversation_id = str(row["conversation_id"])
-    message = message_summary(conn, int(row["message_id"]))
+    message = message_summary(conn, message_id)
     _record_ingress_replay(conn, row, channel)
     return {
         "ok": True,
