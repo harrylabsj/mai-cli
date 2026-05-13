@@ -105,6 +105,19 @@ class AgentDaemonLifecycleTest(unittest.TestCase):
 
             self.assertEqual(logs["entries"], [])
 
+    def test_logs_agent_treats_non_object_json_lines_as_raw(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            state_dir = Path(tmp) / "state"
+            paths = merchant_daemon.agent_paths("seller-a", state_dir=state_dir)
+            merchant_daemon.ensure_agent_dirs(paths)
+            paths["log_file"].write_text('"json string"\n[1]\n{"event": "ok"}\n', encoding="utf-8")
+
+            logs = merchant_daemon.logs_agent("seller-a", tail=3, state_dir=state_dir)
+
+            self.assertEqual(logs["entries"][0], {"event": "raw", "text": '"json string"'})
+            self.assertEqual(logs["entries"][1], {"event": "raw", "text": "[1]"})
+            self.assertEqual(logs["entries"][2], {"event": "ok"})
+
     def test_status_agent_tolerates_corrupt_pid_and_counters(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)

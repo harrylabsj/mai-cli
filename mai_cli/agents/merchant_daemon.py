@@ -415,6 +415,8 @@ def logs_agent(merchant_id: str, tail: int = 20, state_dir: str | Path | None = 
             parsed = json.loads(line)
         except json.JSONDecodeError:
             parsed = {"event": "raw", "text": line}
+        if not isinstance(parsed, dict):
+            parsed = {"event": "raw", "text": line}
         entries.append(parsed)
     return {"ok": True, "merchant_id": merchant_id, "log_file": str(paths["log_file"]), "entries": entries}
 
