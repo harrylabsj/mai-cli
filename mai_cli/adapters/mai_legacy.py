@@ -11,7 +11,10 @@ from mai_cli.core.catalog import create_merchant, create_product
 
 
 def import_json_store(conn: sqlite3.Connection, source: str | Path) -> dict[str, Any]:
-    data = json.loads(Path(source).read_text(encoding="utf-8"))
+    try:
+        data = json.loads(Path(source).read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise SystemExit(f"Invalid legacy JSON: {exc.msg} at line {exc.lineno}, column {exc.colno}") from exc
     imported = {"merchants": 0, "products": 0}
     skipped = {"merchants": 0, "products": 0}
     for merchant_id, merchant in data.get("merchants", {}).items():

@@ -117,6 +117,21 @@ class MaiCliTest(unittest.TestCase):
             self.assertIn("Skipped merchants: 1", output)
             self.assertIn("Skipped products: 1", output)
 
+    def test_legacy_import_reports_invalid_json_cleanly(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            legacy_file = Path(tmp) / "mai.json"
+            legacy_file.write_text("{bad json", encoding="utf-8")
+
+            try:
+                self.run_cli(db_file, "legacy", "import", "--from-json", str(legacy_file))
+            except json.JSONDecodeError as exc:
+                self.fail(f"legacy import should report invalid JSON as a CLI error: {exc}")
+            except SystemExit as exc:
+                self.assertIn("Invalid legacy JSON", str(exc))
+                return
+            self.fail("legacy import should reject invalid JSON")
+
     def test_legacy_import_skips_malformed_products_without_aborting(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"
