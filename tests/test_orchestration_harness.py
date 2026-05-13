@@ -242,6 +242,35 @@ class OrchestrationHarnessTest(unittest.TestCase):
                 self.assertEqual(int(process["attempts"]), 1)
                 self.assertEqual(process["status"], "processing")
 
+    def test_stale_processing_claim_recovery_tolerates_invalid_ttl(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.seed_conversation(db_file)
+
+            with db_session(db_file) as conn:
+                claim_agent_message(conn, "merchant-agent", "CONV-0001", 1, "merchant-agent:1")
+                conn.execute(
+                    """
+                    update agent_message_processes
+                    set updated_at = '2026-05-11T00:00:00'
+                    where agent_id = ? and message_id = ?
+                    """,
+                    ("merchant-agent", 1),
+                )
+
+                try:
+                    abandoned = abandon_stale_agent_messages(
+                        conn,
+                        "merchant-agent",
+                        stale_after_seconds="bad",
+                        now="2026-05-11T00:10:01",
+                    )
+                except ValueError as exc:
+                    self.fail(f"stale claim recovery should tolerate invalid ttl values: {exc}")
+
+                self.assertEqual(len(abandoned), 1)
+                self.assertIn("300 seconds", abandoned[0]["last_error"])
+
     def test_schema_migration_adds_harness_tables_to_existing_database(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "old.sqlite"

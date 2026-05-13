@@ -84,6 +84,14 @@ def _safe_non_negative_int(value: Any) -> int:
     return max(number, 0)
 
 
+def _safe_positive_int(value: Any, default: int) -> int:
+    try:
+        number = int(value or default)
+    except (TypeError, ValueError):
+        number = default
+    return max(number, 1)
+
+
 def claim_agent_message(
     conn: sqlite3.Connection,
     agent_id: str,
@@ -221,11 +229,12 @@ def abandon_agent_message(
 def abandon_stale_agent_messages(
     conn: sqlite3.Connection,
     agent_id: str,
-    stale_after_seconds: int = 300,
+    stale_after_seconds: Any = 300,
     now: str | datetime | None = None,
 ) -> list[dict[str, Any]]:
     current = datetime.fromisoformat(now) if isinstance(now, str) else now or datetime.fromisoformat(now_iso())
-    cutoff = current - timedelta(seconds=max(1, int(stale_after_seconds or 300)))
+    ttl_seconds = _safe_positive_int(stale_after_seconds, 300)
+    cutoff = current - timedelta(seconds=ttl_seconds)
     rows = conn.execute(
         """
         select message_id from agent_message_processes
@@ -237,7 +246,7 @@ def abandon_stale_agent_messages(
     abandoned: list[dict[str, Any]] = []
     for row in rows:
         message_id = int(row["message_id"])
-        error = f"stale processing claim abandoned after {stale_after_seconds} seconds"
+        error = f"stale processing claim abandoned after {ttl_seconds} seconds"
         abandoned_process = abandon_agent_message(conn, agent_id, message_id, error, reason="stale_processing_claim")
         abandoned.append(abandoned_process)
     return abandoned
