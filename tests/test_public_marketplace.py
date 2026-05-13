@@ -1264,6 +1264,27 @@ class PublicMarketplaceTest(unittest.TestCase):
                 self.assertEqual(status, 400)
                 self.assertIn(f"{field} must be non-negative", response["error"])
 
+    def test_agent_heartbeat_rejects_unknown_status(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "marketplace.sqlite"
+            app = create_app(db_file)
+
+            status, merchant = self.request(app, "POST", "/merchants", {"id": "seller-a", "name": "West Lake Tea"})
+            self.assertEqual(status, 200)
+            status, heartbeat = self.request(
+                app,
+                "POST",
+                "/agents/heartbeat",
+                {
+                    "merchant_id": "seller-a",
+                    "status": "sleeping",
+                    "merchant_token": merchant["merchant_token"],
+                },
+            )
+
+            self.assertEqual(status, 400)
+            self.assertIn("Unknown agent status", heartbeat["error"])
+
     def test_conversation_message_and_close_writes_require_owner_tokens(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "marketplace.sqlite"

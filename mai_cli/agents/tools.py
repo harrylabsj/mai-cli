@@ -17,6 +17,7 @@ from mai_cli.core.harness import abandon_agent_message, abandon_stale_agent_mess
 from mai_cli.db.session import encode_json, now_iso
 
 DEFAULT_CAPABILITIES = ["catalog", "inventory", "delivery", "consultation"]
+AGENT_STATUSES = {"online", "away", "human_required"}
 
 
 def _non_negative_whole_int(value: Any, field_name: str, default: int = 0) -> int:
@@ -45,6 +46,13 @@ def _positive_whole_int(value: Any, field_name: str) -> int:
     if number <= 0:
         raise ValueError(f"{field_name} must be greater than 0")
     return number
+
+
+def _normalize_agent_status(value: Any) -> str:
+    status = str(value or "").strip() or "online"
+    if status not in AGENT_STATUSES:
+        raise SystemExit(f"Unknown agent status: {status}")
+    return status
 
 
 class MerchantAgentTools(Protocol):
@@ -105,6 +113,8 @@ def record_heartbeat(
     checked_count: int = 0,
     replied_count: int = 0,
 ) -> dict[str, Any]:
+    merchant_id = str(merchant_id or "").strip()
+    status = _normalize_agent_status(status)
     require_merchant(conn, merchant_id)
     agent_id = f"mai-cli-merchant-agent:{merchant_id}"
     now = now_iso()
