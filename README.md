@@ -95,7 +95,7 @@ python3 scripts/mai.py --db ./mai-cli.sqlite channel ingest \
   --format json
 ```
 
-The buyer id is always derived as `<channel>:<external-user>` for public channel ingress. Channel names are trimmed and lower-cased before buyer ids, metadata, and idempotency keys are written. Message payloads preserve `source_id`, `channel`, `external_user_id`, and optional `external_message_id`. When `external_message_id` is provided, retries with the same normalized `(channel, external_user_id, external_message_id)` return the original message instead of appending a duplicate.
+The buyer id is always derived as `<channel>:<external-user>` for public channel ingress. Channel names are trimmed and lower-cased before buyer ids, metadata, and idempotency keys are written. Message payloads preserve `source_id`, `channel`, `external_user_id`, and optional `external_message_id`. When `external_message_id` is provided, retries with the same normalized `(channel, external_user_id, external_message_id)` return the original message or original no-match result instead of appending a duplicate or creating a later conversation from an old webhook retry.
 The default `channel ingest` text output summarizes the derived buyer, idempotency state, conversation, message, routing status, and selected product; `--format json` preserves the full adapter payload.
 
 ## Host Adapter Diagnostics

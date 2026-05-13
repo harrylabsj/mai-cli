@@ -446,6 +446,7 @@ Priority order:
    - First implementation slice: persist channel ingress records in SQLite and return the original message/conversation when a channel retry repeats the same key.
    - Replay observability slice: refresh the ingress record and append `channel_message_replayed` audit events when retries are suppressed.
    - Normalization slice: trim and lower-case channel names before buyer id derivation, channel metadata, and idempotency lookup so host casing differences do not create duplicate buyer namespaces.
+   - No-match slice: persist no-match channel ingress records too, so a retried old webhook cannot create a new conversation after catalog data changes.
 
 4. Complete LLM tool execution loop.
    - Current provider, prompt, schema, and dispatcher pieces are only the tool substrate.

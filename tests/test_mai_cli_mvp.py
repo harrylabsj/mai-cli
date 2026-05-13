@@ -355,6 +355,57 @@ class MaiCliMvpTest(unittest.TestCase):
             self.assertEqual(retried["message"]["id"], opened["message"]["id"])
             self.assertEqual(len(retried["conversation"]["messages"]), 1)
 
+    def test_channel_ingest_retries_no_match_without_creating_later_conversation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai-cli.sqlite"
+
+            first = json.loads(
+                self.run_cli(
+                    db_file,
+                    "channel",
+                    "ingest",
+                    "--channel",
+                    "telegram",
+                    "--external-user",
+                    "@alice",
+                    "--external-message-id",
+                    "tg-no-match",
+                    "--text",
+                    "longjing gift delivery today",
+                    "--city",
+                    "Hangzhou",
+                    "--format",
+                    "json",
+                )
+            )
+            self.seed_longjing_shop(db_file)
+            retried = json.loads(
+                self.run_cli(
+                    db_file,
+                    "channel",
+                    "ingest",
+                    "--channel",
+                    "telegram",
+                    "--external-user",
+                    "@alice",
+                    "--external-message-id",
+                    "tg-no-match",
+                    "--text",
+                    "longjing gift delivery today",
+                    "--city",
+                    "Hangzhou",
+                    "--format",
+                    "json",
+                )
+            )
+
+            self.assertFalse(first["idempotent"])
+            self.assertEqual(first["candidates"], [])
+            self.assertIsNone(first["conversation"])
+            self.assertTrue(retried["idempotent"])
+            self.assertEqual(retried["candidates"], [])
+            self.assertIsNone(retried["conversation"])
+
     def test_bargaining_is_marked_for_human_review(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai-cli.sqlite"

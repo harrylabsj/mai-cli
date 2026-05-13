@@ -88,10 +88,21 @@ def _record_ingress_replay(conn: sqlite3.Connection, row: sqlite3.Row, channel: 
 
 
 def _existing_ingress_response(conn: sqlite3.Connection, row: sqlite3.Row, buyer_id: str, channel: str) -> dict[str, Any]:
-    if row["status"] != PROCESSED_STATUS or int(row["message_id"] or 0) <= 0:
+    if row["status"] != PROCESSED_STATUS:
         raise SystemExit(
             f"Channel message {row['external_message_id']} is already being processed for {channel}:{row['external_user_id']}"
         )
+    if int(row["message_id"] or 0) <= 0:
+        return {
+            "ok": True,
+            "idempotent": True,
+            "buyer_id": buyer_id,
+            "channel": channel,
+            "candidates": [],
+            "conversation": None,
+            "warnings": ["No matching merchant or product found.", *MVP_WARNINGS],
+            "missing_facts": ["merchant", "product"],
+        }
     conversation_id = str(row["conversation_id"])
     message = message_summary(conn, int(row["message_id"]))
     _record_ingress_replay(conn, row, channel)
@@ -223,8 +234,13 @@ def ingest_buyer_message(
             "warnings": MVP_WARNINGS,
         }
 
+    existing = _begin_channel_ingress(conn, channel, external_user_id, external_message_id, resolved_buyer_id)
+    if existing is not None:
+        return existing
+
     candidates = search_products(conn, query=text, city=city, area=area, limit=limit)
     if not candidates:
+        _complete_channel_ingress(conn, channel, external_user_id, external_message_id, "", 0)
         return {
             "ok": True,
             "idempotent": False,
@@ -236,9 +252,6 @@ def ingest_buyer_message(
             "missing_facts": ["merchant", "product"],
         }
 
-    existing = _begin_channel_ingress(conn, channel, external_user_id, external_message_id, resolved_buyer_id)
-    if existing is not None:
-        return existing
     selected = candidates[0]
     conversation = ensure_conversation(conn, resolved_buyer_id, selected["merchant_id"], selected["sku"])
     message = append_message(
