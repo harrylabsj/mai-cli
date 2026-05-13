@@ -974,6 +974,29 @@ class PublicMarketplaceTest(unittest.TestCase):
             self.assertEqual(status, 200)
             self.assertEqual(buyer_view["conversation"]["messages"][0]["structured_payload"], {})
 
+    def test_merchant_read_tolerates_corrupt_delivery_numbers(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "marketplace.sqlite"
+            app = create_app(db_file)
+
+            status, created = self.request(app, "POST", "/merchants", {"id": "seller-a", "name": "West Lake Tea"})
+            self.assertEqual(status, 200)
+            with sqlite3.connect(db_file) as conn:
+                conn.execute(
+                    """
+                    update delivery_rules
+                    set fee = 'bad', eta_minutes = 'bad', radius_km = 'bad'
+                    where merchant_id = 'seller-a'
+                    """
+                )
+
+            status, shown = self.request(app, "GET", "/merchants/seller-a")
+
+            self.assertEqual(status, 200)
+            self.assertEqual(shown["merchant"]["delivery"]["fee"], 0.0)
+            self.assertEqual(shown["merchant"]["delivery"]["eta_minutes"], 0)
+            self.assertEqual(shown["merchant"]["delivery"]["radius_km"], 0.0)
+
     def test_agent_status_reads_require_owner_tokens(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "marketplace.sqlite"

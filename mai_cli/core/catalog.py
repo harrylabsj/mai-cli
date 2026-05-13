@@ -67,6 +67,28 @@ def _whole_int(value: Any, message: str) -> int:
         raise SystemExit(message) from exc
 
 
+def _safe_non_negative_float(value: Any) -> float:
+    if isinstance(value, bool):
+        return 0.0
+    try:
+        number = float(value or 0)
+    except (TypeError, ValueError):
+        return 0.0
+    if not math.isfinite(number) or number < 0:
+        return 0.0
+    return number
+
+
+def _safe_non_negative_int(value: Any) -> int:
+    if isinstance(value, bool):
+        return 0
+    try:
+        number = int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+    return max(number, 0)
+
+
 def create_merchant(
     conn: sqlite3.Connection,
     merchant_id: str,
@@ -358,10 +380,10 @@ def delivery_rule(conn: sqlite3.Connection, merchant_id: str) -> dict[str, Any]:
         }
     return {
         "service_area": row["service_area"],
-        "fee": float(row["fee"]),
+        "fee": _safe_non_negative_float(row["fee"]),
         "currency": row["currency"],
-        "eta_minutes": int(row["eta_minutes"]),
-        "radius_km": float(row["radius_km"]),
+        "eta_minutes": _safe_non_negative_int(row["eta_minutes"]),
+        "radius_km": _safe_non_negative_float(row["radius_km"]),
         "notes": row["notes"],
     }
 
