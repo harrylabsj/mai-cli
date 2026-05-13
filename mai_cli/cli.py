@@ -943,7 +943,29 @@ def cmd_llm_run(args: argparse.Namespace) -> None:
         provider_retries=args.provider_retries,
         provider_retry_delay_seconds=args.provider_retry_delay_seconds,
     )
+    if args.format == "text":
+        emit_llm_run_text(result)
+        return
     emit(result, args.format)
+
+
+def emit_llm_run_text(result: dict[str, Any]) -> None:
+    print(f"OK: {yes_no(result.get('ok'))}")
+    if result.get("error"):
+        print(f"Error: {result['error']}")
+    print("Answer:")
+    print(str(result.get("content") or ""))
+    tool_results = result.get("tool_results") or []
+    if not tool_results:
+        return
+    print("Tool results:")
+    for item in tool_results:
+        tool = str(item.get("tool") or item.get("name") or "-")
+        status = "ok" if item.get("ok", True) else "error"
+        if item.get("error"):
+            print(f"- {tool}: {status} error={item['error']}")
+        else:
+            print(f"- {tool}: {status}")
 
 
 def cmd_adapter_inspect(args: argparse.Namespace) -> None:

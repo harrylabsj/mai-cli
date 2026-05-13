@@ -695,6 +695,48 @@ class MaiCliTest(unittest.TestCase):
             self.assertEqual(run_loop.call_args.kwargs["max_tool_calls"], 2)
             self.assertEqual(run_loop.call_args.kwargs["provider_retries"], 1)
 
+    def test_llm_run_text_output_is_readable(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            dispatcher = object()
+
+            with (
+                patch("mai_cli.cli.provider_from_env", return_value="provider", create=True),
+                patch("mai_cli.cli.MarketplaceToolDispatcher", return_value=dispatcher, create=True),
+                patch(
+                    "mai_cli.cli.run_marketplace_tool_loop",
+                    return_value={
+                        "ok": True,
+                        "content": "Longjing Gift Box is available.",
+                        "error": "",
+                        "tool_results": [
+                            {"tool": "catalog_search", "ok": True},
+                            {"tool": "conversation_send", "ok": True},
+                        ],
+                    },
+                    create=True,
+                ),
+            ):
+                output = self.run_cli(
+                    db_file,
+                    "llm",
+                    "run",
+                    "--role",
+                    "buyer",
+                    "--actor",
+                    "alice",
+                    "--text",
+                    "Find longjing near Hangzhou.",
+                )
+
+            self.assertIn("OK: yes", output)
+            self.assertIn("Answer:", output)
+            self.assertIn("Longjing Gift Box is available.", output)
+            self.assertIn("Tool results:", output)
+            self.assertIn("- catalog_search: ok", output)
+            self.assertIn("- conversation_send: ok", output)
+            self.assertNotIn('"tool_results"', output)
+
     def test_llm_run_cli_can_include_owned_conversation_context(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"
