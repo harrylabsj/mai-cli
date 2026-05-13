@@ -982,6 +982,23 @@ class MaiCliTest(unittest.TestCase):
             self.assertIn("- failed CONV-0002 message=3 error=temporary failure", output)
             self.assertNotIn('"replied"', output)
 
+    def test_agent_run_once_text_output_tolerates_corrupt_checked_count(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            result = {
+                "ok": True,
+                "merchant_id": "seller-a",
+                "checked": "bad",
+                "replied": [],
+                "failed": [],
+                "abandoned": [],
+            }
+
+            with patch("mai_cli.cli.merchant_agent.process_once", return_value=result):
+                output = self.run_cli(db_file, "agent", "run", "--merchant", "seller-a", "--once")
+
+            self.assertIn("Checked: 0", output)
+
     def test_agent_run_once_can_read_api_token_from_env(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"

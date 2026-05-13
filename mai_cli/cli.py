@@ -787,7 +787,7 @@ def emit_agent_run_once_text(result: dict[str, Any]) -> None:
     failed = result.get("failed") or []
     abandoned = result.get("abandoned") or []
     print(f"Agent run: {result.get('merchant_id') or '-'}")
-    print(f"Checked: {int(result.get('checked') or 0)}")
+    print(f"Checked: {_safe_non_negative_int(result.get('checked'))}")
     print(f"Replied: {len(replied)}")
     print(f"Failed: {len(failed)}")
     print(f"Abandoned: {len(abandoned)}")
