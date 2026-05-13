@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import urllib.request
 from dataclasses import dataclass
@@ -38,9 +39,11 @@ def _assistant_message_from_raw(raw: Any) -> dict[str, Any]:
 def _safe_positive_int(value: Any, default: int) -> int:
     if isinstance(value, bool):
         return default
+    if isinstance(value, float) and not math.isfinite(value):
+        return default
     try:
         number = int(value)
-    except (TypeError, ValueError):
+    except (OverflowError, TypeError, ValueError):
         return default
     return number if number > 0 else default
 
@@ -48,9 +51,11 @@ def _safe_positive_int(value: Any, default: int) -> int:
 def _safe_optional_positive_int(value: Any) -> int | None:
     if value is None or isinstance(value, bool):
         return None
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
     try:
         number = int(value)
-    except (TypeError, ValueError):
+    except (OverflowError, TypeError, ValueError):
         return None
     return number if number > 0 else None
 
