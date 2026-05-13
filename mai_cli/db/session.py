@@ -24,7 +24,10 @@ def encode_json(value: Any) -> str:
 def decode_json(value: str | None, default: Any) -> Any:
     if value in (None, ""):
         return default
-    return json.loads(value)
+    try:
+        return json.loads(value)
+    except (TypeError, json.JSONDecodeError):
+        return default
 
 
 def open_connection(db_path: str | Path) -> sqlite3.Connection:

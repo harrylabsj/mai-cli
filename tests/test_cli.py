@@ -421,6 +421,45 @@ class MaiCliTest(unittest.TestCase):
             self.assertNotIn("requested area may need merchant confirmation", products["results"][0]["warnings"])
             self.assertEqual(merchants["results"][0]["id"], "seller-a")
 
+    def test_corrupt_catalog_json_fields_fall_back_to_defaults(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.run_cli(db_file, "merchant", "create", "--id", "seller-a", "--name", "West Lake Tea")
+            self.run_cli(
+                db_file,
+                "product",
+                "add",
+                "--merchant",
+                "seller-a",
+                "--sku",
+                "tea-a",
+                "--title",
+                "Longjing Gift Box",
+                "--price",
+                "88",
+                "--stock",
+                "5",
+            )
+            conn = sqlite3.connect(db_file)
+            try:
+                conn.execute("update merchants set tags_json = ? where id = ?", ("not-json", "seller-a"))
+                conn.execute(
+                    "update products set tags_json = ?, delivery_attributes_json = ? where sku = ?",
+                    ("not-json", "not-json", "tea-a"),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+
+            products = json.loads(
+                self.run_cli(db_file, "search", "products", "--query", "longjing", "--format", "json")
+            )
+
+            self.assertEqual(products["results"][0]["sku"], "tea-a")
+            self.assertEqual(products["results"][0]["tags"], [])
+            self.assertEqual(products["results"][0]["delivery_attributes"], [])
+            self.assertEqual(products["results"][0]["merchant"]["tags"], [])
+
     def test_search_merchants_text_output_lists_matching_merchants(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"
