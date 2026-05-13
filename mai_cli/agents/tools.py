@@ -367,6 +367,20 @@ class HTTPMerchantAgentTools:
         return result
 
     @staticmethod
+    def _response_object(result: dict[str, Any], key: str) -> dict[str, Any]:
+        value = result.get(key)
+        if not isinstance(value, dict):
+            raise HTTPMarketplaceError(f"Marketplace API response missing object: {key}")
+        return dict(value)
+
+    @staticmethod
+    def _response_list(result: dict[str, Any], key: str) -> list[Any]:
+        value = result.get(key)
+        if not isinstance(value, list):
+            raise HTTPMarketplaceError(f"Marketplace API response missing list: {key}")
+        return list(value)
+
+    @staticmethod
     def _decode_body(raw_body: bytes) -> dict[str, Any]:
         if not raw_body:
             return {}
@@ -408,17 +422,17 @@ class HTTPMerchantAgentTools:
             ),
         )
         self._record_tool_call("agent_heartbeat")
-        return dict(result["agent"])
+        return self._response_object(result, "agent")
 
     def waiting_merchant_conversations(self, merchant_id: str) -> list[dict[str, Any]]:
         self._check_merchant(merchant_id)
         path = f"/merchants/{urllib.parse.quote(merchant_id, safe='')}/conversations"
         result = self._request("GET", path, query={"status": "waiting_merchant"})
-        return list(result["conversations"])
+        return self._response_list(result, "conversations")
 
     def product_summary(self, sku: str) -> dict[str, Any]:
         result = self._request("GET", f"/products/{urllib.parse.quote(str(sku), safe='')}")
-        return dict(result["product"])
+        return self._response_object(result, "product")
 
     def append_message(
         self,
@@ -443,7 +457,7 @@ class HTTPMerchantAgentTools:
             ),
         )
         self._record_tool_call("conversation_message", conversation_id=conversation_id)
-        return dict(result["message"])
+        return self._response_object(result, "message")
 
     def add_flag(self, conversation_id: str, reason: str, sku: str = "") -> dict[str, Any]:
         result = self._request(
@@ -452,7 +466,7 @@ class HTTPMerchantAgentTools:
             self._merchant_payload({"reason": reason, "sku": sku, "source_id": f"mai-cli-merchant-agent:{self.merchant_id}"}),
         )
         self._record_tool_call("human_review_flag", conversation_id=conversation_id)
-        return dict(result["review"])
+        return self._response_object(result, "review")
 
     def claim_message(self, agent_id: str, conversation_id: str, message_id: int, idempotency_key: str) -> dict[str, Any]:
         result = self._request(
@@ -468,7 +482,7 @@ class HTTPMerchantAgentTools:
             ),
         )
         self._record_tool_call("agent_message_claim", conversation_id=conversation_id)
-        return dict(result["claim"])
+        return self._response_object(result, "claim")
 
     def complete_message(self, agent_id: str, message_id: int) -> dict[str, Any]:
         result = self._request(
@@ -479,7 +493,7 @@ class HTTPMerchantAgentTools:
             ),
         )
         self._record_tool_call("agent_message_complete")
-        return dict(result["process"])
+        return self._response_object(result, "process")
 
     def fail_message(self, agent_id: str, message_id: int, error: str) -> dict[str, Any]:
         result = self._request(
@@ -490,7 +504,7 @@ class HTTPMerchantAgentTools:
             ),
         )
         self._record_tool_call("agent_message_fail", status="failed", error=error)
-        return dict(result["process"])
+        return self._response_object(result, "process")
 
     def abandon_message(self, agent_id: str, message_id: int, error: str) -> dict[str, Any]:
         result = self._request(
@@ -501,7 +515,7 @@ class HTTPMerchantAgentTools:
             ),
         )
         self._record_tool_call("agent_message_abandon", error=error)
-        return dict(result["process"])
+        return self._response_object(result, "process")
 
     def abandon_stale_messages(self, agent_id: str, stale_after_seconds: int = 300) -> list[dict[str, Any]]:
         result = self._request(
@@ -515,4 +529,4 @@ class HTTPMerchantAgentTools:
             ),
         )
         self._record_tool_call("agent_message_abandon_stale")
-        return list(result["abandoned"])
+        return self._response_list(result, "abandoned")

@@ -329,6 +329,21 @@ class AgentToolsBoundaryTest(unittest.TestCase):
         self.assertIn("Marketplace API request failed", str(exc.exception))
         self.assertIn("connection refused", str(exc.exception))
 
+    def test_http_merchant_agent_tools_report_missing_response_objects_cleanly(self):
+        from mai_cli.agents.tools import HTTPMarketplaceError, HTTPMerchantAgentTools
+
+        tools = HTTPMerchantAgentTools(
+            "http://127.0.0.1:8765/",
+            merchant_id="seller-a",
+            merchant_token="tok_seller_a",
+            opener=CapturingHTTPOpener([{"ok": True}]),
+        )
+
+        with self.assertRaises(HTTPMarketplaceError) as exc:
+            tools.heartbeat("seller-a")
+
+        self.assertIn("Marketplace API response missing object: agent", str(exc.exception))
+
     def test_process_once_uses_marketplace_tools_without_sqlite_connection(self):
         tools = FakeMarketplaceTools()
 
