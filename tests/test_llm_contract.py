@@ -464,6 +464,38 @@ class LlmContractTest(unittest.TestCase):
             self.assertEqual(result["content"], "Recovered response.")
             self.assertEqual(len(calls), 2)
 
+    def test_llm_tool_loop_tolerates_overflowing_retry_delay(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.seed_consultation(db_file)
+            calls = []
+
+            def flaky_transport(*_args):
+                calls.append(True)
+                if len(calls) == 1:
+                    raise TimeoutError("temporary provider timeout")
+                return {"choices": [{"message": {"role": "assistant", "content": "Recovered response."}}]}
+
+            provider = OpenAICompatibleProvider(
+                base_url="https://llm.example/v1",
+                api_key="secret-token",
+                model="mai-test-model",
+                transport=flaky_transport,
+            )
+            dispatcher = MarketplaceToolDispatcher(db_file, source_id="llm-loop", actor="alice", token_scope="buyer")
+
+            result = run_marketplace_tool_loop(
+                provider,
+                dispatcher,
+                [{"role": "user", "content": "Find longjing near Hangzhou."}],
+                provider_retries=1,
+                provider_retry_delay_seconds=10**4000,
+            )
+
+            self.assertTrue(result["ok"])
+            self.assertEqual(result["content"], "Recovered response.")
+            self.assertEqual(len(calls), 2)
+
     def test_llm_tool_loop_reports_malformed_provider_choices_cleanly(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"
@@ -938,6 +970,18 @@ class LlmContractTest(unittest.TestCase):
         )
 
         self.assertEqual(dispatcher.timeout, 60.0)
+
+    def test_http_marketplace_tool_dispatcher_tolerates_overflowing_timeout(self):
+        dispatcher = HTTPMarketplaceToolDispatcher(
+            "http://127.0.0.1:8765",
+            auth_token="buyer-token",
+            actor="alice",
+            token_scope="buyer",
+            timeout=10**4000,
+            transport=lambda _method, _path, _payload, _query, _headers: {"ok": True},
+        )
+
+        self.assertEqual(dispatcher.timeout, 10.0)
 
     def test_http_marketplace_tool_dispatcher_reports_malformed_conversation_response_cleanly(self):
         dispatcher = HTTPMarketplaceToolDispatcher(

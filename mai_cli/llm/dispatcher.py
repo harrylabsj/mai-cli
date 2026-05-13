@@ -31,7 +31,7 @@ def _safe_positive_float(value: Any, default: float, maximum: float | None = Non
         return default
     try:
         number = float(value)
-    except (TypeError, ValueError):
+    except (OverflowError, TypeError, ValueError):
         return default
     if not math.isfinite(number) or number <= 0:
         return default

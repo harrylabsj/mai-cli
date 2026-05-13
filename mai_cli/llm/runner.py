@@ -75,7 +75,7 @@ def _safe_non_negative_float(value: Any, default: float, maximum: float | None =
         return default
     try:
         number = float(value)
-    except (TypeError, ValueError):
+    except (OverflowError, TypeError, ValueError):
         return default
     if not math.isfinite(number):
         return default

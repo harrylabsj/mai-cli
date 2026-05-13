@@ -317,6 +317,34 @@ class AgentToolsBoundaryTest(unittest.TestCase):
         self.assertEqual(agent["status"], "online")
         self.assertEqual(opener.requests[0]["timeout"], 60.0)
 
+    def test_http_merchant_agent_tools_tolerates_overflowing_timeout(self):
+        from mai_cli.agents.tools import HTTPMerchantAgentTools
+
+        opener = CapturingHTTPOpener(
+            [
+                {
+                    "ok": True,
+                    "agent": {
+                        "id": "mai-cli-merchant-agent:seller-a",
+                        "owner_id": "seller-a",
+                        "status": "online",
+                    },
+                }
+            ]
+        )
+        tools = HTTPMerchantAgentTools(
+            "http://127.0.0.1:8765/",
+            merchant_id="seller-a",
+            merchant_token="tok_seller_a",
+            opener=opener,
+            timeout=10**4000,
+        )
+
+        agent = tools.heartbeat("seller-a")
+
+        self.assertEqual(agent["status"], "online")
+        self.assertEqual(opener.requests[0]["timeout"], 10.0)
+
     def test_http_merchant_agent_tools_keep_audit_best_effort(self):
         from mai_cli.agents.tools import HTTPMerchantAgentTools
 
