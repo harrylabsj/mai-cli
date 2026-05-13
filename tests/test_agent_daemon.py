@@ -178,6 +178,22 @@ class AgentDaemonLifecycleTest(unittest.TestCase):
             self.assertFalse(status["running"])
             self.assertEqual(status["counters"], {"checked": 0, "replied": 0})
 
+    def test_status_agent_tolerates_non_object_state_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            db_file = tmp_path / "mai.sqlite"
+            state_dir = tmp_path / "state"
+            paths = merchant_daemon.agent_paths("seller-a", state_dir=state_dir)
+            merchant_daemon.ensure_agent_dirs(paths)
+            paths["pid_file"].write_text("[]", encoding="utf-8")
+            paths["state_file"].write_text('"not an object"', encoding="utf-8")
+
+            status = merchant_daemon.status_agent(db_file, "seller-a", state_dir=state_dir)
+
+            self.assertIsNone(status["pid"])
+            self.assertFalse(status["running"])
+            self.assertEqual(status["counters"], {"checked": 0, "replied": 0})
+
     def test_process_loop_tolerates_non_json_result_payload(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)

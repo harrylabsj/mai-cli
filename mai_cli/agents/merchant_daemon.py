@@ -48,9 +48,12 @@ def ensure_agent_dirs(paths: dict[str, Path]) -> None:
 
 def read_json(path: Path, default: Any) -> Any:
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        decoded = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return default
+    if isinstance(default, dict) and not isinstance(decoded, dict):
+        return default
+    return decoded
 
 
 def safe_non_negative_int(value: Any) -> int:
