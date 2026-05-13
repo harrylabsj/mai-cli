@@ -104,6 +104,10 @@ def update_merchant(
     delivery_radius_km: float | None = None,
 ) -> dict[str, Any]:
     merchant = require_merchant(conn, merchant_id)
+    if name is not None:
+        name = str(name or "").strip()
+        if not name:
+            raise SystemExit("merchant name is required")
     updates: list[str] = []
     values: list[Any] = []
     field_map = {
@@ -251,6 +255,10 @@ def update_product(
     product = require_product(conn, sku)
     if merchant_id and product["merchant_id"] != merchant_id:
         raise SystemExit(f"Product {sku} does not belong to merchant {merchant_id}")
+    if title is not None:
+        title = str(title or "").strip()
+        if not title:
+            raise SystemExit("product title is required")
     if price is not None and price < 0:
         raise SystemExit("--price must be non-negative")
     if stock is not None and stock < 0:
