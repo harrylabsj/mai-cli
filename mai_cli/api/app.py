@@ -21,7 +21,14 @@ from mai_cli.agents import buyer_cli, merchant_agent
 from mai_cli.config import agent_stale_ttl_seconds_from
 from mai_cli.core import catalog
 from mai_cli.core.channels import ingest_buyer_message
-from mai_cli.core.conversations import add_flag, append_message, conversation_summary, ensure_conversation, merchant_conversations
+from mai_cli.core.conversations import (
+    add_flag,
+    append_message,
+    conversation_summary,
+    ensure_conversation,
+    merchant_conversations,
+    normalize_structured_payload,
+)
 from mai_cli.core.harness import (
     abandon_agent_message,
     abandon_stale_agent_messages,
@@ -671,7 +678,7 @@ def _append_conversation_message(db_path: str | Path, conversation_id: str, payl
     with db_session(db_path) as conn:
         conversation = conversation_summary(conn, conversation_id)
         sender = str(payload["sender"])
-        structured_payload = dict(payload.get("structured_payload") or {})
+        structured_payload = normalize_structured_payload(payload.get("structured_payload"))
         if payload.get("source_id"):
             structured_payload["source_id"] = payload.get("source_id")
         if sender in {"buyer", "buyer_cli"}:

@@ -1846,6 +1846,36 @@ class PublicMarketplaceTest(unittest.TestCase):
             self.assertEqual(status, 200)
             self.assertEqual(operator_close["conversation"]["status"], "closed")
 
+    def test_conversation_message_rejects_non_object_structured_payload(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "marketplace.sqlite"
+            app = create_app(db_file)
+
+            status, merchant = self.request(app, "POST", "/merchants", {"id": "seller-a", "name": "West Lake Tea"})
+            self.assertEqual(status, 200)
+            status, created = self.request(
+                app,
+                "POST",
+                "/conversations",
+                {"buyer_id": "alice", "merchant_id": "seller-a"},
+            )
+            self.assertEqual(status, 200)
+
+            status, rejected = self.request(
+                app,
+                "POST",
+                "/conversations/CONV-0001/messages",
+                {
+                    "sender": "buyer",
+                    "intent": "ask_product",
+                    "text": "Any stock left?",
+                    "structured_payload": ["not", "an", "object"],
+                    "buyer_token": created["buyer_token"],
+                },
+            )
+            self.assertEqual(status, 400)
+            self.assertIn("structured_payload must be an object", rejected["error"])
+
     def test_human_review_api_shows_and_resolves_one_review_by_id_with_owner_token(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "marketplace.sqlite"

@@ -89,6 +89,14 @@ def _normalize_conversation_status(value: Any) -> str:
     return status
 
 
+def normalize_structured_payload(value: Any) -> dict[str, Any]:
+    if value in (None, ""):
+        return {}
+    if not isinstance(value, dict):
+        raise SystemExit("structured_payload must be an object")
+    return dict(value)
+
+
 def append_message(
     conn: sqlite3.Connection,
     conversation_id: str,
@@ -102,7 +110,7 @@ def append_message(
     if not text.strip():
         raise SystemExit("message text is required")
     now = now_iso()
-    payload = dict(structured_payload or {})
+    payload = normalize_structured_payload(structured_payload)
     if status is None:
         if sender == "buyer":
             status = "waiting_merchant"
