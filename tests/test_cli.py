@@ -480,10 +480,10 @@ class MaiCliTest(unittest.TestCase):
 
             conn = sqlite3.connect(db_file)
             try:
-                conn.execute("update merchants set tags_json = ? where id = ?", ('["tea", 7]', "seller-a"))
+                conn.execute("update merchants set tags_json = ? where id = ?", ('["tea", null, {"bad": true}, 7]', "seller-a"))
                 conn.execute(
                     "update products set tags_json = ?, delivery_attributes_json = ? where sku = ?",
-                    ('["gift", 9]', '["same-day", 3]', "tea-a"),
+                    ('["gift", null, {"bad": true}, 9]', '["same-day", ["nested"], 3]', "tea-a"),
                 )
                 conn.commit()
             finally:

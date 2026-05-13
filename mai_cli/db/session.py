@@ -31,7 +31,14 @@ def decode_json(value: str | None, default: Any) -> Any:
     if isinstance(default, list):
         if not isinstance(decoded, list):
             return default
-        return [str(item).strip() for item in decoded if str(item).strip()]
+        normalized: list[str] = []
+        for item in decoded:
+            if item is None or isinstance(item, (dict, list)):
+                continue
+            text = str(item).strip()
+            if text:
+                normalized.append(text)
+        return normalized
     if isinstance(default, dict) and not isinstance(decoded, dict):
         return default
     return decoded
