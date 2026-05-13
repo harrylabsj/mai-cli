@@ -25,9 +25,14 @@ def decode_json(value: str | None, default: Any) -> Any:
     if value in (None, ""):
         return default
     try:
-        return json.loads(value)
+        decoded = json.loads(value)
     except (TypeError, json.JSONDecodeError):
         return default
+    if isinstance(default, list) and not isinstance(decoded, list):
+        return default
+    if isinstance(default, dict) and not isinstance(decoded, dict):
+        return default
+    return decoded
 
 
 def open_connection(db_path: str | Path) -> sqlite3.Connection:
