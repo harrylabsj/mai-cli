@@ -1838,6 +1838,26 @@ class MaiCliTest(unittest.TestCase):
             self.assertNotIn("mai_agent_seller-a_secret", output)
             self.assertNotIn('"heartbeat"', output)
 
+    def test_agent_status_text_output_tolerates_corrupt_counters(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            status = {
+                "ok": True,
+                "merchant_id": "seller-a",
+                "heartbeat": {"status": "online", "last_seen_at": "2026-05-13T12:00:00"},
+                "counters": {"checked": "bad", "replied": "bad"},
+                "pid_file": "/tmp/seller-a.pid",
+                "state_file": "/tmp/seller-a.state.json",
+                "stop_file": "/tmp/seller-a.stop",
+                "log_file": "/tmp/seller-a.log",
+            }
+
+            with patch("mai_cli.cli.merchant_daemon.status_agent", return_value=status):
+                output = self.run_cli(db_file, "agent", "status", "--merchant", "seller-a")
+
+            self.assertIn("Checked: 0", output)
+            self.assertIn("Replied: 0", output)
+
     def test_agent_start_text_output_is_readable(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"
