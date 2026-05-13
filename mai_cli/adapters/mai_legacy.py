@@ -10,6 +10,15 @@ from typing import Any
 from mai_cli.core.catalog import create_merchant, create_product
 
 
+def _legacy_section(data: dict[str, Any], name: str) -> dict[str, Any]:
+    section = data.get(name)
+    if section is None:
+        return {}
+    if not isinstance(section, dict):
+        raise SystemExit(f"Invalid legacy JSON: legacy JSON {name} must be an object")
+    return section
+
+
 def import_json_store(conn: sqlite3.Connection, source: str | Path) -> dict[str, Any]:
     source_path = Path(source)
     try:
@@ -24,7 +33,7 @@ def import_json_store(conn: sqlite3.Connection, source: str | Path) -> dict[str,
         raise SystemExit("Invalid legacy JSON: legacy JSON root must be an object")
     imported = {"merchants": 0, "products": 0}
     skipped = {"merchants": 0, "products": 0}
-    for merchant_id, merchant in data.get("merchants", {}).items():
+    for merchant_id, merchant in _legacy_section(data, "merchants").items():
         if not isinstance(merchant, dict):
             skipped["merchants"] += 1
             continue
@@ -43,7 +52,7 @@ def import_json_store(conn: sqlite3.Connection, source: str | Path) -> dict[str,
             tags=merchant.get("tags") or [],
         )
         imported["merchants"] += 1
-    for sku, product in data.get("products", {}).items():
+    for sku, product in _legacy_section(data, "products").items():
         if not isinstance(product, dict):
             skipped["products"] += 1
             continue
