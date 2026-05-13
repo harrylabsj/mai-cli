@@ -1015,6 +1015,34 @@ class PublicMarketplaceTest(unittest.TestCase):
             self.assertEqual(status, 400)
             self.assertIn("--stock must be a whole number", fractional_stock_update["error"])
 
+    def test_agent_heartbeat_integer_fields_reject_fractional_values(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "marketplace.sqlite"
+            app = create_app(db_file)
+
+            status, merchant = self.request(app, "POST", "/merchants", {"id": "seller-a", "name": "West Lake Tea"})
+            self.assertEqual(status, 200)
+            merchant_token = merchant["merchant_token"]
+
+            for field in ("pid", "checked_count", "replied_count"):
+                status, response = self.request(
+                    app,
+                    "POST",
+                    "/agents/heartbeat",
+                    {"merchant_id": "seller-a", "merchant_token": merchant_token, field: 1.5},
+                )
+                self.assertEqual(status, 400)
+                self.assertIn(f"{field} must be a whole number", response["error"])
+
+                status, response = self.request(
+                    app,
+                    "POST",
+                    "/agents/heartbeat",
+                    {"merchant_id": "seller-a", "merchant_token": merchant_token, field: -1},
+                )
+                self.assertEqual(status, 400)
+                self.assertIn(f"{field} must be non-negative", response["error"])
+
     def test_conversation_message_and_close_writes_require_owner_tokens(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "marketplace.sqlite"

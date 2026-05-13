@@ -215,6 +215,27 @@ def _positive_whole_seconds(value: Any, field_name: str) -> int | None:
     return seconds
 
 
+def _non_negative_whole_int(value: Any, field_name: str, default: int = 0) -> int:
+    if value in (None, ""):
+        return default
+    if isinstance(value, bool):
+        raise ValueError(f"{field_name} must be a whole number")
+    if isinstance(value, int):
+        number = value
+    elif isinstance(value, float):
+        if not math.isfinite(value) or not value.is_integer():
+            raise ValueError(f"{field_name} must be a whole number")
+        number = int(value)
+    else:
+        try:
+            number = int(str(value).strip())
+        except ValueError as exc:
+            raise ValueError(f"{field_name} must be a whole number") from exc
+    if number < 0:
+        raise ValueError(f"{field_name} must be non-negative")
+    return number
+
+
 def _token_is_expired(expires_at: str) -> bool:
     return bool(expires_at and expires_at <= now_iso())
 
@@ -692,11 +713,11 @@ def _agent_heartbeat(db_path: str | Path, payload: dict[str, Any]) -> dict[str, 
             merchant_id=merchant_id,
             status=str(payload.get("status") or "online"),
             capabilities=payload.get("capabilities"),
-            pid=int(payload.get("pid") or 0),
+            pid=_non_negative_whole_int(payload.get("pid"), "pid"),
             version=str(payload.get("version") or ""),
             last_error=str(payload.get("last_error") or ""),
-            checked_count=int(payload.get("checked_count") or 0),
-            replied_count=int(payload.get("replied_count") or 0),
+            checked_count=_non_negative_whole_int(payload.get("checked_count"), "checked_count"),
+            replied_count=_non_negative_whole_int(payload.get("replied_count"), "replied_count"),
         )
         return {"ok": True, "agent": agent}
 
