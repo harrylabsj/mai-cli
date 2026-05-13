@@ -146,6 +146,21 @@ class MaiCliTest(unittest.TestCase):
                 return
             self.fail("legacy import should reject missing JSON files")
 
+    def test_legacy_import_reports_non_object_json_root_cleanly(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            legacy_file = Path(tmp) / "mai.json"
+            legacy_file.write_text("[]", encoding="utf-8")
+
+            try:
+                self.run_cli(db_file, "legacy", "import", "--from-json", str(legacy_file))
+            except AttributeError as exc:
+                self.fail(f"legacy import should report non-object roots as a CLI error: {exc}")
+            except SystemExit as exc:
+                self.assertIn("legacy JSON root must be an object", str(exc))
+                return
+            self.fail("legacy import should reject non-object JSON roots")
+
     def test_legacy_import_skips_malformed_products_without_aborting(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"

@@ -20,6 +20,8 @@ def import_json_store(conn: sqlite3.Connection, source: str | Path) -> dict[str,
         data = json.loads(raw)
     except json.JSONDecodeError as exc:
         raise SystemExit(f"Invalid legacy JSON: {exc.msg} at line {exc.lineno}, column {exc.colno}") from exc
+    if not isinstance(data, dict):
+        raise SystemExit("Invalid legacy JSON: legacy JSON root must be an object")
     imported = {"merchants": 0, "products": 0}
     skipped = {"merchants": 0, "products": 0}
     for merchant_id, merchant in data.get("merchants", {}).items():
