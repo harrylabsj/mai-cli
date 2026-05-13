@@ -1285,6 +1285,29 @@ class PublicMarketplaceTest(unittest.TestCase):
             self.assertEqual(status, 400)
             self.assertIn("Unknown agent status", heartbeat["error"])
 
+    def test_agent_heartbeat_rejects_invalid_capabilities(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "marketplace.sqlite"
+            app = create_app(db_file)
+
+            status, merchant = self.request(app, "POST", "/merchants", {"id": "seller-a", "name": "West Lake Tea"})
+            self.assertEqual(status, 200)
+            merchant_token = merchant["merchant_token"]
+
+            for capabilities in ({"catalog": True}, ["catalog", {"bad": True}]):
+                status, heartbeat = self.request(
+                    app,
+                    "POST",
+                    "/agents/heartbeat",
+                    {
+                        "merchant_id": "seller-a",
+                        "capabilities": capabilities,
+                        "merchant_token": merchant_token,
+                    },
+                )
+                self.assertEqual(status, 400)
+                self.assertIn("agent capabilities must be a list of strings", heartbeat["error"])
+
     def test_conversation_message_and_close_writes_require_owner_tokens(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "marketplace.sqlite"

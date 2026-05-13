@@ -55,6 +55,21 @@ def _normalize_agent_status(value: Any) -> str:
     return status
 
 
+def _normalize_capabilities(value: Any) -> list[str]:
+    if value is None:
+        return list(DEFAULT_CAPABILITIES)
+    if not isinstance(value, list):
+        raise SystemExit("agent capabilities must be a list of strings")
+    normalized: list[str] = []
+    for item in value:
+        if not isinstance(item, str):
+            raise SystemExit("agent capabilities must be a list of strings")
+        text = item.strip()
+        if text:
+            normalized.append(text)
+    return normalized or list(DEFAULT_CAPABILITIES)
+
+
 class MerchantAgentTools(Protocol):
     def heartbeat(
         self,
@@ -118,6 +133,7 @@ def record_heartbeat(
     pid = _non_negative_whole_int(pid, "pid")
     checked_count = _non_negative_whole_int(checked_count, "checked_count")
     replied_count = _non_negative_whole_int(replied_count, "replied_count")
+    capabilities = _normalize_capabilities(capabilities)
     require_merchant(conn, merchant_id)
     agent_id = f"mai-cli-merchant-agent:{merchant_id}"
     now = now_iso()
@@ -142,7 +158,7 @@ def record_heartbeat(
             agent_id,
             merchant_id,
             status,
-            encode_json(capabilities or DEFAULT_CAPABILITIES),
+            encode_json(capabilities),
             now,
             pid,
             version or VERSION,
@@ -156,7 +172,7 @@ def record_heartbeat(
         "type": "merchant",
         "owner_id": merchant_id,
         "status": status,
-        "capabilities": capabilities or DEFAULT_CAPABILITIES,
+        "capabilities": capabilities,
         "last_seen_at": now,
         "pid": pid,
         "version": version or VERSION,
