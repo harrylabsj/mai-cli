@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import re
 import sys
@@ -72,6 +73,18 @@ def positive_int(value: str) -> int:
     if seconds <= 0:
         raise argparse.ArgumentTypeError("must be greater than 0")
     return seconds
+
+
+def positive_float(value: str) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as exc:
+        raise argparse.ArgumentTypeError("must be a number") from exc
+    if not math.isfinite(number):
+        raise argparse.ArgumentTypeError("must be finite")
+    if number <= 0:
+        raise argparse.ArgumentTypeError("must be greater than 0")
+    return number
 
 
 def positive_seconds(value: str) -> int:
@@ -1830,7 +1843,7 @@ def build_parser() -> argparse.ArgumentParser:
     agent_sub = agent.add_subparsers(dest="agent_command", required=True)
     agent_start = agent_sub.add_parser("start", help="Start a background merchant agent daemon")
     agent_start.add_argument("--merchant", required=True)
-    agent_start.add_argument("--interval", type=float, default=3.0)
+    agent_start.add_argument("--interval", type=positive_float, default=3.0)
     agent_start.add_argument("--api-url", default="", help="Start a background agent through the marketplace API")
     agent_start.add_argument("--merchant-token", default="", help="Merchant API token for --api-url")
     agent_start.add_argument("--agent-token", default="", help="Scoped agent API token for --api-url")
@@ -1841,7 +1854,7 @@ def build_parser() -> argparse.ArgumentParser:
     agent_start.set_defaults(func=cmd_agent_start)
     agent_stop = agent_sub.add_parser("stop", help="Stop a background merchant agent daemon")
     agent_stop.add_argument("--merchant", required=True)
-    agent_stop.add_argument("--timeout", type=float, default=5.0)
+    agent_stop.add_argument("--timeout", type=positive_float, default=5.0)
     agent_stop.add_argument("--format", choices=["text", "json"], default="text")
     add_agent_runtime_options(agent_stop)
     agent_stop.set_defaults(func=cmd_agent_stop)
@@ -1867,7 +1880,7 @@ def build_parser() -> argparse.ArgumentParser:
     agent_run = agent_sub.add_parser("run", help="Poll and answer waiting merchant conversations")
     agent_run.add_argument("--merchant", required=True)
     agent_run.add_argument("--once", action="store_true")
-    agent_run.add_argument("--interval", type=float, default=3.0)
+    agent_run.add_argument("--interval", type=positive_float, default=3.0)
     agent_run.add_argument("--api-url", default="", help="Run through the marketplace API instead of direct SQLite")
     agent_run.add_argument("--merchant-token", default="", help="Merchant API token for --api-url")
     agent_run.add_argument("--agent-token", default="", help="Scoped agent API token for --api-url")

@@ -45,6 +45,21 @@ class MaiCliTest(unittest.TestCase):
         rendered = json.loads(output.getvalue())
         self.assertEqual(rendered["payload"], "b'\\xff'")
 
+    def test_agent_runtime_float_args_reject_non_finite_and_non_positive_values(self):
+        from mai_cli import cli
+
+        cases = [
+            ["agent", "run", "--merchant", "seller-a", "--interval", "nan"],
+            ["agent", "start", "--merchant", "seller-a", "--interval", "inf"],
+            ["agent", "stop", "--merchant", "seller-a", "--timeout", "0"],
+        ]
+        for args in cases:
+            with self.subTest(args=args):
+                stderr = StringIO()
+                with redirect_stderr(stderr), self.assertRaises(SystemExit) as caught:
+                    cli.build_parser().parse_args(args)
+                self.assertEqual(caught.exception.code, 2)
+
     def test_legacy_import_text_output_is_readable(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"
