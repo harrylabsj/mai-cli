@@ -201,6 +201,8 @@ class HTTPMerchantAgentTools:
         merchant_token: str,
         timeout: float = 10.0,
         opener: Any | None = None,
+        host: str = "",
+        session_id: str = "",
     ):
         self.base_url = str(base_url or "").rstrip("/")
         if not self.base_url:
@@ -213,6 +215,8 @@ class HTTPMerchantAgentTools:
             raise ValueError("merchant_token is required")
         self.timeout = float(timeout or 10.0)
         self.opener = opener or urllib.request.urlopen
+        self.host = str(host or "")
+        self.session_id = str(session_id or "")
 
     def _merchant_payload(self, payload: dict[str, Any] | None = None) -> dict[str, Any]:
         merged = dict(payload or {})
@@ -228,6 +232,35 @@ class HTTPMerchantAgentTools:
     def _check_merchant(self, merchant_id: str) -> None:
         if merchant_id != self.merchant_id:
             raise ValueError(f"HTTP tools are scoped to merchant {self.merchant_id}, not {merchant_id}")
+
+    def _should_record_tool_calls(self) -> bool:
+        return bool(self.host or self.session_id)
+
+    def _record_tool_call(
+        self,
+        tool: str,
+        conversation_id: str = "",
+        status: str = "ok",
+        error: str = "",
+    ) -> None:
+        if not self._should_record_tool_calls():
+            return
+        payload = self._token_payload(
+            {
+                "merchant_id": self.merchant_id,
+                "tool": tool,
+                "status": status,
+                "host": self.host,
+                "session_id": self.session_id,
+                "actor": f"mai-cli-merchant-agent:{self.merchant_id}",
+                "source_id": f"mai-cli-merchant-agent:{self.merchant_id}",
+                "token_scope": "merchant_agent",
+                "error": error,
+            }
+        )
+        if conversation_id:
+            payload["conversation_id"] = conversation_id
+        self._request("POST", "/audit/tool-calls", payload)
 
     def _request(
         self,
@@ -301,6 +334,7 @@ class HTTPMerchantAgentTools:
                 }
             ),
         )
+        self._record_tool_call("agent_heartbeat")
         return dict(result["agent"])
 
     def waiting_merchant_conversations(self, merchant_id: str) -> list[dict[str, Any]]:
@@ -335,6 +369,7 @@ class HTTPMerchantAgentTools:
                 }
             ),
         )
+        self._record_tool_call("conversation_message", conversation_id=conversation_id)
         return dict(result["message"])
 
     def add_flag(self, conversation_id: str, reason: str, sku: str = "") -> dict[str, Any]:
@@ -343,6 +378,7 @@ class HTTPMerchantAgentTools:
             f"/conversations/{urllib.parse.quote(conversation_id, safe='')}/human-review",
             self._merchant_payload({"reason": reason, "sku": sku, "source_id": f"mai-cli-merchant-agent:{self.merchant_id}"}),
         )
+        self._record_tool_call("human_review_flag", conversation_id=conversation_id)
         return dict(result["review"])
 
     def claim_message(self, agent_id: str, conversation_id: str, message_id: int, idempotency_key: str) -> dict[str, Any]:
@@ -358,6 +394,7 @@ class HTTPMerchantAgentTools:
                 }
             ),
         )
+        self._record_tool_call("agent_message_claim", conversation_id=conversation_id)
         return dict(result["claim"])
 
     def complete_message(self, agent_id: str, message_id: int) -> dict[str, Any]:
@@ -366,6 +403,7 @@ class HTTPMerchantAgentTools:
             "/agents/messages/complete",
             self._merchant_payload({"agent_id": agent_id, "message_id": int(message_id)}),
         )
+        self._record_tool_call("agent_message_complete")
         return dict(result["process"])
 
     def fail_message(self, agent_id: str, message_id: int, error: str) -> dict[str, Any]:
@@ -374,6 +412,7 @@ class HTTPMerchantAgentTools:
             "/agents/messages/fail",
             self._merchant_payload({"agent_id": agent_id, "message_id": int(message_id), "error": error}),
         )
+        self._record_tool_call("agent_message_fail", status="failed", error=error)
         return dict(result["process"])
 
     def abandon_message(self, agent_id: str, message_id: int, error: str) -> dict[str, Any]:
@@ -382,6 +421,7 @@ class HTTPMerchantAgentTools:
             "/agents/messages/abandon",
             self._merchant_payload({"agent_id": agent_id, "message_id": int(message_id), "error": error}),
         )
+        self._record_tool_call("agent_message_abandon", error=error)
         return dict(result["process"])
 
     def abandon_stale_messages(self, agent_id: str, stale_after_seconds: int = 300) -> list[dict[str, Any]]:
@@ -390,4 +430,5 @@ class HTTPMerchantAgentTools:
             "/agents/messages/abandon-stale",
             self._merchant_payload({"agent_id": agent_id, "stale_after_seconds": int(stale_after_seconds or 300)}),
         )
+        self._record_tool_call("agent_message_abandon_stale")
         return list(result["abandoned"])

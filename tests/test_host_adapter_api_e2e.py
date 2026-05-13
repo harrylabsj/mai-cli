@@ -148,6 +148,8 @@ class HostAdapterAPIE2ETest(unittest.TestCase):
                 "seller-a",
                 agent_token,
                 opener=self.opener_for(app),
+                host="openclaw",
+                session_id="openclaw-session-1",
             )
             result = merchant_agent.process_once_with_tools(tools, "seller-a")
             self.assertEqual(result["replied"][0]["conversation_id"], "CONV-0001")
@@ -163,6 +165,26 @@ class HostAdapterAPIE2ETest(unittest.TestCase):
             self.assertTrue(
                 summary["conversation"]["messages"][-1]["structured_payload"]["source_id"].startswith(
                     "mai-cli-merchant-agent:"
+                )
+            )
+
+            status, merchant_summary = self.request(
+                app,
+                "GET",
+                "/conversations/CONV-0001",
+                headers={"authorization": f"Bearer {merchant_token}"},
+            )
+            self.assertEqual(status, 200)
+            tool_events = [
+                event
+                for event in merchant_summary["conversation"]["audit_events"]
+                if event["event"] == "llm_tool_call"
+            ]
+            self.assertTrue(
+                any(
+                    event["details"].get("host") == "openclaw"
+                    and event["details"].get("session_id") == "openclaw-session-1"
+                    for event in tool_events
                 )
             )
 
