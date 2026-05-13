@@ -596,6 +596,46 @@ class PublicMarketplaceTest(unittest.TestCase):
             self.assertEqual(status, 200)
             self.assertEqual(update["product"]["stock"], 4)
 
+    def test_append_message_normalizes_human_review_reason_for_routing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "marketplace.sqlite"
+            app = create_app(db_file)
+
+            status, merchant = self.request(app, "POST", "/merchants", {"id": "seller-a", "name": "West Lake Tea"})
+            self.assertEqual(status, 200)
+            merchant_token = merchant["merchant_token"]
+            status, created = self.request(
+                app,
+                "POST",
+                "/conversations",
+                {
+                    "buyer_id": "alice",
+                    "merchant_id": "seller-a",
+                    "text": "Can I get a private discount?",
+                },
+            )
+            self.assertEqual(status, 200)
+            self.assertEqual(created["conversation"]["id"], "CONV-0001")
+
+            status, message = self.request(
+                app,
+                "POST",
+                "/conversations/CONV-0001/messages",
+                {
+                    "sender": "merchant",
+                    "intent": "support",
+                    "text": "This needs an operator review.",
+                    "status": "human_required",
+                    "structured_payload": {"reason": " suspicious_content "},
+                    "merchant_token": merchant_token,
+                },
+            )
+
+            self.assertEqual(status, 200)
+            self.assertEqual(message["message"]["structured_payload"]["reason"], "suspicious_content")
+            self.assertEqual(message["conversation"]["status"], "human_required")
+            self.assertEqual(message["conversation"]["next_actor"], "operator")
+
     def test_conversation_reads_and_review_queues_require_owner_tokens(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "marketplace.sqlite"

@@ -69,6 +69,10 @@ def require_conversation(conn: sqlite3.Connection, conversation_id: str) -> sqli
     return row
 
 
+def _normalize_review_text(value: Any, default: str) -> str:
+    return str(value or "").strip() or default
+
+
 def append_message(
     conn: sqlite3.Connection,
     conversation_id: str,
@@ -82,6 +86,7 @@ def append_message(
     if not text.strip():
         raise SystemExit("message text is required")
     now = now_iso()
+    payload = dict(structured_payload or {})
     if status is None:
         if sender == "buyer":
             status = "waiting_merchant"
@@ -89,7 +94,9 @@ def append_message(
             status = "waiting_buyer"
         else:
             status = conversation["status"]
-    next_actor = next_actor_for_status(status, str((structured_payload or {}).get("reason") or ""))
+    if status == "human_required":
+        payload["reason"] = _normalize_review_text(payload.get("reason"), "human_required")
+    next_actor = next_actor_for_status(status, str(payload.get("reason") or ""))
     cursor = conn.execute(
         """
         insert into messages(conversation_id, sender, intent, text, structured_payload_json, created_at)
@@ -100,7 +107,7 @@ def append_message(
             sender,
             intent,
             text,
-            encode_json(structured_payload or {}),
+            encode_json(payload),
             now,
         ),
     )
@@ -118,7 +125,7 @@ def append_message(
             "intent": intent,
             "status": status,
             "next_actor": next_actor,
-            "source_id": (structured_payload or {}).get("source_id", ""),
+            "source_id": payload.get("source_id", ""),
         },
     )
     return message_summary(conn, int(cursor.lastrowid))
@@ -131,8 +138,8 @@ def add_flag(
     severity: str = "review",
     sku: str = "",
 ) -> dict[str, Any]:
-    reason = str(reason or "").strip() or "human_required"
-    severity = str(severity or "").strip() or "review"
+    reason = _normalize_review_text(reason, "human_required")
+    severity = _normalize_review_text(severity, "review")
     sku = str(sku or "").strip()
     now = now_iso()
     cursor = conn.execute(
