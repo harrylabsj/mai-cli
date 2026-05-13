@@ -35,18 +35,22 @@ def import_json_store(conn: sqlite3.Connection, source: str | Path) -> dict[str,
         if conn.execute("select 1 from products where sku = ?", (resolved_sku,)).fetchone():
             skipped["products"] += 1
             continue
-        create_product(
-            conn,
-            merchant_id=str(product.get("merchant_id") or product.get("merchant") or ""),
-            sku=resolved_sku,
-            title=str(product.get("title") or sku),
-            description=str(product.get("description") or ""),
-            category=str(product.get("category") or ""),
-            tags=product.get("tags") or [],
-            price=float(product.get("price") or 0),
-            currency=str(product.get("currency") or "CNY"),
-            stock=int(product.get("stock") or 0),
-            delivery_attributes=str(product.get("shipping") or ""),
-        )
+        try:
+            create_product(
+                conn,
+                merchant_id=str(product.get("merchant_id") or product.get("merchant") or ""),
+                sku=resolved_sku,
+                title=str(product.get("title") or sku),
+                description=str(product.get("description") or ""),
+                category=str(product.get("category") or ""),
+                tags=product.get("tags") or [],
+                price=float(product.get("price") or 0),
+                currency=str(product.get("currency") or "CNY"),
+                stock=int(product.get("stock") or 0),
+                delivery_attributes=str(product.get("shipping") or ""),
+            )
+        except (TypeError, ValueError, SystemExit):
+            skipped["products"] += 1
+            continue
         imported["products"] += 1
     return {"ok": True, "imported": imported, "skipped": skipped}

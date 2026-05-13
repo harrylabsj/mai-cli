@@ -117,6 +117,52 @@ class MaiCliTest(unittest.TestCase):
             self.assertIn("Skipped merchants: 1", output)
             self.assertIn("Skipped products: 1", output)
 
+    def test_legacy_import_skips_malformed_products_without_aborting(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            legacy_file = Path(tmp) / "mai.json"
+            legacy_file.write_text(
+                json.dumps(
+                    {
+                        "merchants": {"seller-a": {"name": "West Lake Tea"}},
+                        "products": {
+                            "tea-a": {
+                                "merchant_id": "seller-a",
+                                "title": "Longjing Gift Box",
+                                "price": 88,
+                                "stock": 5,
+                            },
+                            "tea-b": {
+                                "merchant_id": "seller-a",
+                                "title": "Broken Tea",
+                                "price": "bad",
+                                "stock": "bad",
+                            },
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            try:
+                output = self.run_cli(
+                    db_file,
+                    "legacy",
+                    "import",
+                    "--from-json",
+                    str(legacy_file),
+                    "--format",
+                    "json",
+                )
+            except ValueError as exc:
+                self.fail(f"legacy import should skip malformed products instead of aborting: {exc}")
+
+            result = json.loads(output)
+            self.assertEqual(result["imported"]["products"], 1)
+            self.assertEqual(result["skipped"]["products"], 1)
+            products = json.loads(self.run_cli(db_file, "search", "products", "--query", "tea", "--format", "json"))
+            self.assertEqual([product["sku"] for product in products["results"]], ["tea-a"])
+
     def test_catalog_search_and_stock_management_use_sqlite(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"
