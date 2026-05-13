@@ -1745,7 +1745,17 @@ class MaiCliTest(unittest.TestCase):
             db_file = Path(tmp) / "mai.sqlite"
             self.run_cli(db_file, "merchant", "create", "--id", "seller-a", "--name", "West Lake Tea")
             heartbeat = json.loads(
-                self.run_cli(db_file, "agent", "heartbeat", "--merchant", "seller-a", "--status", "online", "--format", "json")
+                self.run_cli(
+                    db_file,
+                    "agent",
+                    "heartbeat",
+                    "--merchant",
+                    "seller-a",
+                    "--status",
+                    "online",
+                    "--format",
+                    "json",
+                )
             )
 
             output = self.run_cli(db_file, "agent", "show", "--agent", heartbeat["agent"]["id"])
@@ -1758,6 +1768,35 @@ class MaiCliTest(unittest.TestCase):
             self.assertIn("Checked: 0", output)
             self.assertIn("Replied: 0", output)
             self.assertNotIn('"agent"', output)
+
+    def test_agent_list_and_show_tolerate_corrupt_runtime_counters(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.run_cli(db_file, "merchant", "create", "--id", "seller-a", "--name", "West Lake Tea")
+            heartbeat = json.loads(
+                self.run_cli(db_file, "agent", "heartbeat", "--merchant", "seller-a", "--status", "online", "--format", "json")
+            )
+            agent_id = heartbeat["agent"]["id"]
+
+            conn = sqlite3.connect(db_file)
+            try:
+                conn.execute(
+                    "update agents set pid = 'bad', checked_count = 'bad', replied_count = 'bad' where id = ?",
+                    (agent_id,),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+
+            listed = json.loads(self.run_cli(db_file, "agent", "list", "--format", "json"))
+            shown = json.loads(self.run_cli(db_file, "agent", "show", "--agent", agent_id, "--format", "json"))
+
+            self.assertEqual(listed["agents"][0]["pid"], 0)
+            self.assertEqual(listed["agents"][0]["checked_count"], 0)
+            self.assertEqual(listed["agents"][0]["replied_count"], 0)
+            self.assertEqual(shown["agent"]["pid"], 0)
+            self.assertEqual(shown["agent"]["checked_count"], 0)
+            self.assertEqual(shown["agent"]["replied_count"], 0)
 
     def test_agent_status_text_output_is_readable(self):
         with tempfile.TemporaryDirectory() as tmp:

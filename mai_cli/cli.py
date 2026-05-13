@@ -25,6 +25,7 @@ from mai_cli.api.app import (
     _merchant_audit_events,
     _require_merchant_token,
     _resolve_agent_token,
+    _safe_non_negative_int,
     create_app,
 )
 from mai_cli.config import DEFAULT_DB_PATH
@@ -1299,11 +1300,11 @@ def _agent_summary(row: Any) -> dict[str, Any]:
         "status": row["status"],
         "capabilities": decode_json(row["capabilities_json"], []),
         "last_seen_at": row["last_seen_at"],
-        "pid": int(row["pid"] or 0),
+        "pid": _safe_non_negative_int(row["pid"]),
         "version": row["version"],
         "last_error": row["last_error"],
-        "checked_count": int(row["checked_count"] or 0),
-        "replied_count": int(row["replied_count"] or 0),
+        "checked_count": _safe_non_negative_int(row["checked_count"]),
+        "replied_count": _safe_non_negative_int(row["replied_count"]),
     }
 
 
