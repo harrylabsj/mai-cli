@@ -922,6 +922,18 @@ class LlmContractTest(unittest.TestCase):
 
         self.assertEqual(dispatcher.timeout, 10.0)
 
+    def test_http_marketplace_tool_dispatcher_caps_oversized_timeout(self):
+        dispatcher = HTTPMarketplaceToolDispatcher(
+            "http://127.0.0.1:8765",
+            auth_token="buyer-token",
+            actor="alice",
+            token_scope="buyer",
+            timeout=10**100,
+            transport=lambda _method, _path, _payload, _query, _headers: {"ok": True},
+        )
+
+        self.assertEqual(dispatcher.timeout, 60.0)
+
     def test_http_marketplace_tool_dispatcher_preserves_denial_when_audit_fails(self):
         dispatcher = HTTPMarketplaceToolDispatcher(
             "http://127.0.0.1:8765",

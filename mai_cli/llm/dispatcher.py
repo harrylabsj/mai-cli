@@ -23,9 +23,10 @@ HTTPTransport = Callable[
     [str, str, dict[str, Any] | None, dict[str, Any] | None, dict[str, str]],
     dict[str, Any],
 ]
+MAX_HTTP_TOOL_TIMEOUT_SECONDS = 60.0
 
 
-def _safe_positive_float(value: Any, default: float) -> float:
+def _safe_positive_float(value: Any, default: float, maximum: float | None = None) -> float:
     if isinstance(value, bool):
         return default
     try:
@@ -34,6 +35,8 @@ def _safe_positive_float(value: Any, default: float) -> float:
         return default
     if not math.isfinite(number) or number <= 0:
         return default
+    if maximum is not None:
+        return min(number, maximum)
     return number
 
 
@@ -273,7 +276,7 @@ class HTTPMarketplaceToolDispatcher:
         self.session_id = session_id
         self.actor = actor
         self.token_scope = token_scope
-        self.timeout = _safe_positive_float(timeout, 10.0)
+        self.timeout = _safe_positive_float(timeout, 10.0, maximum=MAX_HTTP_TOOL_TIMEOUT_SECONDS)
         self.transport = transport
         self.allowed_tools = {tool.name for tool in marketplace_tool_schema_objects()}
 
