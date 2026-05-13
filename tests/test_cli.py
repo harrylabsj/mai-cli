@@ -132,6 +132,20 @@ class MaiCliTest(unittest.TestCase):
                 return
             self.fail("legacy import should reject invalid JSON")
 
+    def test_legacy_import_reports_unreadable_json_file_cleanly(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            legacy_file = Path(tmp) / "missing.json"
+
+            try:
+                self.run_cli(db_file, "legacy", "import", "--from-json", str(legacy_file))
+            except FileNotFoundError as exc:
+                self.fail(f"legacy import should report unreadable JSON as a CLI error: {exc}")
+            except SystemExit as exc:
+                self.assertIn("Unable to read legacy JSON", str(exc))
+                return
+            self.fail("legacy import should reject missing JSON files")
+
     def test_legacy_import_skips_malformed_products_without_aborting(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"
