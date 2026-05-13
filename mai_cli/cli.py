@@ -958,8 +958,8 @@ def emit_agent_heartbeat_text(agent: dict[str, Any]) -> None:
     print(f"Status: {agent['status']}")
     print(f"Last seen: {agent['last_seen_at']}")
     print(f"Capabilities: {', '.join(agent['capabilities']) if agent['capabilities'] else '-'}")
-    print(f"Checked: {int(agent.get('checked_count') or 0)}")
-    print(f"Replied: {int(agent.get('replied_count') or 0)}")
+    print(f"Checked: {_safe_non_negative_int(agent.get('checked_count'))}")
+    print(f"Replied: {_safe_non_negative_int(agent.get('replied_count'))}")
     if agent.get("last_error"):
         print(f"Last error: {agent['last_error']}")
 
