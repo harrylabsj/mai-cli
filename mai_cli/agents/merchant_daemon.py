@@ -58,6 +58,12 @@ def safe_non_negative_int(value: Any) -> int:
     return max(number, 0)
 
 
+def safe_replied_count(value: Any) -> int:
+    if not isinstance(value, list):
+        return 0
+    return len(value)
+
+
 def write_json_atomic(path: Path, value: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f"{path.name}.tmp")
@@ -412,7 +418,7 @@ def _run_process_loop(
             try:
                 result = process_once()
                 checked = safe_non_negative_int(result.get("checked"))
-                replied_count = len(result.get("replied") or [])
+                replied_count = safe_replied_count(result.get("replied"))
                 counters["checked"] += checked
                 counters["replied"] += replied_count
                 last_error = None
