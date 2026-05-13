@@ -89,9 +89,13 @@ def latest_buyer_message(conversation: dict[str, Any]) -> dict[str, Any] | None:
     return None
 
 
-def has_agent_reply_after(conversation: dict[str, Any], buyer_message: dict[str, Any]) -> bool:
+def has_agent_reply_after(conversation: dict[str, Any], buyer_message_id: int) -> bool:
     for message in conversation.get("messages", []):
-        if message["id"] <= buyer_message["id"]:
+        try:
+            message_id = _positive_message_id(message.get("id"))
+        except ValueError:
+            continue
+        if message_id <= buyer_message_id:
             continue
         if message["sender"] in {"merchant_agent", "merchant"}:
             return True
@@ -151,7 +155,7 @@ def process_once_with_tools(tools: MerchantAgentTools, merchant_id: str) -> dict
     failed: list[dict[str, Any]] = []
     for conversation in conversations:
         buyer_message = latest_buyer_message(conversation)
-        if buyer_message is None or has_agent_reply_after(conversation, buyer_message):
+        if buyer_message is None:
             continue
         try:
             buyer_message_id = _positive_message_id(buyer_message.get("id"))
@@ -165,6 +169,8 @@ def process_once_with_tools(tools: MerchantAgentTools, merchant_id: str) -> dict
                 replied_count=len(replied),
             )
             failed.append({"conversation_id": conversation["id"], "message_id": 0, "error": error})
+            continue
+        if has_agent_reply_after(conversation, buyer_message_id):
             continue
         idempotency_key = message_idempotency_key(agent["id"], buyer_message_id)
         claim = tools.claim_message(agent["id"], conversation["id"], buyer_message_id, idempotency_key)
