@@ -38,6 +38,18 @@ def _safe_non_negative_int(value: Any) -> int:
     return max(number, 0)
 
 
+def _positive_message_id(value: Any) -> int:
+    if isinstance(value, bool):
+        raise ValueError("buyer message id must be a positive integer")
+    try:
+        message_id = int(value)
+    except (OverflowError, TypeError, ValueError) as exc:
+        raise ValueError("buyer message id must be a positive integer") from exc
+    if message_id <= 0:
+        raise ValueError("buyer message id must be a positive integer")
+    return message_id
+
+
 def _claim_ttl_seconds_from_env() -> int:
     try:
         seconds = int(os.environ.get("MAI_AGENT_CLAIM_TTL_SECONDS") or "300")
@@ -141,8 +153,21 @@ def process_once_with_tools(tools: MerchantAgentTools, merchant_id: str) -> dict
         buyer_message = latest_buyer_message(conversation)
         if buyer_message is None or has_agent_reply_after(conversation, buyer_message):
             continue
-        idempotency_key = message_idempotency_key(agent["id"], int(buyer_message["id"]))
-        claim = tools.claim_message(agent["id"], conversation["id"], int(buyer_message["id"]), idempotency_key)
+        try:
+            buyer_message_id = _positive_message_id(buyer_message.get("id"))
+        except ValueError as exc:
+            error = f"{type(exc).__name__}: {exc}"
+            tools.heartbeat(
+                merchant_id,
+                status="online",
+                last_error=error,
+                checked_count=len(conversations),
+                replied_count=len(replied),
+            )
+            failed.append({"conversation_id": conversation["id"], "message_id": 0, "error": error})
+            continue
+        idempotency_key = message_idempotency_key(agent["id"], buyer_message_id)
+        claim = tools.claim_message(agent["id"], conversation["id"], buyer_message_id, idempotency_key)
         if not claim.get("claimed"):
             continue
         try:
@@ -157,12 +182,12 @@ def process_once_with_tools(tools: MerchantAgentTools, merchant_id: str) -> dict
                     "human_required": needs_human,
                     "reason": reason,
                     "source_id": agent["id"],
-                    "processed_message_id": int(buyer_message["id"]),
+                    "processed_message_id": buyer_message_id,
                     "idempotency_key": idempotency_key,
                 },
                 status=status,
             )
-            tools.complete_message(agent["id"], int(buyer_message["id"]))
+            tools.complete_message(agent["id"], buyer_message_id)
             flags = []
             if needs_human:
                 flags.append(tools.add_flag(conversation["id"], reason or "human_required", sku=conversation.get("sku", "")))
@@ -178,7 +203,7 @@ def process_once_with_tools(tools: MerchantAgentTools, merchant_id: str) -> dict
             )
         except Exception as exc:  # pragma: no cover - exercised through fake tools
             error = f"{type(exc).__name__}: {exc}"
-            tools.fail_message(agent["id"], int(buyer_message["id"]), error)
+            tools.fail_message(agent["id"], buyer_message_id, error)
             tools.heartbeat(
                 merchant_id,
                 status="online",
@@ -186,7 +211,7 @@ def process_once_with_tools(tools: MerchantAgentTools, merchant_id: str) -> dict
                 checked_count=len(conversations),
                 replied_count=len(replied),
             )
-            failed.append({"conversation_id": conversation["id"], "message_id": int(buyer_message["id"]), "error": error})
+            failed.append({"conversation_id": conversation["id"], "message_id": buyer_message_id, "error": error})
     return {
         "ok": True,
         "merchant_id": merchant_id,

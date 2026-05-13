@@ -129,6 +129,13 @@ class FailingMarketplaceTools(FakeMarketplaceTools):
         raise RuntimeError("temporary catalog failure")
 
 
+class CorruptBuyerMessageIdTools(FakeMarketplaceTools):
+    def waiting_merchant_conversations(self, merchant_id):
+        conversations = super().waiting_merchant_conversations(merchant_id)
+        conversations[0]["messages"][0]["id"] = "bad"
+        return conversations
+
+
 class MissingProductMarketplaceTools(FakeMarketplaceTools):
     def product_summary(self, sku):
         self.calls.append(("product_summary", sku))
@@ -378,6 +385,17 @@ class AgentToolsBoundaryTest(unittest.TestCase):
         self.assertTrue(result["replied"][0]["human_required"])
         self.assertIn("merchant human to confirm which product", tools.messages[0]["text"])
         self.assertIn(("add_flag", "CONV-0001", "unclear_product", "tea-a"), tools.calls)
+
+    def test_process_once_reports_corrupt_buyer_message_id_without_crashing(self):
+        tools = CorruptBuyerMessageIdTools()
+
+        result = merchant_agent.process_once_with_tools(tools, "seller-a")
+
+        self.assertEqual(result["replied"], [])
+        self.assertEqual(result["failed"][0]["conversation_id"], "CONV-0001")
+        self.assertEqual(result["failed"][0]["message_id"], 0)
+        self.assertIn("buyer message id must be a positive integer", result["failed"][0]["error"])
+        self.assertFalse(any(call[0] == "claim_message" for call in tools.calls))
 
     def test_process_once_tolerates_corrupt_remote_product_numbers(self):
         tools = CorruptProductMarketplaceTools()
