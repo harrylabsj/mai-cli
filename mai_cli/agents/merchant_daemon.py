@@ -50,6 +50,14 @@ def read_json(path: Path, default: Any) -> Any:
         return default
 
 
+def safe_non_negative_int(value: Any) -> int:
+    try:
+        number = int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+    return max(number, 0)
+
+
 def write_json_atomic(path: Path, value: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f"{path.name}.tmp")
@@ -150,7 +158,7 @@ def start_agent(
     paths = agent_paths(merchant_id, state_dir)
     ensure_agent_dirs(paths)
     pid_record = read_json(paths["pid_file"], {})
-    existing_pid = int(pid_record.get("pid") or 0)
+    existing_pid = safe_non_negative_int(pid_record.get("pid"))
     stale_replaced = bool(existing_pid and not is_process_running(existing_pid))
     if existing_pid and not stale_replaced:
         raise SystemExit(f"Agent already running for merchant {merchant_id}: pid {existing_pid}")
@@ -260,7 +268,7 @@ def stop_agent(
 ) -> dict[str, Any]:
     paths = agent_paths(merchant_id, state_dir)
     pid_record = read_json(paths["pid_file"], {})
-    pid = int(pid_record.get("pid") or 0)
+    pid = safe_non_negative_int(pid_record.get("pid"))
     mode = str(pid_record.get("mode") or "sqlite")
     host = str(pid_record.get("host") or "")
     session_id = str(pid_record.get("session_id") or "")
@@ -325,7 +333,7 @@ def stop_agent(
 def status_agent(db_path: str | Path, merchant_id: str, state_dir: str | Path | None = None) -> dict[str, Any]:
     paths = agent_paths(merchant_id, state_dir)
     pid_record = read_json(paths["pid_file"], {})
-    pid = int(pid_record.get("pid") or 0)
+    pid = safe_non_negative_int(pid_record.get("pid"))
     state = read_json(paths["state_file"], {})
     mode = str(pid_record.get("mode") or state.get("mode") or "sqlite")
     host = str(pid_record.get("host") or state.get("host") or "")
@@ -348,8 +356,8 @@ def status_agent(db_path: str | Path, merchant_id: str, state_dir: str | Path | 
         "log_file": str(paths["log_file"]),
         "heartbeat": read_agent_heartbeat(db_path, merchant_id),
         "counters": {
-            "checked": int(counters.get("checked") or 0),
-            "replied": int(counters.get("replied") or 0),
+            "checked": safe_non_negative_int(counters.get("checked")),
+            "replied": safe_non_negative_int(counters.get("replied")),
         },
         "last_error": state.get("last_error"),
         "started_at": pid_record.get("started_at") or state.get("started_at"),

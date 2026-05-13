@@ -89,6 +89,25 @@ class AgentDaemonLifecycleTest(unittest.TestCase):
                     merchant_daemon.logs_agent("seller-a", tail=tail, state_dir=state_dir)
                 self.assertIn("tail must be greater than 0", str(raised.exception))
 
+    def test_status_agent_tolerates_corrupt_pid_and_counters(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            db_file = tmp_path / "mai.sqlite"
+            state_dir = tmp_path / "state"
+            paths = merchant_daemon.agent_paths("seller-a", state_dir=state_dir)
+            merchant_daemon.ensure_agent_dirs(paths)
+            paths["pid_file"].write_text(json.dumps({"pid": "bad"}), encoding="utf-8")
+            paths["state_file"].write_text(
+                json.dumps({"running": True, "counters": {"checked": "bad", "replied": "bad"}}),
+                encoding="utf-8",
+            )
+
+            status = merchant_daemon.status_agent(db_file, "seller-a", state_dir=state_dir)
+
+            self.assertIsNone(status["pid"])
+            self.assertFalse(status["running"])
+            self.assertEqual(status["counters"], {"checked": 0, "replied": 0})
+
     def wait_for_status(self, db_file, state_dir, predicate, timeout=5):
         deadline = time.time() + timeout
         last_status = None
