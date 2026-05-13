@@ -156,6 +156,35 @@ class MaiCliTest(unittest.TestCase):
             self.assertIn("West Lake", output)
             self.assertNotIn('"results"', output)
 
+    def test_merchant_list_text_output_is_readable(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.run_cli(
+                db_file,
+                "merchant",
+                "create",
+                "--id",
+                "seller-a",
+                "--name",
+                "West Lake Tea",
+                "--city",
+                "Hangzhou",
+                "--service-area",
+                "West Lake",
+            )
+
+            output = self.run_cli(db_file, "merchant", "list")
+
+            self.assertIn("MERCHANT_ID", output)
+            self.assertIn("NAME", output)
+            self.assertIn("CITY", output)
+            self.assertIn("SERVICE_AREA", output)
+            self.assertIn("seller-a", output)
+            self.assertIn("West Lake Tea", output)
+            self.assertIn("Hangzhou", output)
+            self.assertIn("West Lake", output)
+            self.assertNotIn('"results"', output)
+
     def test_delivery_set_text_output_is_readable(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"

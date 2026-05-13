@@ -113,6 +113,19 @@ def cmd_merchant_list(args: argparse.Namespace) -> None:
     with db_session(db_path_from_args(args)) as conn:
         rows = conn.execute("select id from merchants order by name, id").fetchall()
         merchants = [merchant_summary(conn, row["id"]) for row in rows]
+    if args.format == "text":
+        if not merchants:
+            print("No merchants found.")
+            return
+        print(f"{'MERCHANT_ID':<14} {'NAME':<24} {'CITY':<14} SERVICE_AREA")
+        for merchant in merchants:
+            print(
+                f"{merchant['id']:<14} "
+                f"{merchant['name']:<24} "
+                f"{merchant['city'] or '-':<14} "
+                f"{merchant['service_area'] or '-'}"
+            )
+        return
     emit({"ok": True, "results": merchants}, args.format)
 
 

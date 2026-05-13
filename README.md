@@ -41,6 +41,7 @@ python3 scripts/mai.py --db ./mai-cli.sqlite product add \
   --delivery-attributes "same-city,courier"
 
 python3 scripts/mai.py --db ./mai-cli.sqlite merchant update --id seller-a --hours "10:00-20:00"
+python3 scripts/mai.py --db ./mai-cli.sqlite merchant list
 python3 scripts/mai.py --db ./mai-cli.sqlite delivery set --merchant seller-a --service-area "West Lake" --fee 12 --eta-minutes 45
 python3 scripts/mai.py --db ./mai-cli.sqlite product update --merchant seller-a --sku tea-a --stock 4 --price 92
 python3 scripts/mai.py --db ./mai-cli.sqlite search products --query "longjing"
