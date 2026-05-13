@@ -132,7 +132,7 @@ git commit -m "Add Hermes API request descriptor"
 - Modify: `mai_cli/adapters/openclaw.py`
 - Test: `tests/test_project_shape.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add this assertion block to `ProjectShapeTest.test_config_and_host_adapters_expose_stable_entrypoints` after the existing `merchant_command` assertions:
 
@@ -162,7 +162,7 @@ Add this assertion block to `ProjectShapeTest.test_config_and_host_adapters_expo
             )
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run:
 
@@ -172,7 +172,7 @@ python3 -m unittest discover -s tests -p test_project_shape.py -k config_and_hos
 
 Expected: FAIL with `TypeError: merchant_agent_command() got an unexpected keyword argument 'api_url'`.
 
-- [ ] **Step 3: Add the minimal implementation**
+- [x] **Step 3: Add the minimal implementation**
 
 Change the `merchant_agent_command` signature in `mai_cli/adapters/openclaw.py` to:
 
@@ -214,7 +214,7 @@ def merchant_agent_context(merchant_id: str, session_id: str = "") -> dict:
 
 Add `"merchant_agent_context"` to `__all__`.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run:
 
@@ -224,7 +224,7 @@ python3 -m unittest discover -s tests -p test_project_shape.py -k config_and_hos
 
 Expected: `OK`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add mai_cli/adapters/openclaw.py tests/test_project_shape.py

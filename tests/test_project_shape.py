@@ -52,6 +52,30 @@ class ProjectShapeTest(unittest.TestCase):
             self.assertIn("run", merchant_command)
             self.assertIn("--once", merchant_command)
 
+            api_agent_command = openclaw.merchant_agent_command(
+                "seller-a",
+                api_url="http://mai.test",
+                agent_token="agent-token",
+                once=True,
+            )
+            self.assertIn("--api-url", api_agent_command)
+            self.assertIn("http://mai.test", api_agent_command)
+            self.assertIn("--agent-token", api_agent_command)
+            self.assertIn("agent-token", api_agent_command)
+            self.assertNotIn("--db", api_agent_command)
+
+            agent_context = openclaw.merchant_agent_context("seller-a", session_id="openclaw-session-1")
+            self.assertEqual(
+                agent_context,
+                {
+                    "host": "openclaw",
+                    "session_id": "openclaw-session-1",
+                    "actor": "mai-cli-merchant-agent:seller-a",
+                    "source_id": "openclaw-merchant:seller-a:openclaw-session-1",
+                    "token_scope": "merchant_agent",
+                },
+            )
+
             buyer_command = hermes.buyer_ask_command("alice", "longjing gift", db_path=db_path, city="Hangzhou")
             self.assertIn("buyer", buyer_command)
             self.assertIn("ask", buyer_command)

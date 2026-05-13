@@ -41,13 +41,31 @@ def merchant_agent_command(
     project_root: str | Path | None = None,
     once: bool = False,
     interval: float | None = None,
+    api_url: str = "",
+    agent_token: str = "",
 ) -> list[str]:
     args: list[object] = ["agent", "run", "--merchant", merchant_id, "--format", "json"]
     if once:
         args.append("--once")
     if interval is not None:
         args.extend(["--interval", interval])
+    if api_url:
+        args.extend(["--api-url", api_url])
+    if agent_token:
+        args.extend(["--agent-token", agent_token])
+    if api_url:
+        return build_mai_command(args, project_root=project_root)
     return build_mai_command(args, db_path=db_path, project_root=project_root)
+
+
+def merchant_agent_context(merchant_id: str, session_id: str = "") -> dict:
+    return {
+        "host": "openclaw",
+        "session_id": session_id,
+        "actor": f"mai-cli-merchant-agent:{merchant_id}",
+        "source_id": f"openclaw-merchant:{merchant_id}:{session_id}" if session_id else f"openclaw-merchant:{merchant_id}",
+        "token_scope": "merchant_agent",
+    }
 
 
 def merchant_create_command(
@@ -135,6 +153,7 @@ __all__ = [
     "inspect_host",
     "install_command",
     "merchant_agent_command",
+    "merchant_agent_context",
     "merchant_create_command",
     "product_add_command",
     "resolve_project_root",
