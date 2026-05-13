@@ -1256,6 +1256,20 @@ class PublicMarketplaceTest(unittest.TestCase):
             self.assertEqual(status, 400)
             self.assertIn("Unknown human-review action", invalid_action["error"])
 
+            status, invalid_sender = self.request(
+                app,
+                "POST",
+                f"/human-review/{first_review_id}/resolve",
+                {
+                    "action": "reply",
+                    "sender": "buyer",
+                    "text": "Merchant token must not spoof buyer.",
+                    "merchant_token": merchant_a["merchant_token"],
+                },
+            )
+            self.assertEqual(status, 400)
+            self.assertIn("Unknown human-review sender", invalid_sender["error"])
+
             status, anonymous_resolve = self.request(
                 app,
                 "POST",
@@ -2289,6 +2303,20 @@ class PublicMarketplaceTest(unittest.TestCase):
             self.assertEqual(queue["reviews"][0]["conversation_id"], "CONV-0001")
             self.assertEqual(queue["reviews"][0]["merchant_id"], "seller-a")
             self.assertEqual(queue["reviews"][0]["buyer_id"], "alice")
+
+            status, invalid_sender = self.request(
+                app,
+                "POST",
+                "/conversations/CONV-0001/human-review/resolve",
+                {
+                    "action": "reply",
+                    "sender": "buyer",
+                    "text": "Merchant token must not spoof buyer.",
+                    "merchant_token": merchant_token,
+                },
+            )
+            self.assertEqual(status, 400)
+            self.assertIn("Unknown human-review sender", invalid_sender["error"])
 
             status, resolved = self.request(
                 app,

@@ -51,6 +51,7 @@ class AuthError(Exception):
 
 
 HUMAN_REVIEW_ACTIONS = {"reply", "approve_public_answer", "reject", "close"}
+HUMAN_REVIEW_SENDERS = {"merchant", "merchant_agent", "operator"}
 
 
 def _json_error_response(status_code: int, error: str) -> Any:
@@ -185,6 +186,13 @@ def _payload_with_auth(payload: dict[str, Any], authorization: Any = "") -> dict
     if isinstance(authorization, str) and authorization.lower().startswith("bearer "):
         merged["_auth_token"] = authorization.split(" ", 1)[1].strip()
     return merged
+
+
+def _human_review_sender(payload: dict[str, Any]) -> str:
+    sender = str(payload.get("sender") or "merchant").strip() or "merchant"
+    if sender not in HUMAN_REVIEW_SENDERS:
+        raise SystemExit(f"Unknown human-review sender: {sender}")
+    return sender
 
 
 def _expires_at_from_ttl(ttl_seconds: Any) -> str:
@@ -1144,7 +1152,7 @@ def _resolve_human_review_item(db_path: str | Path, review_id: str | int, payloa
     action = str(payload.get("action") or "reply")
     if action not in HUMAN_REVIEW_ACTIONS:
         raise SystemExit(f"Unknown human-review action: {action}")
-    sender = str(payload.get("sender") or "merchant")
+    sender = _human_review_sender(payload)
     with db_session(db_path) as conn:
         row = _human_review_row(conn, review_id)
         if row["resolved_at"]:
@@ -1225,7 +1233,7 @@ def _resolve_human_review(db_path: str | Path, conversation_id: str, payload: di
     action = str(payload.get("action") or "reply")
     if action not in HUMAN_REVIEW_ACTIONS:
         raise SystemExit(f"Unknown human-review action: {action}")
-    sender = str(payload.get("sender") or "merchant")
+    sender = _human_review_sender(payload)
     status = "closed" if action == "close" else "waiting_buyer"
     with db_session(db_path) as conn:
         conversation = conversation_summary(conn, conversation_id)

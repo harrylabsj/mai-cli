@@ -17,6 +17,7 @@ from mai_cli.agents import buyer_cli, merchant_agent, merchant_daemon
 from mai_cli.agents.tools import HTTPMerchantAgentTools
 from mai_cli.api.app import (
     AuthError,
+    HUMAN_REVIEW_SENDERS,
     _agent_token_row,
     _agent_token_summary,
     _default_merchant_agent_id,
@@ -1815,7 +1816,7 @@ def build_parser() -> argparse.ArgumentParser:
     conversation_resolve = conversation_sub.add_parser("resolve-review", help="Resolve human-review flags")
     conversation_resolve.add_argument("--conversation", required=True)
     conversation_resolve.add_argument("--action", required=True, choices=["reply", "approve_public_answer", "reject", "close"])
-    conversation_resolve.add_argument("--sender", default="merchant")
+    conversation_resolve.add_argument("--sender", choices=sorted(HUMAN_REVIEW_SENDERS), default="merchant")
     conversation_resolve.add_argument("--intent", default="support")
     conversation_resolve.add_argument("--text", default="")
     conversation_resolve.add_argument("--source-id", default="")
@@ -1922,7 +1923,7 @@ def build_parser() -> argparse.ArgumentParser:
     human_review_resolve = human_review_sub.add_parser("resolve", help="Resolve one human-review item by id")
     human_review_resolve.add_argument("--review", required=True, type=int)
     human_review_resolve.add_argument("--action", required=True, choices=["reply", "approve_public_answer", "reject", "close"])
-    human_review_resolve.add_argument("--sender", default="merchant")
+    human_review_resolve.add_argument("--sender", choices=sorted(HUMAN_REVIEW_SENDERS), default="merchant")
     human_review_resolve.add_argument("--intent", default="support")
     human_review_resolve.add_argument("--text", default="")
     human_review_resolve.add_argument("--source-id", default="")
