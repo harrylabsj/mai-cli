@@ -933,9 +933,13 @@ def _abandon_stale_agent_messages(db_path: str | Path, payload: dict[str, Any]) 
 
 
 def _safe_non_negative_int(value: Any) -> int:
+    if isinstance(value, bool):
+        return 0
+    if isinstance(value, float) and not math.isfinite(value):
+        return 0
     try:
         number = int(value or 0)
-    except (TypeError, ValueError):
+    except (OverflowError, TypeError, ValueError):
         return 0
     return max(number, 0)
 

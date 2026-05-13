@@ -1196,6 +1196,50 @@ class PublicMarketplaceTest(unittest.TestCase):
             self.assertEqual(listed["agents"][0]["checked_count"], 0)
             self.assertEqual(listed["agents"][0]["replied_count"], 0)
 
+    def test_agent_status_api_tolerates_non_finite_runtime_counters(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "marketplace.sqlite"
+            app = create_app(db_file)
+
+            status, merchant = self.request(app, "POST", "/merchants", {"id": "seller-a", "name": "West Lake Tea"})
+            self.assertEqual(status, 200)
+            status, heartbeat = self.request(
+                app,
+                "POST",
+                "/agents/heartbeat",
+                {
+                    "merchant_id": "seller-a",
+                    "pid": 1234,
+                    "checked_count": 2,
+                    "replied_count": 1,
+                    "merchant_token": merchant["merchant_token"],
+                },
+            )
+            self.assertEqual(status, 200)
+            agent_id = heartbeat["agent"]["id"]
+
+            conn = sqlite3.connect(db_file)
+            try:
+                conn.execute(
+                    "update agents set pid = ?, checked_count = ?, replied_count = ? where id = ?",
+                    (float("inf"), float("inf"), float("inf"), agent_id),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+
+            status, listed = self.request(
+                app,
+                "GET",
+                "/agents",
+                headers={"authorization": f"Bearer {merchant['merchant_token']}"},
+            )
+
+            self.assertEqual(status, 200)
+            self.assertEqual(listed["agents"][0]["pid"], 0)
+            self.assertEqual(listed["agents"][0]["checked_count"], 0)
+            self.assertEqual(listed["agents"][0]["replied_count"], 0)
+
     def test_tool_call_audit_api_requires_owner_token_and_records_event(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "marketplace.sqlite"
