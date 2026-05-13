@@ -46,7 +46,7 @@ def ensure_agent_dirs(paths: dict[str, Path]) -> None:
 def read_json(path: Path, default: Any) -> Any:
     try:
         return json.loads(path.read_text(encoding="utf-8"))
-    except (FileNotFoundError, json.JSONDecodeError):
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return default
 
 
