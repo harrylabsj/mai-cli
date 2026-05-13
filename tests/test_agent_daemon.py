@@ -256,6 +256,40 @@ class AgentDaemonLifecycleTest(unittest.TestCase):
             self.assertIsNone(final_state["last_error"])
             self.assertEqual(final_state["counters"], {"checked": 1, "replied": 0})
 
+    def test_process_loop_tolerates_non_finite_interval(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            state_file = tmp_path / "agent.state.json"
+            stop_file = tmp_path / "agent.stop"
+            sleep_durations = []
+            calls = []
+
+            def process_once():
+                calls.append(True)
+                if len(calls) > 1:
+                    stop_file.write_text("stop", encoding="utf-8")
+                return {"checked": 1, "replied": []}
+
+            def fake_sleep(duration):
+                sleep_durations.append(duration)
+                stop_file.write_text("stop", encoding="utf-8")
+
+            with patch("mai_cli.agents.merchant_daemon.time.sleep", side_effect=fake_sleep):
+                output = StringIO()
+                with redirect_stdout(output):
+                    merchant_daemon._run_process_loop(
+                        "seller-a",
+                        process_once,
+                        lambda: None,
+                        interval=float("nan"),
+                        state_file=state_file,
+                        stop_file=stop_file,
+                    )
+
+            self.assertTrue(sleep_durations)
+            self.assertGreater(sleep_durations[0], 0)
+            self.assertEqual(len(calls), 1)
+
     def wait_for_status(self, db_file, state_dir, predicate, timeout=5):
         deadline = time.time() + timeout
         last_status = None

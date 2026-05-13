@@ -420,6 +420,7 @@ def _run_process_loop(
     last_error: str | None = None
     state_path = Path(state_file).expanduser() if state_file else None
     stop_path = Path(stop_file).expanduser() if stop_file else None
+    interval = safe_positive_float(interval, 3.0)
 
     def request_stop(_signum: int, _frame: Any) -> None:
         nonlocal stop_requested
