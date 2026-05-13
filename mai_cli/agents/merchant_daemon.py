@@ -18,6 +18,7 @@ from mai_cli.db.session import db_session, decode_json, now_iso
 DEFAULT_STATE_DIR = Path.home() / ".local" / "state" / "mai-cli"
 MAX_AGENT_INTERVAL_SECONDS = 3600.0
 MAX_AGENT_STOP_TIMEOUT_SECONDS = 300.0
+MAX_AGENT_LOG_TAIL = 1000
 
 
 def state_dir_from(value: str | Path | None = None) -> Path:
@@ -413,6 +414,7 @@ def status_agent(db_path: str | Path, merchant_id: str, state_dir: str | Path | 
 def logs_agent(merchant_id: str, tail: int = 20, state_dir: str | Path | None = None) -> dict[str, Any]:
     if tail <= 0:
         raise ValueError("tail must be greater than 0")
+    tail = min(tail, MAX_AGENT_LOG_TAIL)
     paths = agent_paths(merchant_id, state_dir)
     entries: list[dict[str, Any]] = []
     raw_lines: list[str] = []
