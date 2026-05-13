@@ -1239,7 +1239,7 @@ def _resolve_human_review(db_path: str | Path, conversation_id: str, payload: di
         conversation = conversation_summary(conn, conversation_id)
         _require_merchant_token(conn, conversation["merchant_id"], payload)
         now = now_iso()
-        conn.execute(
+        resolved = conn.execute(
             """
             update moderation_flags
             set resolved_at = ?, resolution = ?, resolved_by = ?
@@ -1247,6 +1247,8 @@ def _resolve_human_review(db_path: str | Path, conversation_id: str, payload: di
             """,
             (now, action, sender, conversation_id),
         )
+        if resolved.rowcount == 0:
+            raise SystemExit(f"No unresolved human reviews for conversation: {conversation_id}")
         if payload.get("text"):
             append_message(
                 conn,

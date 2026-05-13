@@ -700,6 +700,8 @@ def cmd_conversation_resolve_review(args: argparse.Namespace) -> None:
             """,
             (now, args.action, args.sender, args.conversation),
         )
+        if resolved.rowcount == 0:
+            raise SystemExit(f"No unresolved human reviews for conversation: {args.conversation}")
         if args.text:
             append_message(
                 conn,

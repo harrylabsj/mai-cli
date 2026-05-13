@@ -2333,6 +2333,20 @@ class PublicMarketplaceTest(unittest.TestCase):
             self.assertEqual(resolved["conversation"]["status"], "waiting_buyer")
             self.assertIsNotNone(resolved["reviews"][0]["resolved_at"])
 
+            status, duplicate_resolve = self.request(
+                app,
+                "POST",
+                "/conversations/CONV-0001/human-review/resolve",
+                {
+                    "action": "reply",
+                    "text": "There is no pending review left.",
+                    "sender": "merchant",
+                    "merchant_token": merchant_token,
+                },
+            )
+            self.assertEqual(status, 400)
+            self.assertIn("No unresolved human reviews", duplicate_resolve["error"])
+
             status, closed = self.request(
                 app,
                 "POST",
