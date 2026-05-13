@@ -60,6 +60,16 @@ class MaiCliTest(unittest.TestCase):
                     cli.build_parser().parse_args(args)
                 self.assertEqual(caught.exception.code, 2)
 
+    def test_positive_int_args_report_non_numeric_values_cleanly(self):
+        from mai_cli import cli
+
+        stderr = StringIO()
+        with redirect_stderr(stderr), self.assertRaises(SystemExit) as caught:
+            cli.build_parser().parse_args(["agent", "logs", "--merchant", "seller-a", "--tail", "bad"])
+
+        self.assertEqual(caught.exception.code, 2)
+        self.assertIn("must be a whole number", stderr.getvalue())
+
     def test_legacy_import_text_output_is_readable(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"

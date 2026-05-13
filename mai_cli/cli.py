@@ -69,7 +69,10 @@ def emit(value: Any, fmt: str) -> None:
 
 
 def positive_int(value: str) -> int:
-    seconds = int(value)
+    try:
+        seconds = int(value)
+    except (TypeError, ValueError) as exc:
+        raise argparse.ArgumentTypeError("must be a whole number") from exc
     if seconds <= 0:
         raise argparse.ArgumentTypeError("must be greater than 0")
     return seconds
