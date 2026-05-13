@@ -58,7 +58,7 @@ def emit(value: Any, fmt: str) -> None:
     if fmt == "json":
         emit_json(value)
     else:
-        if isinstance(value, dict) and "message" in value:
+        if isinstance(value, dict) and isinstance(value.get("message"), str):
             print(value["message"])
         else:
             print(json.dumps(value, ensure_ascii=False, sort_keys=True))

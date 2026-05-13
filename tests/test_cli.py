@@ -23,6 +23,18 @@ class MaiCliTest(unittest.TestCase):
             mai.main(["--data", str(db_file), *args])
         return output.getvalue()
 
+    def test_emit_text_message_shortcut_only_accepts_strings(self):
+        from mai_cli import cli
+
+        output = StringIO()
+        with redirect_stdout(output):
+            cli.emit({"ok": True, "message": {"id": 1}}, "text")
+
+        rendered = output.getvalue()
+        self.assertIn('"message"', rendered)
+        self.assertIn('"id": 1', rendered)
+        self.assertNotIn("{'id': 1}", rendered)
+
     def test_catalog_search_and_stock_management_use_sqlite(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"
