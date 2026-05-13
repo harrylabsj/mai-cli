@@ -73,6 +73,18 @@ def safe_positive_float(value: Any, default: float) -> float:
     return number
 
 
+def safe_non_negative_float(value: Any, default: float) -> float:
+    if isinstance(value, bool):
+        return default
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return default
+    if not math.isfinite(number):
+        return default
+    return max(number, 0.0)
+
+
 def safe_replied_count(value: Any) -> int:
     if not isinstance(value, list):
         return 0
@@ -288,6 +300,7 @@ def stop_agent(
     state_dir: str | Path | None = None,
     timeout: float = 5.0,
 ) -> dict[str, Any]:
+    timeout = safe_non_negative_float(timeout, 5.0)
     paths = agent_paths(merchant_id, state_dir)
     pid_record = read_json(paths["pid_file"], {})
     pid = safe_non_negative_int(pid_record.get("pid"))
