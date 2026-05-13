@@ -398,7 +398,7 @@ class MaiCliTest(unittest.TestCase):
                     "--city",
                     " hangzhou ",
                     "--area",
-                    " West Lake ",
+                    " west lake ",
                     "--format",
                     "json",
                 )

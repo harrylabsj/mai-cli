@@ -483,7 +483,8 @@ def search_products(
         if query and score <= (5 if int(row["stock"]) > 0 else 0):
             continue
         summary = product_summary(conn, row["sku"])
-        if area and area not in summary["merchant"].get("service_area", ""):
+        service_area = str(summary["merchant"].get("service_area") or "")
+        if area and area.lower() not in service_area.lower():
             summary.setdefault("warnings", []).append("requested area may need merchant confirmation")
         summary["match_score"] = score
         results.append(summary)
