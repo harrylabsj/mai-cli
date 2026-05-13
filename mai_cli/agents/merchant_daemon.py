@@ -434,7 +434,7 @@ def _run_process_loop(
                     "counters": counters,
                     "error": last_error,
                 }
-            print(json.dumps(event, ensure_ascii=False, sort_keys=True), flush=True)
+            print(json.dumps(event, ensure_ascii=False, sort_keys=True, default=str), flush=True)
             if state_path:
                 write_state(
                     state_path,

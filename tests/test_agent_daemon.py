@@ -5,6 +5,8 @@ import sys
 import tempfile
 import time
 import unittest
+from contextlib import redirect_stdout
+from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 
@@ -107,6 +109,39 @@ class AgentDaemonLifecycleTest(unittest.TestCase):
             self.assertIsNone(status["pid"])
             self.assertFalse(status["running"])
             self.assertEqual(status["counters"], {"checked": 0, "replied": 0})
+
+    def test_process_loop_tolerates_non_json_result_payload(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            state_file = tmp_path / "agent.state.json"
+            stop_file = tmp_path / "agent.stop"
+            marked_away = []
+
+            def process_once():
+                stop_file.write_text("stop", encoding="utf-8")
+                return {"checked": 1, "replied": [{"raw": b"\xff"}]}
+
+            def mark_away():
+                marked_away.append(True)
+
+            output = StringIO()
+            with redirect_stdout(output):
+                merchant_daemon._run_process_loop(
+                    "seller-a",
+                    process_once,
+                    mark_away,
+                    interval=0.01,
+                    state_file=state_file,
+                    stop_file=stop_file,
+                )
+
+            entries = [json.loads(line) for line in output.getvalue().splitlines()]
+            self.assertEqual(entries[0]["event"], "process_once")
+            self.assertEqual(entries[0]["checked"], 1)
+            self.assertEqual(entries[0]["replied_count"], 1)
+            self.assertIn("raw", entries[0]["result"]["replied"][0])
+            self.assertEqual(marked_away, [True])
+            self.assertFalse(json.loads(state_file.read_text(encoding="utf-8"))["running"])
 
     def wait_for_status(self, db_file, state_dir, predicate, timeout=5):
         deadline = time.time() + timeout
