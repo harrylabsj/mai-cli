@@ -74,7 +74,7 @@ def import_json_store(conn: sqlite3.Connection, source: str | Path) -> dict[str,
                 stock=int(product.get("stock") or 0),
                 delivery_attributes=str(product.get("shipping") or ""),
             )
-        except (TypeError, ValueError, SystemExit):
+        except (OverflowError, TypeError, ValueError, SystemExit):
             skipped["products"] += 1
             continue
         imported["products"] += 1

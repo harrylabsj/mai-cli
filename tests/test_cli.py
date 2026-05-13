@@ -207,6 +207,12 @@ class MaiCliTest(unittest.TestCase):
                                 "price": "bad",
                                 "stock": "bad",
                             },
+                            "tea-c": {
+                                "merchant_id": "seller-a",
+                                "title": "Overflow Tea",
+                                "price": 88,
+                                "stock": float("inf"),
+                            },
                         },
                     }
                 ),
@@ -228,7 +234,7 @@ class MaiCliTest(unittest.TestCase):
 
             result = json.loads(output)
             self.assertEqual(result["imported"]["products"], 1)
-            self.assertEqual(result["skipped"]["products"], 1)
+            self.assertEqual(result["skipped"]["products"], 2)
             products = json.loads(self.run_cli(db_file, "search", "products", "--query", "tea", "--format", "json"))
             self.assertEqual([product["sku"] for product in products["results"]], ["tea-a"])
 
