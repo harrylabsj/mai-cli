@@ -1529,9 +1529,16 @@ def cmd_legacy_import(args: argparse.Namespace) -> None:
         result = import_json_store(conn, args.from_json)
     if args.format == "text":
         imported = result.get("imported") or {}
+        skipped = result.get("skipped") or {}
         print("Legacy import complete.")
         print(f"Merchants: {int(imported.get('merchants') or 0)}")
         print(f"Products: {int(imported.get('products') or 0)}")
+        skipped_merchants = int(skipped.get("merchants") or 0)
+        skipped_products = int(skipped.get("products") or 0)
+        if skipped_merchants:
+            print(f"Skipped merchants: {skipped_merchants}")
+        if skipped_products:
+            print(f"Skipped products: {skipped_products}")
         return
     emit(result, args.format)
 

@@ -63,6 +63,35 @@ class MaiCliTest(unittest.TestCase):
             self.assertIn("Products: 1", output)
             self.assertNotIn('"imported"', output)
 
+    def test_legacy_import_can_be_retried_without_duplicate_failure(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            legacy_file = Path(tmp) / "mai.json"
+            legacy_file.write_text(
+                json.dumps(
+                    {
+                        "merchants": {"seller-a": {"name": "West Lake Tea"}},
+                        "products": {
+                            "tea-a": {
+                                "merchant_id": "seller-a",
+                                "title": "Longjing Gift Box",
+                                "price": 88,
+                                "stock": 5,
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            self.run_cli(db_file, "legacy", "import", "--from-json", str(legacy_file))
+            output = self.run_cli(db_file, "legacy", "import", "--from-json", str(legacy_file))
+
+            self.assertIn("Merchants: 0", output)
+            self.assertIn("Products: 0", output)
+            self.assertIn("Skipped merchants: 1", output)
+            self.assertIn("Skipped products: 1", output)
+
     def test_catalog_search_and_stock_management_use_sqlite(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"

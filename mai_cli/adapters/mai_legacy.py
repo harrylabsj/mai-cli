@@ -13,10 +13,15 @@ from mai_cli.core.catalog import create_merchant, create_product
 def import_json_store(conn: sqlite3.Connection, source: str | Path) -> dict[str, Any]:
     data = json.loads(Path(source).read_text(encoding="utf-8"))
     imported = {"merchants": 0, "products": 0}
+    skipped = {"merchants": 0, "products": 0}
     for merchant_id, merchant in data.get("merchants", {}).items():
+        resolved_merchant_id = str(merchant.get("id") or merchant_id)
+        if conn.execute("select 1 from merchants where id = ?", (resolved_merchant_id,)).fetchone():
+            skipped["merchants"] += 1
+            continue
         create_merchant(
             conn,
-            merchant_id=str(merchant.get("id") or merchant_id),
+            merchant_id=resolved_merchant_id,
             name=str(merchant.get("name") or merchant_id),
             city=str(merchant.get("city") or ""),
             service_area=str(merchant.get("service_area") or merchant.get("serviceArea") or ""),
@@ -26,10 +31,14 @@ def import_json_store(conn: sqlite3.Connection, source: str | Path) -> dict[str,
         )
         imported["merchants"] += 1
     for sku, product in data.get("products", {}).items():
+        resolved_sku = str(product.get("sku") or sku)
+        if conn.execute("select 1 from products where sku = ?", (resolved_sku,)).fetchone():
+            skipped["products"] += 1
+            continue
         create_product(
             conn,
             merchant_id=str(product.get("merchant_id") or product.get("merchant") or ""),
-            sku=str(product.get("sku") or sku),
+            sku=resolved_sku,
             title=str(product.get("title") or sku),
             description=str(product.get("description") or ""),
             category=str(product.get("category") or ""),
@@ -40,4 +49,4 @@ def import_json_store(conn: sqlite3.Connection, source: str | Path) -> dict[str,
             delivery_attributes=str(product.get("shipping") or ""),
         )
         imported["products"] += 1
-    return {"ok": True, "imported": imported}
+    return {"ok": True, "imported": imported, "skipped": skipped}
