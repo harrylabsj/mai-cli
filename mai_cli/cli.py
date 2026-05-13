@@ -855,7 +855,22 @@ def cmd_agent_logs(args: argparse.Namespace) -> None:
 def cmd_agent_heartbeat(args: argparse.Namespace) -> None:
     with db_session(db_path_from_args(args)) as conn:
         result = merchant_agent.heartbeat(conn, args.merchant, args.status)
+    if args.format == "text":
+        emit_agent_heartbeat_text(result)
+        return
     emit({"ok": True, "agent": result}, args.format)
+
+
+def emit_agent_heartbeat_text(agent: dict[str, Any]) -> None:
+    print(f"Heartbeat recorded: {agent['id']}")
+    print(f"Owner: {agent['owner_id']}")
+    print(f"Status: {agent['status']}")
+    print(f"Last seen: {agent['last_seen_at']}")
+    print(f"Capabilities: {', '.join(agent['capabilities']) if agent['capabilities'] else '-'}")
+    print(f"Checked: {int(agent.get('checked_count') or 0)}")
+    print(f"Replied: {int(agent.get('replied_count') or 0)}")
+    if agent.get("last_error"):
+        print(f"Last error: {agent['last_error']}")
 
 
 def cmd_llm_run(args: argparse.Namespace) -> None:
