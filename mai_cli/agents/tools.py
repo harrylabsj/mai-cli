@@ -48,6 +48,18 @@ def _positive_whole_int(value: Any, field_name: str) -> int:
     return number
 
 
+def _safe_positive_float(value: Any, default: float) -> float:
+    if isinstance(value, bool):
+        return default
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return default
+    if not math.isfinite(number) or number <= 0:
+        return default
+    return number
+
+
 def _normalize_agent_status(value: Any) -> str:
     status = str(value or "").strip() or "online"
     if status not in AGENT_STATUSES:
@@ -271,7 +283,7 @@ class HTTPMerchantAgentTools:
         self.merchant_token = str(merchant_token or "").strip()
         if not self.merchant_token:
             raise ValueError("merchant_token is required")
-        self.timeout = float(timeout or 10.0)
+        self.timeout = _safe_positive_float(timeout, 10.0)
         self.opener = opener or urllib.request.urlopen
         self.host = str(host or "")
         self.session_id = str(session_id or "")
