@@ -151,10 +151,6 @@ def _float_or_none(value: Any) -> float | None:
     return None if value is None else float(value)
 
 
-def _int_or_none(value: Any) -> int | None:
-    return None if value is None else int(value)
-
-
 def _bool_from_query(value: Any) -> bool:
     return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
 
@@ -427,7 +423,7 @@ def _create_merchant(db_path: str | Path, payload: dict[str, Any]) -> dict[str, 
             automation_boundaries=str(payload.get("automation_boundaries") or ""),
             tags=payload.get("tags") or [],
             delivery_fee=float(payload.get("delivery_fee") or 0),
-            delivery_eta_minutes=int(payload.get("delivery_eta_minutes") or 0),
+            delivery_eta_minutes=payload.get("delivery_eta_minutes", 0),
             delivery_radius_km=float(payload.get("delivery_radius_km") or 0),
         )
         token = _issue_merchant_token(conn, merchant["id"])
@@ -448,7 +444,7 @@ def _update_merchant(db_path: str | Path, merchant_id: str, payload: dict[str, A
             automation_boundaries=payload.get("automation_boundaries"),
             tags=payload.get("tags") if "tags" in payload else None,
             delivery_fee=_float_or_none(payload.get("delivery_fee")),
-            delivery_eta_minutes=_int_or_none(payload.get("delivery_eta_minutes")),
+            delivery_eta_minutes=payload.get("delivery_eta_minutes"),
             delivery_radius_km=_float_or_none(payload.get("delivery_radius_km")),
         )
         return {"ok": True, "merchant": merchant}
@@ -474,7 +470,7 @@ def _create_product(db_path: str | Path, payload: dict[str, Any]) -> dict[str, A
             sku=str(payload["sku"]),
             title=str(payload["title"]),
             price=float(payload["price"]),
-            stock=int(payload["stock"]),
+            stock=payload["stock"],
             currency=str(payload.get("currency") or "CNY"),
             category=str(payload.get("category") or ""),
             tags=payload.get("tags") or [],
@@ -495,7 +491,7 @@ def _update_product(db_path: str | Path, sku: str, payload: dict[str, Any]) -> d
             merchant_id=merchant_id,
             title=payload.get("title"),
             price=_float_or_none(payload.get("price")),
-            stock=_int_or_none(payload.get("stock")),
+            stock=payload.get("stock"),
             currency=payload.get("currency"),
             category=payload.get("category"),
             tags=payload.get("tags") if "tags" in payload else None,

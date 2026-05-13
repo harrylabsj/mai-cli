@@ -944,6 +944,77 @@ class PublicMarketplaceTest(unittest.TestCase):
             self.assertEqual(status, 200)
             self.assertEqual({product["sku"] for product in with_sold_out["results"]}, {"tea-cheap", "tea-soldout"})
 
+    def test_api_integer_fields_reject_fractional_values(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "marketplace.sqlite"
+            app = create_app(db_file)
+
+            status, fractional_eta = self.request(
+                app,
+                "POST",
+                "/merchants",
+                {
+                    "id": "seller-fractional-eta",
+                    "name": "West Lake Tea",
+                    "delivery_eta_minutes": 12.5,
+                },
+            )
+            self.assertEqual(status, 400)
+            self.assertIn("delivery eta minutes must be a whole number", fractional_eta["error"])
+
+            status, merchant = self.request(app, "POST", "/merchants", {"id": "seller-a", "name": "West Lake Tea"})
+            self.assertEqual(status, 200)
+            status, fractional_eta_update = self.request(
+                app,
+                "PATCH",
+                "/merchants/seller-a",
+                {
+                    "delivery_eta_minutes": 12.5,
+                    "merchant_token": merchant["merchant_token"],
+                },
+            )
+            self.assertEqual(status, 400)
+            self.assertIn("delivery eta minutes must be a whole number", fractional_eta_update["error"])
+
+            status, fractional_stock = self.request(
+                app,
+                "POST",
+                "/products",
+                {
+                    "merchant_id": "seller-a",
+                    "sku": "tea-a",
+                    "title": "Longjing",
+                    "price": 88,
+                    "stock": 1.5,
+                    "merchant_token": merchant["merchant_token"],
+                },
+            )
+            self.assertEqual(status, 400)
+            self.assertIn("--stock must be a whole number", fractional_stock["error"])
+
+            status, product = self.request(
+                app,
+                "POST",
+                "/products",
+                {
+                    "merchant_id": "seller-a",
+                    "sku": "tea-b",
+                    "title": "Longjing",
+                    "price": 88,
+                    "stock": 1,
+                    "merchant_token": merchant["merchant_token"],
+                },
+            )
+            self.assertEqual(status, 200)
+            status, fractional_stock_update = self.request(
+                app,
+                "PATCH",
+                "/products/tea-b",
+                {"merchant_id": "seller-a", "stock": 2.5, "merchant_token": merchant["merchant_token"]},
+            )
+            self.assertEqual(status, 400)
+            self.assertIn("--stock must be a whole number", fractional_stock_update["error"])
+
     def test_conversation_message_and_close_writes_require_owner_tokens(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "marketplace.sqlite"

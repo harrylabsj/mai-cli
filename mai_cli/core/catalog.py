@@ -44,6 +44,24 @@ def _finite_float(value: float, message: str) -> float:
     return number
 
 
+def _whole_int(value: Any, message: str) -> int:
+    if isinstance(value, bool):
+        raise SystemExit(message)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        if not math.isfinite(value) or not value.is_integer():
+            raise SystemExit(message)
+        return int(value)
+    text = str(value or "").strip()
+    if not text:
+        raise SystemExit(message)
+    try:
+        return int(text)
+    except ValueError as exc:
+        raise SystemExit(message) from exc
+
+
 def create_merchant(
     conn: sqlite3.Connection,
     merchant_id: str,
@@ -166,6 +184,7 @@ def upsert_delivery_rule(
 ) -> dict[str, Any]:
     fee = _finite_float(fee, "delivery fee must be finite")
     radius_km = _finite_float(radius_km, "delivery radius must be finite")
+    eta_minutes = _whole_int(eta_minutes, "delivery eta minutes must be a whole number")
     if fee < 0:
         raise SystemExit("delivery fee must be non-negative")
     if eta_minutes < 0:
@@ -218,6 +237,7 @@ def create_product(
     if not title:
         raise SystemExit("product title is required")
     price = _finite_float(price, "--price must be finite")
+    stock = _whole_int(stock, "--stock must be a whole number")
     if price < 0:
         raise SystemExit("--price must be non-negative")
     if stock < 0:
@@ -241,7 +261,7 @@ def create_product(
             encode_json(parse_tags(tags)),
             price,
             currency,
-            int(stock),
+            stock,
             encode_json(parse_tags(delivery_attributes)),
             now,
             now,
@@ -274,6 +294,8 @@ def update_product(
         price = _finite_float(price, "--price must be finite")
     if price is not None and price < 0:
         raise SystemExit("--price must be non-negative")
+    if stock is not None:
+        stock = _whole_int(stock, "--stock must be a whole number")
     if stock is not None and stock < 0:
         raise SystemExit("--stock must be non-negative")
     updates: list[str] = []
@@ -305,6 +327,7 @@ def update_product(
 
 
 def set_stock(conn: sqlite3.Connection, sku: str, stock: int, merchant_id: str = "") -> dict[str, Any]:
+    stock = _whole_int(stock, "--stock must be a whole number")
     if stock < 0:
         raise SystemExit("--stock must be non-negative")
     product = require_product(conn, sku)
