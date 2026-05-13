@@ -149,8 +149,8 @@ def route_info() -> list[RouteInfo]:
     ]
 
 
-def _float_or_none(value: Any) -> float | None:
-    return None if value is None else float(value)
+def _float_or_none(value: Any) -> Any:
+    return None if value is None else value
 
 
 def _bool_from_query(value: Any) -> bool:
@@ -478,9 +478,9 @@ def _create_merchant(db_path: str | Path, payload: dict[str, Any]) -> dict[str, 
             hours=str(payload.get("hours") or ""),
             automation_boundaries=str(payload.get("automation_boundaries") or ""),
             tags=payload.get("tags") or [],
-            delivery_fee=float(payload.get("delivery_fee") or 0),
+            delivery_fee=payload.get("delivery_fee", 0),
             delivery_eta_minutes=payload.get("delivery_eta_minutes", 0),
-            delivery_radius_km=float(payload.get("delivery_radius_km") or 0),
+            delivery_radius_km=payload.get("delivery_radius_km", 0),
         )
         token = _issue_merchant_token(conn, merchant["id"])
         return {"ok": True, "merchant": merchant, "merchant_token": token}
@@ -525,7 +525,7 @@ def _create_product(db_path: str | Path, payload: dict[str, Any]) -> dict[str, A
             merchant_id=merchant_id,
             sku=str(payload["sku"]),
             title=str(payload["title"]),
-            price=float(payload["price"]),
+            price=payload["price"],
             stock=payload["stock"],
             currency=str(payload.get("currency") or "CNY"),
             category=str(payload.get("category") or ""),
@@ -572,7 +572,7 @@ def _search_products(db_path: str | Path, query: dict[str, Any]) -> dict[str, An
                 query=str(query.get("query") or ""),
                 city=str(query.get("city") or ""),
                 area=str(query.get("area") or ""),
-                max_price=float(max_price) if str(max_price or "") else None,
+                max_price=max_price if str(max_price or "") else None,
                 include_out_of_stock=_bool_from_query(query.get("include_out_of_stock")),
             ),
         }

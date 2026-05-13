@@ -37,8 +37,13 @@ def require_product(conn: sqlite3.Connection, sku: str) -> sqlite3.Row:
     return row
 
 
-def _finite_float(value: float, message: str) -> float:
-    number = float(value)
+def _finite_float(value: Any, message: str) -> float:
+    if isinstance(value, bool):
+        raise SystemExit(message)
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as exc:
+        raise SystemExit(message) from exc
     if not math.isfinite(number):
         raise SystemExit(message)
     return number
