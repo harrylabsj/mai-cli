@@ -1467,7 +1467,7 @@ class MaiCliTest(unittest.TestCase):
                 "stale_pid": False,
                 "heartbeat": {"status": "online", "last_seen_at": "2026-05-13T12:00:00"},
                 "counters": {"checked": 2, "replied": 1},
-                "last_error": "",
+                "last_error": "HTTP 403 agent_token=mai_agent_seller-a_secret",
                 "started_at": "2026-05-13T11:59:00",
                 "updated_at": "2026-05-13T12:00:01",
                 "pid_file": "/tmp/seller-a.pid",
@@ -1488,6 +1488,8 @@ class MaiCliTest(unittest.TestCase):
             self.assertIn("Heartbeat: online", output)
             self.assertIn("Checked: 2", output)
             self.assertIn("Replied: 1", output)
+            self.assertIn("Last error: HTTP 403 agent_token=[redacted-token]", output)
+            self.assertNotIn("mai_agent_seller-a_secret", output)
             self.assertNotIn('"heartbeat"', output)
 
     def test_agent_start_text_output_is_readable(self):
@@ -1600,6 +1602,34 @@ class MaiCliTest(unittest.TestCase):
             self.assertIn("2026-05-13T12:00:01 error error=RuntimeError: temporary failure", output)
             self.assertIn("plain log line", output)
             self.assertNotIn('"entries"', output)
+
+    def test_agent_logs_text_output_redacts_tokens_from_errors(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            logs = {
+                "ok": True,
+                "merchant_id": "seller-a",
+                "log_file": "/tmp/seller-a.log",
+                "entries": [
+                    {
+                        "event": "error",
+                        "at": "2026-05-13T12:00:01",
+                        "error": "HTTP 403 merchant_token=mai_seller-a_secret agent=mai_agent_seller-a_secret",
+                    },
+                    {
+                        "event": "raw",
+                        "text": "Authorization: Bearer mai_buyer_alice_secret",
+                    },
+                ],
+            }
+
+            with patch("mai_cli.cli.merchant_daemon.logs_agent", return_value=logs):
+                output = self.run_cli(db_file, "agent", "logs", "--merchant", "seller-a", "--tail", "2")
+
+            self.assertIn("[redacted-token]", output)
+            self.assertNotIn("mai_seller-a_secret", output)
+            self.assertNotIn("mai_agent_seller-a_secret", output)
+            self.assertNotIn("mai_buyer_alice_secret", output)
 
     def test_conversation_list_text_output_is_readable(self):
         with tempfile.TemporaryDirectory() as tmp:

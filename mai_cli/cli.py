@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -795,7 +796,7 @@ def emit_agent_run_once_text(result: dict[str, Any]) -> None:
         print(
             f"- failed {item.get('conversation_id') or '-'} "
             f"message={item.get('message_id') or '-'} "
-            f"error={item.get('error') or '-'}"
+            f"error={redact_secret_text(item.get('error')) or '-'}"
         )
     for item in abandoned:
         target = item.get("conversation_id") or "-"
@@ -804,6 +805,21 @@ def emit_agent_run_once_text(result: dict[str, Any]) -> None:
 
 def yes_no(value: Any) -> str:
     return "yes" if value else "no"
+
+
+SECRET_VALUE_RE = re.compile(r"mai_(?:agent|buyer)_[^\s\"',]+")
+SECRET_KEY_RE = re.compile(
+    r"((?:merchant_token|agent_token|buyer_token|auth_token|authorization)\s*[:=]\s*)(?:Bearer\s+)?[^\s\"',]+",
+    re.IGNORECASE,
+)
+BEARER_RE = re.compile(r"(Bearer\s+)[^\s\"',]+", re.IGNORECASE)
+
+
+def redact_secret_text(value: Any) -> str:
+    text = str(value or "")
+    text = BEARER_RE.sub(r"\1[redacted-token]", text)
+    text = SECRET_KEY_RE.sub(r"\1[redacted-token]", text)
+    return SECRET_VALUE_RE.sub("[redacted-token]", text)
 
 
 def emit_agent_runtime_metadata(result: dict[str, Any]) -> None:
@@ -877,7 +893,7 @@ def emit_agent_status_text(result: dict[str, Any]) -> None:
     print(f"Last seen: {heartbeat.get('last_seen_at') or '-'}")
     print(f"Checked: {int(counters.get('checked') or 0)}")
     print(f"Replied: {int(counters.get('replied') or 0)}")
-    print(f"Last error: {result.get('last_error') or '-'}")
+    print(f"Last error: {redact_secret_text(result.get('last_error')) or '-'}")
     print(f"Started: {result.get('started_at') or '-'}")
     print(f"Updated: {result.get('updated_at') or '-'}")
 
@@ -899,7 +915,7 @@ def emit_agent_logs_text(result: dict[str, Any]) -> None:
         return
     for entry in entries:
         if entry.get("event") == "raw":
-            print(str(entry.get("text") or ""))
+            print(redact_secret_text(entry.get("text")))
             continue
         fields = [f"{entry.get('at') or '-'} {entry.get('event') or 'event'}"]
         if "checked" in entry:
@@ -907,7 +923,7 @@ def emit_agent_logs_text(result: dict[str, Any]) -> None:
         if "replied_count" in entry:
             fields.append(f"replied={int(entry.get('replied_count') or 0)}")
         if entry.get("error"):
-            fields.append(f"error={entry['error']}")
+            fields.append(f"error={redact_secret_text(entry['error'])}")
         print(" ".join(fields))
 
 
