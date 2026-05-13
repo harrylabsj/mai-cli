@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from datetime import timedelta
 from pathlib import Path
 
 DEFAULT_DATA_DIR = Path.home() / ".local" / "share" / "mai-cli"
 DEFAULT_DB_PATH = DEFAULT_DATA_DIR / "mai-cli.sqlite"
 DEFAULT_STATE_DIR = Path.home() / ".local" / "state" / "mai-cli"
 DEFAULT_AGENT_STALE_TTL_SECONDS = 60
+MAX_AGENT_STALE_TTL_SECONDS = timedelta.max.days * 24 * 60 * 60 + timedelta.max.seconds
 
 
 def db_path_from(value: str | Path | None = None) -> Path:
@@ -24,11 +26,15 @@ def agent_stale_ttl_seconds_from(value: str | int | None = None) -> int:
     raw = value if value is not None else os.environ.get("MAI_AGENT_STALE_TTL_SECONDS")
     if raw in (None, ""):
         return DEFAULT_AGENT_STALE_TTL_SECONDS
+    if isinstance(raw, bool):
+        return DEFAULT_AGENT_STALE_TTL_SECONDS
     try:
         seconds = int(raw)
-    except (TypeError, ValueError):
+    except (OverflowError, TypeError, ValueError):
         return DEFAULT_AGENT_STALE_TTL_SECONDS
-    return seconds if seconds > 0 else DEFAULT_AGENT_STALE_TTL_SECONDS
+    if seconds <= 0 or seconds > MAX_AGENT_STALE_TTL_SECONDS:
+        return DEFAULT_AGENT_STALE_TTL_SECONDS
+    return seconds
 
 
 @dataclass(frozen=True)

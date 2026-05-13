@@ -3076,6 +3076,29 @@ class PublicMarketplaceTest(unittest.TestCase):
             self.assertFalse(agents["agents"][0]["stale"])
             self.assertEqual(agents["agents"][0]["stale_ttl_seconds"], 9999999999)
 
+    def test_agent_stale_ttl_falls_back_when_env_is_too_large(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "marketplace.sqlite"
+            app = create_app(db_file)
+            _, merchant = self.request(app, "POST", "/merchants", {"id": "seller-a", "name": "West Lake Tea"})
+            merchant_token = merchant["merchant_token"]
+            self.request(
+                app,
+                "POST",
+                "/agents/heartbeat",
+                {"merchant_id": "seller-a", "status": "online", "merchant_token": merchant_token},
+            )
+            with db_session(db_file) as conn:
+                conn.execute(
+                    "update agents set last_seen_at = '2000-01-01T00:00:00' where id = 'mai-cli-merchant-agent:seller-a'"
+                )
+
+            with patch.dict("os.environ", {"MAI_AGENT_STALE_TTL_SECONDS": str(10**100)}):
+                agents = _list_agents(db_file, {"merchant_token": merchant_token})
+
+            self.assertTrue(agents["agents"][0]["stale"])
+            self.assertEqual(agents["agents"][0]["stale_ttl_seconds"], 60)
+
 
 if __name__ == "__main__":
     unittest.main()
