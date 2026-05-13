@@ -31,6 +31,40 @@ def _fallback(messages: list[dict[str, Any]], tool_results: list[dict[str, Any]]
     }
 
 
+def _safe_non_negative_int(value: Any, default: int) -> int:
+    if isinstance(value, bool):
+        return default
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return default
+    return max(number, 0)
+
+
+def _safe_positive_int(value: Any, default: int) -> int:
+    return max(_safe_non_negative_int(value, default), 1)
+
+
+def _safe_optional_non_negative_int(value: Any) -> int | None:
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return None
+    return max(number, 0)
+
+
+def _safe_non_negative_float(value: Any, default: float) -> float:
+    if isinstance(value, bool):
+        return default
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return default
+    return max(number, 0.0)
+
+
 def _tool_call_name_and_arguments(tool_call: dict[str, Any]) -> tuple[str, dict[str, Any]]:
     function = tool_call.get("function") or {}
     name = str(function.get("name") or "")
@@ -58,10 +92,12 @@ def run_marketplace_tool_loop(
     conversation_messages = [dict(message) for message in messages]
     tool_results: list[dict[str, Any]] = []
     tools = marketplace_tool_schemas()
-    retries = max(0, int(provider_retries or 0))
-    tool_call_budget = None if max_tool_calls is None else max(0, int(max_tool_calls))
+    retries = _safe_non_negative_int(provider_retries, 0)
+    tool_call_budget = _safe_optional_non_negative_int(max_tool_calls)
+    steps = _safe_positive_int(max_steps, 4)
+    retry_delay = _safe_non_negative_float(provider_retry_delay_seconds, 0.0)
 
-    for _step in range(max(1, int(max_steps or 1))):
+    for _step in range(steps):
         response: LLMResponse | None = None
         for attempt in range(retries + 1):
             try:
@@ -72,8 +108,8 @@ def run_marketplace_tool_loop(
             except Exception as exc:
                 if attempt >= retries:
                     return _fallback(conversation_messages, tool_results, f"{type(exc).__name__}: {exc}")
-                if provider_retry_delay_seconds:
-                    time.sleep(max(float(provider_retry_delay_seconds), 0.0))
+                if retry_delay:
+                    time.sleep(retry_delay)
         if response is None:  # pragma: no cover - defensive guard
             return _fallback(conversation_messages, tool_results, "provider returned no response")
 
