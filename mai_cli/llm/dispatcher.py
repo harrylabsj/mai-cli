@@ -301,21 +301,24 @@ class HTTPMarketplaceToolDispatcher:
         return {"ok": True, "tool": tool_name, "result": result}
 
     def _audit_tool_call(self, tool_name: str, arguments: dict[str, Any], status: str, error: str = "") -> None:
-        self._request(
-            "POST",
-            "/audit/tool-calls",
-            {
-                "conversation_id": str(arguments.get("conversation_id") or ""),
-                "tool": tool_name,
-                "status": status,
-                "host": self.host,
-                "session_id": self.session_id,
-                "actor": self.actor,
-                "source_id": self.source_id,
-                "token_scope": self.token_scope,
-                "error": error,
-            },
-        )
+        try:
+            self._request(
+                "POST",
+                "/audit/tool-calls",
+                {
+                    "conversation_id": str(arguments.get("conversation_id") or ""),
+                    "tool": tool_name,
+                    "status": status,
+                    "host": self.host,
+                    "session_id": self.session_id,
+                    "actor": self.actor,
+                    "source_id": self.source_id,
+                    "token_scope": self.token_scope,
+                    "error": error,
+                },
+            )
+        except (Exception, SystemExit):
+            return
 
     def _headers(self) -> dict[str, str]:
         return {"Accept": "application/json", "Authorization": f"Bearer {self.auth_token}"}

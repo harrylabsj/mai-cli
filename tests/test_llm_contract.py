@@ -708,6 +708,26 @@ class LlmContractTest(unittest.TestCase):
 
         self.assertEqual(dispatcher.timeout, 10.0)
 
+    def test_http_marketplace_tool_dispatcher_preserves_denial_when_audit_fails(self):
+        dispatcher = HTTPMarketplaceToolDispatcher(
+            "http://127.0.0.1:8765",
+            auth_token="buyer-token",
+            actor="alice",
+            token_scope="buyer",
+            transport=lambda _method, _path, _payload, _query, _headers: {
+                "ok": False,
+                "error": "audit unavailable",
+            },
+        )
+
+        with self.assertRaises(SystemExit) as raised:
+            dispatcher.dispatch(
+                "merchant_reply",
+                {"conversation_id": "CONV-0001", "intent": "support", "text": "Not allowed."},
+            )
+
+        self.assertIn("not allowed", str(raised.exception))
+
     def test_http_marketplace_tool_dispatcher_enforces_scope_before_api_call(self):
         calls = []
         dispatcher = HTTPMarketplaceToolDispatcher(
