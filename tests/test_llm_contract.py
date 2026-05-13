@@ -359,6 +359,44 @@ class LlmContractTest(unittest.TestCase):
             self.assertEqual(reply["result"]["conversation"]["status"], "human_required")
             self.assertTrue(any(flag["reason"] == "low_stock" for flag in reply["result"]["conversation"]["flags"]))
 
+    def test_human_review_flag_routes_using_normalized_reason(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.seed_consultation(db_file)
+
+            review = dispatch_marketplace_tool(
+                db_file,
+                "human_review_flag",
+                {"conversation_id": "CONV-0001", "reason": " suspicious_content ", "severity": " urgent "},
+                source_id="llm-merchant",
+            )
+
+            self.assertEqual(review["result"]["review"]["reason"], "suspicious_content")
+            self.assertEqual(review["result"]["review"]["severity"], "urgent")
+            self.assertEqual(review["result"]["conversation"]["next_actor"], "operator")
+
+    def test_merchant_reply_routes_human_review_using_normalized_reason(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.seed_consultation(db_file)
+
+            reply = dispatch_marketplace_tool(
+                db_file,
+                "merchant_reply",
+                {
+                    "conversation_id": "CONV-0001",
+                    "intent": "support",
+                    "text": "A human operator must review this.",
+                    "human_required": True,
+                    "reason": " suspicious_content ",
+                },
+                source_id="llm-merchant",
+            )
+
+            self.assertEqual(reply["result"]["message"]["structured_payload"]["reason"], "suspicious_content")
+            self.assertEqual(reply["result"]["flags"][0]["reason"], "suspicious_content")
+            self.assertEqual(reply["result"]["conversation"]["next_actor"], "operator")
+
     def test_marketplace_tool_dispatcher_rejects_unknown_or_disallowed_tools(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"

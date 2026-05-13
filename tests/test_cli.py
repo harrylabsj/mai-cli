@@ -2149,6 +2149,40 @@ class MaiCliTest(unittest.TestCase):
             self.assertIn("Next actor: merchant_human", output)
             self.assertNotIn('"review"', output)
 
+    def test_conversation_human_review_routes_using_normalized_reason(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.run_cli(db_file, "merchant", "create", "--id", "seller-a", "--name", "West Lake Tea")
+            self.run_cli(
+                db_file,
+                "conversation",
+                "create",
+                "--buyer",
+                "alice",
+                "--merchant",
+                "seller-a",
+                "--text",
+                "Is this available?",
+                "--format",
+                "json",
+            )
+
+            output = self.run_cli(
+                db_file,
+                "conversation",
+                "human-review",
+                "--conversation",
+                "CONV-0001",
+                "--reason",
+                " suspicious_content ",
+                "--severity",
+                " urgent ",
+            )
+
+            self.assertIn("Reason: suspicious_content", output)
+            self.assertIn("Severity: urgent", output)
+            self.assertIn("Next actor: operator", output)
+
     def test_conversation_resolve_review_text_output_summarizes_resolution(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"

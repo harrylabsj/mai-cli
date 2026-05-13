@@ -188,7 +188,7 @@ class MarketplaceToolDispatcher:
         with db_session(self.db_path) as conn:
             conversation = self._conversation_for_tool(conn, conversation_id, "human_review_flag")
             flag = add_flag(conn, conversation_id, reason=reason, severity=severity, sku=conversation.get("sku") or "")
-            next_actor = next_actor_for_status("human_required", reason)
+            next_actor = next_actor_for_status("human_required", flag["reason"])
             conn.execute(
                 "update conversations set status = 'human_required', next_actor = ?, updated_at = ?, last_sender = ? where id = ?",
                 (next_actor, now_iso(), self.source_id, conversation_id),
@@ -198,7 +198,7 @@ class MarketplaceToolDispatcher:
                 conversation_id,
                 self.source_id,
                 "conversation_routed",
-                {"status": "human_required", "next_actor": next_actor, "reason": reason, "tool": "human_review_flag"},
+                {"status": "human_required", "next_actor": next_actor, "reason": flag["reason"], "tool": "human_review_flag"},
             )
             review = add_review_source(flag, self.source_id)
             conversation = conversation_summary(conn, conversation_id)
@@ -207,7 +207,9 @@ class MarketplaceToolDispatcher:
     def _dispatch_merchant_reply(self, arguments: dict[str, Any]) -> dict[str, Any]:
         conversation_id = str(arguments["conversation_id"])
         human_required = bool(arguments.get("human_required") or False)
-        reason = str(arguments.get("reason") or "")
+        reason = str(arguments.get("reason") or "").strip()
+        if human_required and not reason:
+            reason = "human_required"
         status = "human_required" if human_required else "waiting_buyer"
         with db_session(self.db_path) as conn:
             conversation = self._conversation_for_tool(conn, conversation_id, "merchant_reply")
@@ -227,7 +229,7 @@ class MarketplaceToolDispatcher:
             )
             flags = []
             if human_required:
-                flag = add_flag(conn, conversation_id, reason or "human_required", sku=conversation.get("sku") or "")
+                flag = add_flag(conn, conversation_id, reason, sku=conversation.get("sku") or "")
                 flags.append(add_review_source(flag, self.source_id))
             conversation = conversation_summary(conn, conversation_id)
         return {"ok": True, "message": message, "flags": flags, "conversation": conversation}
@@ -440,7 +442,9 @@ class HTTPMarketplaceToolDispatcher:
     def _dispatch_merchant_reply(self, arguments: dict[str, Any]) -> dict[str, Any]:
         conversation_id = str(arguments["conversation_id"])
         human_required = bool(arguments.get("human_required") or False)
-        reason = str(arguments.get("reason") or "")
+        reason = str(arguments.get("reason") or "").strip()
+        if human_required and not reason:
+            reason = "human_required"
         message_result = self._request(
             "POST",
             f"{self._conversation_path(conversation_id)}/messages",
@@ -464,7 +468,7 @@ class HTTPMarketplaceToolDispatcher:
                 "POST",
                 f"{self._conversation_path(conversation_id)}/human-review",
                 {
-                    "reason": reason or "human_required",
+                    "reason": reason,
                     "source_id": self.source_id,
                 },
             )

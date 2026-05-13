@@ -663,7 +663,7 @@ def cmd_conversation_human_review(args: argparse.Namespace) -> None:
     with db_session(db_path_from_args(args)) as conn:
         conversation = conversation_summary(conn, args.conversation)
         flag = add_flag(conn, args.conversation, args.reason, severity=args.severity, sku=conversation.get("sku") or "")
-        next_actor = next_actor_for_status("human_required", args.reason)
+        next_actor = next_actor_for_status("human_required", flag["reason"])
         conn.execute(
             "update conversations set status = 'human_required', next_actor = ?, updated_at = ?, last_sender = ? where id = ?",
             (next_actor, now_iso(), args.source_id or "operator", args.conversation),
@@ -673,7 +673,7 @@ def cmd_conversation_human_review(args: argparse.Namespace) -> None:
             args.conversation,
             args.source_id or "operator",
             "conversation_routed",
-            {"status": "human_required", "next_actor": next_actor, "reason": args.reason},
+            {"status": "human_required", "next_actor": next_actor, "reason": flag["reason"]},
         )
         review = _review_summary(conn, flag["id"])
         conversation = conversation_summary(conn, args.conversation)
