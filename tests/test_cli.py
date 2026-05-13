@@ -209,6 +209,65 @@ class MaiCliTest(unittest.TestCase):
             self.assertIn("Warnings:", output)
             self.assertNotIn('"conversation"', output)
 
+    def test_channel_ingest_text_output_summarizes_ingested_message(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.run_cli(
+                db_file,
+                "merchant",
+                "create",
+                "--id",
+                "seller-a",
+                "--name",
+                "West Lake Tea",
+                "--city",
+                "Hangzhou",
+            )
+            self.run_cli(
+                db_file,
+                "product",
+                "add",
+                "--merchant",
+                "seller-a",
+                "--sku",
+                "tea-a",
+                "--title",
+                "Longjing Gift Box",
+                "--price",
+                "88",
+                "--stock",
+                "5",
+                "--tags",
+                "longjing,gift",
+            )
+
+            output = self.run_cli(
+                db_file,
+                "channel",
+                "ingest",
+                "--channel",
+                "whatsapp",
+                "--external-user",
+                "+15550001111",
+                "--external-message-id",
+                "wa-msg-1",
+                "--text",
+                "longjing gift delivery today",
+                "--city",
+                "Hangzhou",
+            )
+
+            self.assertIn("Channel: whatsapp", output)
+            self.assertIn("External user: +15550001111", output)
+            self.assertIn("Buyer: whatsapp:+15550001111", output)
+            self.assertIn("Conversation: CONV-0001", output)
+            self.assertIn("Message: 1", output)
+            self.assertIn("Status: waiting_merchant", output)
+            self.assertIn("Next actor: merchant_agent", output)
+            self.assertIn("Selected: tea-a - Longjing Gift Box", output)
+            self.assertIn("Idempotent: no", output)
+            self.assertNotIn('"conversation"', output)
+
     def test_buyer_summarize_text_output_lists_consultation_state(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"

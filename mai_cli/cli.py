@@ -288,7 +288,43 @@ def cmd_channel_ingest(args: argparse.Namespace) -> None:
             conversation_id=args.conversation or "",
             external_message_id=args.external_message_id or "",
         )
+    if args.format == "text":
+        emit_channel_ingest_text(result)
+        return
     emit(result, args.format)
+
+
+def emit_channel_ingest_text(result: dict[str, Any]) -> None:
+    message = result.get("message") or {}
+    payload = message.get("structured_payload") or {}
+    conversation = result.get("conversation") or {}
+    selected = result.get("selected") or {}
+    print(f"Channel: {result.get('channel') or payload.get('channel') or '-'}")
+    print(f"External user: {payload.get('external_user_id') or '-'}")
+    print(f"Buyer: {result.get('buyer_id') or '-'}")
+    print(f"Idempotent: {yes_no(result.get('idempotent'))}")
+    if not conversation:
+        print("No matching merchant or product found.")
+        missing_facts = result.get("missing_facts") or []
+        if missing_facts:
+            print(f"Missing facts: {', '.join(missing_facts)}")
+        warnings = result.get("warnings") or []
+        if warnings:
+            print("Warnings:")
+            for warning in warnings:
+                print(f"- {warning}")
+        return
+    print(f"Conversation: {conversation.get('id') or '-'}")
+    print(f"Message: {message.get('id') or '-'}")
+    print(f"Status: {conversation.get('status') or '-'}")
+    print(f"Next actor: {conversation.get('next_actor') or '-'}")
+    if selected:
+        print(f"Selected: {selected.get('sku') or '-'} - {selected.get('title') or '-'}")
+    warnings = result.get("warnings") or []
+    if warnings:
+        print("Warnings:")
+        for warning in warnings:
+            print(f"- {warning}")
 
 
 def cmd_buyer_summarize(args: argparse.Namespace) -> None:
