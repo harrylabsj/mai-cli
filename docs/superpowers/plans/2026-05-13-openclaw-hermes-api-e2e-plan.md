@@ -554,7 +554,7 @@ git commit -m "Audit host metadata for API-backed agent tools"
 - Modify: `README.md`
 - Modify: `docs/superpowers/specs/2026-05-09-mai-cli-design.md`
 
-- [ ] **Step 1: Document the API-backed demo**
+- [x] **Step 1: Document the API-backed demo**
 
 Add this paragraph to the Host Adapter Diagnostics section of `README.md`:
 
@@ -562,7 +562,7 @@ Add this paragraph to the Host Adapter Diagnostics section of `README.md`:
 The API-backed host adapter E2E test proves the intended production boundary: Hermes creates the buyer consultation through the Marketplace API, OpenClaw runs the merchant agent through API-backed tools, and `mai-cli` owns all commerce state, tokens, conversation routing, and audit events.
 ```
 
-- [ ] **Step 2: Mark the roadmap slice as implemented**
+- [x] **Step 2: Mark the roadmap slice as implemented**
 
 In `docs/superpowers/specs/2026-05-09-mai-cli-design.md`, under "Current OpenClaw/Hermes improvement plan", add:
 
@@ -570,7 +570,7 @@ In `docs/superpowers/specs/2026-05-09-mai-cli-design.md`, under "Current OpenCla
    - First implementation slice: add an API-backed E2E test where Hermes buyer request descriptors and OpenClaw API-backed merchant-agent tools complete a consultation through `create_app()` without sharing SQLite directly.
 ```
 
-- [ ] **Step 3: Run focused tests**
+- [x] **Step 3: Run focused tests**
 
 Run:
 
@@ -582,7 +582,7 @@ python3 -m unittest discover -s tests -p test_host_adapter_api_e2e.py
 
 Expected: all tests pass.
 
-- [ ] **Step 4: Run full verification**
+- [x] **Step 4: Run full verification**
 
 Run:
 
@@ -593,10 +593,10 @@ git diff --check
 
 Expected: `verification ok` and no `git diff --check` output.
 
-- [ ] **Step 5: Commit docs**
+- [x] **Step 5: Commit docs**
 
 ```bash
-git add README.md docs/superpowers/specs/2026-05-09-mai-cli-design.md
+git add README.md docs/superpowers/specs/2026-05-09-mai-cli-design.md docs/superpowers/plans/2026-05-13-openclaw-hermes-api-e2e-plan.md
 git commit -m "Document API-backed host adapter demo"
 ```
 
