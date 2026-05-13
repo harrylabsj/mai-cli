@@ -115,6 +115,9 @@ def record_heartbeat(
 ) -> dict[str, Any]:
     merchant_id = str(merchant_id or "").strip()
     status = _normalize_agent_status(status)
+    pid = _non_negative_whole_int(pid, "pid")
+    checked_count = _non_negative_whole_int(checked_count, "checked_count")
+    replied_count = _non_negative_whole_int(replied_count, "replied_count")
     require_merchant(conn, merchant_id)
     agent_id = f"mai-cli-merchant-agent:{merchant_id}"
     now = now_iso()
@@ -141,11 +144,11 @@ def record_heartbeat(
             status,
             encode_json(capabilities or DEFAULT_CAPABILITIES),
             now,
-            int(pid or 0),
+            pid,
             version or VERSION,
             last_error or "",
-            int(checked_count or 0),
-            int(replied_count or 0),
+            checked_count,
+            replied_count,
         ),
     )
     return {
@@ -155,11 +158,11 @@ def record_heartbeat(
         "status": status,
         "capabilities": capabilities or DEFAULT_CAPABILITIES,
         "last_seen_at": now,
-        "pid": int(pid or 0),
+        "pid": pid,
         "version": version or VERSION,
         "last_error": last_error or "",
-        "checked_count": int(checked_count or 0),
-        "replied_count": int(replied_count or 0),
+        "checked_count": checked_count,
+        "replied_count": replied_count,
     }
 
 
