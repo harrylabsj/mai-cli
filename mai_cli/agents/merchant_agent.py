@@ -91,7 +91,12 @@ def generate_reply(
     conversation: dict[str, Any],
     buyer_message: dict[str, Any],
 ) -> tuple[str, bool, str]:
-    product = tools.product_summary(conversation["sku"]) if conversation.get("sku") else None
+    product = None
+    if conversation.get("sku"):
+        try:
+            product = tools.product_summary(conversation["sku"])
+        except SystemExit:
+            product = None
     reason = human_review_reason(buyer_message["text"], product_found=product is not None)
     disclaimer = " ".join(MVP_WARNINGS)
     if product is None:
