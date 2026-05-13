@@ -792,6 +792,53 @@ class MaiCliTest(unittest.TestCase):
             self.assertEqual(json.loads(inspect_output)["project_root"], str(ROOT))
             self.assertEqual(json.loads(inspect_output)["skill_root"], str(skill_root))
 
+    def test_adapter_inspect_and_doctor_text_output_is_readable(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            tmp_path = Path(tmp)
+            bin_dir = tmp_path / "bin"
+            bin_dir.mkdir()
+            openclaw_bin = bin_dir / "openclaw"
+            openclaw_bin.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            openclaw_bin.chmod(0o755)
+            missing_skill = tmp_path / "missing-skill"
+
+            with patch.dict(os.environ, {"PATH": f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}"}):
+                inspect_output = self.run_cli(
+                    db_file,
+                    "adapter",
+                    "inspect",
+                    "--host",
+                    "openclaw",
+                    "--project-root",
+                    str(ROOT),
+                    "--skill-root",
+                    str(missing_skill),
+                )
+                doctor_output = self.run_cli(
+                    db_file,
+                    "adapter",
+                    "doctor",
+                    "--host",
+                    "openclaw",
+                    "--project-root",
+                    str(ROOT),
+                    "--skill-root",
+                    str(missing_skill),
+                )
+
+            self.assertIn("Adapter: OpenClaw", inspect_output)
+            self.assertIn("Command: openclaw", inspect_output)
+            self.assertIn("Command available: yes", inspect_output)
+            self.assertIn("Project root valid: yes", inspect_output)
+            self.assertIn("Skill installed: no", inspect_output)
+            self.assertNotIn('"command_available"', inspect_output)
+
+            self.assertIn("Adapter doctor: OpenClaw", doctor_output)
+            self.assertIn("OK: no", doctor_output)
+            self.assertIn("- OpenClaw skill is not installed", doctor_output)
+            self.assertNotIn('"issues"', doctor_output)
+
     def test_agent_token_command_issues_scoped_agent_token(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"

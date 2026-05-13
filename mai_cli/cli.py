@@ -917,7 +917,27 @@ def cmd_adapter_inspect(args: argparse.Namespace) -> None:
         project_root=args.project_root or None,
         skill_root=args.skill_root or None,
     )
+    if args.format == "text":
+        emit_adapter_inspect_text(result)
+        return
     emit(result, args.format)
+
+
+def emit_adapter_inspect_text(result: dict[str, Any]) -> None:
+    print(f"Adapter: {result.get('host') or '-'}")
+    print(f"OK: {yes_no(result.get('ok'))}")
+    print(f"Command: {result.get('command') or '-'}")
+    print(f"Command available: {yes_no(result.get('command_available'))}")
+    print(f"Command path: {result.get('command_path') or '-'}")
+    print(f"Project root: {result.get('project_root') or '-'}")
+    print(f"Project root valid: {yes_no(result.get('project_root_valid'))}")
+    print(f"Skill root: {result.get('skill_root') or '-'}")
+    print(f"Skill installed: {yes_no(result.get('skill_installed'))}")
+    print(f"Skill symlink: {yes_no(result.get('skill_is_symlink'))}")
+    print(f"Skill target: {result.get('skill_target') or '-'}")
+    print(f"Skill points to project: {yes_no(result.get('skill_points_to_project'))}")
+    if result.get("db_path"):
+        print(f"DB: {result['db_path']}")
 
 
 def cmd_adapter_doctor(args: argparse.Namespace) -> None:
@@ -927,7 +947,22 @@ def cmd_adapter_doctor(args: argparse.Namespace) -> None:
         project_root=args.project_root or None,
         skill_root=args.skill_root or None,
     )
+    if args.format == "text":
+        emit_adapter_doctor_text(result)
+        return
     emit(result, args.format)
+
+
+def emit_adapter_doctor_text(result: dict[str, Any]) -> None:
+    print(f"Adapter doctor: {result.get('host') or '-'}")
+    print(f"OK: {yes_no(result.get('ok'))}")
+    issues = result.get("issues") or []
+    if not issues:
+        print("Issues: none")
+        return
+    print("Issues:")
+    for issue in issues:
+        print(f"- {issue}")
 
 
 def cmd_adapter_install_command(args: argparse.Namespace) -> None:
