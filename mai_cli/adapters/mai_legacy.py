@@ -15,6 +15,9 @@ def import_json_store(conn: sqlite3.Connection, source: str | Path) -> dict[str,
     imported = {"merchants": 0, "products": 0}
     skipped = {"merchants": 0, "products": 0}
     for merchant_id, merchant in data.get("merchants", {}).items():
+        if not isinstance(merchant, dict):
+            skipped["merchants"] += 1
+            continue
         resolved_merchant_id = str(merchant.get("id") or merchant_id)
         if conn.execute("select 1 from merchants where id = ?", (resolved_merchant_id,)).fetchone():
             skipped["merchants"] += 1
@@ -31,6 +34,9 @@ def import_json_store(conn: sqlite3.Connection, source: str | Path) -> dict[str,
         )
         imported["merchants"] += 1
     for sku, product in data.get("products", {}).items():
+        if not isinstance(product, dict):
+            skipped["products"] += 1
+            continue
         resolved_sku = str(product.get("sku") or sku)
         if conn.execute("select 1 from products where sku = ?", (resolved_sku,)).fetchone():
             skipped["products"] += 1

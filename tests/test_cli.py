@@ -163,6 +163,50 @@ class MaiCliTest(unittest.TestCase):
             products = json.loads(self.run_cli(db_file, "search", "products", "--query", "tea", "--format", "json"))
             self.assertEqual([product["sku"] for product in products["results"]], ["tea-a"])
 
+    def test_legacy_import_skips_non_object_records_without_aborting(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            legacy_file = Path(tmp) / "mai.json"
+            legacy_file.write_text(
+                json.dumps(
+                    {
+                        "merchants": {
+                            "seller-a": "bad",
+                            "seller-b": {"name": "West Lake Tea"},
+                        },
+                        "products": {
+                            "tea-a": "bad",
+                            "tea-b": {
+                                "merchant_id": "seller-b",
+                                "title": "Longjing Gift Box",
+                                "price": 88,
+                                "stock": 5,
+                            },
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            try:
+                output = self.run_cli(
+                    db_file,
+                    "legacy",
+                    "import",
+                    "--from-json",
+                    str(legacy_file),
+                    "--format",
+                    "json",
+                )
+            except AttributeError as exc:
+                self.fail(f"legacy import should skip non-object records instead of aborting: {exc}")
+
+            result = json.loads(output)
+            self.assertEqual(result["imported"]["merchants"], 1)
+            self.assertEqual(result["skipped"]["merchants"], 1)
+            self.assertEqual(result["imported"]["products"], 1)
+            self.assertEqual(result["skipped"]["products"], 1)
+
     def test_catalog_search_and_stock_management_use_sqlite(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"
