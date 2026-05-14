@@ -146,7 +146,7 @@ python3 scripts/mai.py --db ./mai-cli.sqlite agent show --agent mai-cli-merchant
 
 The default `conversation create` text output returns the new conversation id and routing state.
 The default `conversation show` text output prints the conversation summary, review count, and messages.
-The default `conversation message` text output confirms the appended message id and updated routing state.
+The default `conversation message` text output confirms the appended message id and updated routing state. `conversation message --status human_required` also creates a human-review flag; use `conversation close` instead of `conversation message --status closed` for audited closure.
 The default `conversation human-review` text output confirms the review id and human-routing state.
 The default `conversation resolve-review` text output confirms the resolution count and resulting routing state.
 The default `conversation close` text output confirms the final status.

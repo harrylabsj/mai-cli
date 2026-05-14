@@ -629,6 +629,9 @@ def emit_conversation_table(conversations: list[dict[str, Any]], empty_message: 
 
 def cmd_conversation_message(args: argparse.Namespace) -> None:
     structured_payload = {"source_id": args.source_id or args.sender}
+    status = str(args.status or "").strip()
+    if status == "closed":
+        raise SystemExit("conversation messages cannot close conversations; use conversation close")
     with db_session(db_path_from_args(args)) as conn:
         message = append_message(
             conn,
@@ -639,6 +642,15 @@ def cmd_conversation_message(args: argparse.Namespace) -> None:
             structured_payload=structured_payload,
             status=args.status,
         )
+        if status == "human_required":
+            conversation = conversation_summary(conn, args.conversation)
+            add_flag(
+                conn,
+                args.conversation,
+                reason=str(message["structured_payload"].get("reason") or "human_required"),
+                severity=str(message["structured_payload"].get("severity") or "review"),
+                sku=conversation.get("sku") or "",
+            )
         conversation = conversation_summary(conn, args.conversation)
     if args.format == "text":
         print(f"Message appended: {message['id']}")

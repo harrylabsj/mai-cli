@@ -2804,6 +2804,81 @@ class MaiCliTest(unittest.TestCase):
             self.assertIn("Next actor: buyer", output)
             self.assertNotIn('"message"', output)
 
+    def test_conversation_message_human_required_creates_review_flag(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.run_cli(db_file, "merchant", "create", "--id", "seller-a", "--name", "West Lake Tea")
+            self.run_cli(
+                db_file,
+                "conversation",
+                "create",
+                "--buyer",
+                "alice",
+                "--merchant",
+                "seller-a",
+                "--text",
+                "Is this available?",
+            )
+
+            message = json.loads(
+                self.run_cli(
+                    db_file,
+                    "conversation",
+                    "message",
+                    "--conversation",
+                    "CONV-0001",
+                    "--sender",
+                    "merchant",
+                    "--intent",
+                    "support",
+                    "--text",
+                    "This needs human review.",
+                    "--status",
+                    "human_required",
+                    "--format",
+                    "json",
+                )
+            )
+
+            self.assertEqual(message["conversation"]["status"], "human_required")
+            self.assertEqual([flag["reason"] for flag in message["conversation"]["flags"]], ["human_required"])
+            queue = json.loads(self.run_cli(db_file, "human-review", "queue", "--format", "json"))
+            self.assertEqual([review["conversation_id"] for review in queue["reviews"]], ["CONV-0001"])
+
+    def test_conversation_message_status_closed_requires_close_command(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.run_cli(db_file, "merchant", "create", "--id", "seller-a", "--name", "West Lake Tea")
+            self.run_cli(
+                db_file,
+                "conversation",
+                "create",
+                "--buyer",
+                "alice",
+                "--merchant",
+                "seller-a",
+                "--text",
+                "Is this available?",
+            )
+
+            with self.assertRaises(SystemExit) as raised:
+                self.run_cli(
+                    db_file,
+                    "conversation",
+                    "message",
+                    "--conversation",
+                    "CONV-0001",
+                    "--sender",
+                    "merchant",
+                    "--intent",
+                    "support",
+                    "--text",
+                    "Close through generic message.",
+                    "--status",
+                    "closed",
+                )
+            self.assertIn("conversation close", str(raised.exception))
+
     def test_conversation_close_text_output_summarizes_result(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"
