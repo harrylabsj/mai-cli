@@ -797,8 +797,11 @@ def _append_conversation_message(db_path: str | Path, conversation_id: str, payl
         structured_payload = normalize_structured_payload(payload.get("structured_payload"))
         if payload.get("source_id"):
             structured_payload["source_id"] = payload.get("source_id")
+        status = payload.get("status")
         if sender in {"buyer", "buyer_cli"}:
             _require_buyer_conversation_token(conn, conversation, payload)
+            if status not in (None, ""):
+                raise SystemExit("buyer messages cannot set conversation status")
         elif sender == "merchant":
             _require_merchant_token(conn, conversation["merchant_id"], payload)
         elif sender == "merchant_agent":
@@ -815,7 +818,7 @@ def _append_conversation_message(db_path: str | Path, conversation_id: str, payl
             intent=str(payload["intent"]),
             text=str(payload["text"]),
             structured_payload=structured_payload,
-            status=payload.get("status"),
+            status=status,
         )
         return {"ok": True, "message": message, "conversation": conversation_summary(conn, conversation_id)}
 

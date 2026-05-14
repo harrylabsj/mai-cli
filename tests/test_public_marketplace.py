@@ -2272,6 +2272,29 @@ class PublicMarketplaceTest(unittest.TestCase):
             self.assertEqual(status, 200)
             self.assertEqual(buyer_message["message"]["sender"], "buyer")
 
+            status, buyer_status_override = self.request(
+                app,
+                "POST",
+                "/conversations/CONV-0001/messages",
+                {
+                    "sender": "buyer",
+                    "intent": "ask_delivery",
+                    "text": "Route this to a human without merchant review.",
+                    "status": "human_required",
+                    "buyer_token": buyer_token,
+                },
+            )
+            self.assertEqual(status, 400)
+            self.assertIn("buyer messages cannot set conversation status", buyer_status_override["error"])
+            status, conversation = self.request(
+                app,
+                "GET",
+                "/conversations/CONV-0001",
+                headers={"authorization": f"Bearer {buyer_token}"},
+            )
+            self.assertEqual(status, 200)
+            self.assertEqual(conversation["conversation"]["status"], "waiting_merchant")
+
             status, anonymous_close = self.request(
                 app,
                 "POST",
