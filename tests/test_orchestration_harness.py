@@ -132,6 +132,24 @@ class OrchestrationHarnessTest(unittest.TestCase):
 
             self.assertEqual(listed, [])
 
+    def test_ensure_conversation_retries_when_generated_id_collides(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.seed_conversation(db_file)
+
+            with db_session(db_file) as conn:
+                with patch("mai_cli.core.conversations.next_conversation_id", side_effect=["CONV-0001", "CONV-0002"]):
+                    conversation = conversations.ensure_conversation(
+                        conn,
+                        buyer_id="bob",
+                        merchant_id="seller-a",
+                        sku="tea-a",
+                        reuse_open=False,
+                    )
+
+            self.assertEqual(conversation["id"], "CONV-0002")
+            self.assertEqual(conversation["buyer_id"], "bob")
+
     def test_processing_claim_is_not_reclaimed(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"

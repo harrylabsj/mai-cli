@@ -59,15 +59,29 @@ def ensure_conversation(
         ).fetchone()
         if row is not None:
             return conversation_summary(conn, row["id"])
-    now = now_iso()
-    conversation_id = next_conversation_id(conn)
-    conn.execute(
-        """
-        insert into conversations(id, buyer_id, merchant_id, sku, status, next_actor, created_at, updated_at, last_sender)
-        values (?, ?, ?, ?, 'open', 'buyer', ?, ?, '')
-        """,
-        (conversation_id, buyer_id, merchant_id, sku, now, now),
-    )
+    last_insert_error: sqlite3.IntegrityError | None = None
+    conversation_id = ""
+    for _attempt in range(3):
+        now = now_iso()
+        conversation_id = next_conversation_id(conn)
+        try:
+            conn.execute(
+                """
+                insert into conversations(
+                    id, buyer_id, merchant_id, sku, status, next_actor,
+                    created_at, updated_at, last_sender
+                )
+                values (?, ?, ?, ?, 'open', 'buyer', ?, ?, '')
+                """,
+                (conversation_id, buyer_id, merchant_id, sku, now, now),
+            )
+            break
+        except sqlite3.IntegrityError as exc:
+            if "conversations.id" not in str(exc):
+                raise
+            last_insert_error = exc
+    else:
+        raise last_insert_error or SystemExit("Could not create conversation")
     append_audit_event(
         conn,
         conversation_id,
