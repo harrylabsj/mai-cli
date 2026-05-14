@@ -44,10 +44,7 @@ def append_audit_event(
     return audit_event_summary(conn, int(cursor.lastrowid))
 
 
-def audit_event_summary(conn: sqlite3.Connection, event_id: int) -> dict[str, Any]:
-    row = conn.execute("select * from audit_events where id = ?", (event_id,)).fetchone()
-    if row is None:
-        raise SystemExit(f"Unknown audit event: {event_id}")
+def audit_event_summary_from_row(row: sqlite3.Row) -> dict[str, Any]:
     return {
         "id": row["id"],
         "conversation_id": row["conversation_id"],
@@ -58,12 +55,24 @@ def audit_event_summary(conn: sqlite3.Connection, event_id: int) -> dict[str, An
     }
 
 
+def audit_event_summary(conn: sqlite3.Connection, event_id: int) -> dict[str, Any]:
+    row = conn.execute("select * from audit_events where id = ?", (event_id,)).fetchone()
+    if row is None:
+        raise SystemExit(f"Unknown audit event: {event_id}")
+    return audit_event_summary_from_row(row)
+
+
 def conversation_audit_events(conn: sqlite3.Connection, conversation_id: str) -> list[dict[str, Any]]:
     rows = conn.execute(
-        "select id from audit_events where conversation_id = ? order by id",
+        """
+        select id, conversation_id, actor, event, details_json, created_at
+        from audit_events
+        where conversation_id = ?
+        order by id
+        """,
         (conversation_id,),
     ).fetchall()
-    return [audit_event_summary(conn, row["id"]) for row in rows]
+    return [audit_event_summary_from_row(row) for row in rows]
 
 
 def message_idempotency_key(agent_id: str, message_id: int) -> str:

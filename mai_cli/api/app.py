@@ -36,6 +36,7 @@ from mai_cli.core.harness import (
     agent_message_process_summary,
     append_audit_event,
     audit_event_summary,
+    audit_event_summary_from_row,
     claim_agent_message,
     complete_agent_message,
     fail_agent_message,
@@ -440,17 +441,6 @@ def _audit_event_limit(value: Any) -> int:
     return min(limit, 200)
 
 
-def _audit_event_summary_from_row(row: Any) -> dict[str, Any]:
-    return {
-        "id": row["id"],
-        "conversation_id": row["conversation_id"],
-        "actor": row["actor"],
-        "event": row["event"],
-        "details": decode_json(row["details_json"], {}),
-        "created_at": row["created_at"],
-    }
-
-
 def _merchant_audit_events(
     conn: Any,
     merchant_id: str,
@@ -466,7 +456,7 @@ def _merchant_audit_events(
     sql += " order by id desc limit ? offset ?"
     values.extend([_audit_event_limit(limit), _result_offset(offset)])
     rows = conn.execute(sql, values).fetchall()
-    return [_audit_event_summary_from_row(row) for row in rows]
+    return [audit_event_summary_from_row(row) for row in rows]
 
 
 def _issue_merchant_token(conn: Any, merchant_id: str) -> str:

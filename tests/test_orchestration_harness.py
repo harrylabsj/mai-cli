@@ -2,8 +2,10 @@ import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from mai_cli.agents import buyer_cli, merchant_agent
+from mai_cli.core import harness
 from mai_cli.core.catalog import create_merchant, create_product
 from mai_cli.core.conversations import conversation_summary, next_conversation_id
 from mai_cli.core.harness import abandon_agent_message, abandon_stale_agent_messages, claim_agent_message, complete_agent_message, fail_agent_message
@@ -88,6 +90,18 @@ class OrchestrationHarnessTest(unittest.TestCase):
                 self.assertTrue(
                     any(event["event"] == "agent_message_processed" for event in updated["audit_events"])
                 )
+
+    def test_conversation_audit_events_use_list_rows_without_per_event_hydration(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.seed_conversation(db_file)
+
+            with db_session(db_file) as conn:
+                with patch("mai_cli.core.harness.audit_event_summary", wraps=harness.audit_event_summary) as summary:
+                    events = harness.conversation_audit_events(conn, "CONV-0001")
+
+            self.assertTrue(events)
+            self.assertEqual(summary.call_count, 0)
 
     def test_processing_claim_is_not_reclaimed(self):
         with tempfile.TemporaryDirectory() as tmp:
