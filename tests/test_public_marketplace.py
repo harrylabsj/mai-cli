@@ -4,6 +4,7 @@ import os
 import sqlite3
 import tempfile
 import unittest
+from contextlib import closing
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -1320,11 +1321,12 @@ class PublicMarketplaceTest(unittest.TestCase):
                 {"buyer_id": "alice", "text": "longjing delivery today"},
             )
             self.assertEqual(status, 200)
-            with sqlite3.connect(db_file) as conn:
+            with closing(sqlite3.connect(db_file)) as conn:
                 conn.execute(
                     "update messages set structured_payload_json = ? where conversation_id = ?",
                     (sqlite3.Binary(b"\xff"), "CONV-0001"),
                 )
+                conn.commit()
 
             status, buyer_view = self.request(
                 app,
@@ -1365,8 +1367,9 @@ class PublicMarketplaceTest(unittest.TestCase):
                 {"buyer_id": "alice", "text": "longjing delivery today"},
             )
             self.assertEqual(status, 200)
-            with sqlite3.connect(db_file) as conn:
+            with closing(sqlite3.connect(db_file)) as conn:
                 conn.execute("delete from products where sku = 'tea-a'")
+                conn.commit()
 
             status, buyer_view = self.request(
                 app,
@@ -1386,7 +1389,7 @@ class PublicMarketplaceTest(unittest.TestCase):
 
             status, created = self.request(app, "POST", "/merchants", {"id": "seller-a", "name": "West Lake Tea"})
             self.assertEqual(status, 200)
-            with sqlite3.connect(db_file) as conn:
+            with closing(sqlite3.connect(db_file)) as conn:
                 conn.execute(
                     """
                     update delivery_rules
@@ -1394,6 +1397,7 @@ class PublicMarketplaceTest(unittest.TestCase):
                     where merchant_id = 'seller-a'
                     """
                 )
+                conn.commit()
 
             status, shown = self.request(app, "GET", "/merchants/seller-a")
 
@@ -1423,8 +1427,9 @@ class PublicMarketplaceTest(unittest.TestCase):
                 },
             )
             self.assertEqual(status, 200)
-            with sqlite3.connect(db_file) as conn:
+            with closing(sqlite3.connect(db_file)) as conn:
                 conn.execute("update products set price = 'bad', stock = 'bad' where sku = 'tea-a'")
+                conn.commit()
 
             status, shown = self.request(app, "GET", "/products/tea-a")
 
@@ -1455,8 +1460,9 @@ class PublicMarketplaceTest(unittest.TestCase):
                 },
             )
             self.assertEqual(status, 200)
-            with sqlite3.connect(db_file) as conn:
+            with closing(sqlite3.connect(db_file)) as conn:
                 conn.execute("update products set price = 'bad', stock = 'bad' where sku = 'tea-a'")
+                conn.commit()
 
             status, search = self.request(
                 app,
@@ -2736,10 +2742,11 @@ class PublicMarketplaceTest(unittest.TestCase):
                 },
             )
             self.assertEqual(status, 200)
-            with sqlite3.connect(db_file) as conn:
+            with closing(sqlite3.connect(db_file)) as conn:
                 conn.execute(
                     "update channel_message_ingresses set message_id = 'bad' where external_message_id = 'tg-msg-1'"
                 )
+                conn.commit()
 
             status, replayed = self.request(
                 app,
@@ -2789,11 +2796,12 @@ class PublicMarketplaceTest(unittest.TestCase):
                 },
             )
             self.assertEqual(status, 200)
-            with sqlite3.connect(db_file) as conn:
+            with closing(sqlite3.connect(db_file)) as conn:
                 conn.execute(
                     "update channel_message_ingresses set message_id = ? where external_message_id = ?",
                     (float("inf"), "tg-msg-1"),
                 )
+                conn.commit()
 
             status, replayed = self.request(
                 app,
