@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 import json
 import os
 import sqlite3
@@ -400,6 +401,22 @@ class PublicMarketplaceTest(unittest.TestCase):
         )
         with self.assertRaises(AuthError):
             create_product({"merchant_id": "seller-a", "name": "Tea", "price_cents": 500})
+
+    def test_fastapi_audit_events_keeps_query_validation_in_app_layer(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "marketplace.sqlite"
+            with patch("mai_cli.api.app.FastAPI", FakeFastAPI):
+                app = create_app(db_file)
+
+        audit_events = next(
+            route.endpoint
+            for route in app.routes
+            if route.path == "/audit/events" and "GET" in route.methods
+        )
+        signature = inspect.signature(audit_events)
+
+        self.assertEqual(signature.parameters["limit"].annotation, "str")
+        self.assertEqual(signature.parameters["offset"].annotation, "str")
 
     def test_fastapi_conversation_reads_require_owner_token(self):
         with tempfile.TemporaryDirectory() as tmp:

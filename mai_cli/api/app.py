@@ -1940,8 +1940,8 @@ def create_app(db_path: str | Path = "mai-cli.sqlite") -> Any:
     def get_audit_events(
         merchant_id: str = "",
         event: str = "",
-        limit: int = 50,
-        offset: int = 0,
+        limit: str = "",
+        offset: str = "",
         authorization: str = AUTHORIZATION_HEADER,
     ) -> dict[str, Any]:
         return _audit_events(
