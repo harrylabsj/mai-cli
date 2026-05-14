@@ -54,6 +54,8 @@ from mai_cli.llm.prompts import buyer_system_prompt, merchant_system_prompt
 from mai_cli.llm.providers import provider_from_env
 from mai_cli.llm.runner import run_marketplace_tool_loop
 
+MAX_SQLITE_INTEGER = 2**63 - 1
+
 
 def emit_json(value: Any) -> None:
     print(json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True, default=str))
@@ -71,12 +73,14 @@ def emit(value: Any, fmt: str) -> None:
 
 def positive_int(value: str) -> int:
     try:
-        seconds = int(value)
+        number = int(value)
     except (TypeError, ValueError) as exc:
         raise argparse.ArgumentTypeError("must be a whole number") from exc
-    if seconds <= 0:
+    if number <= 0:
         raise argparse.ArgumentTypeError("must be greater than 0")
-    return seconds
+    if number > MAX_SQLITE_INTEGER:
+        raise argparse.ArgumentTypeError(f"must be <= {MAX_SQLITE_INTEGER}")
+    return number
 
 
 def non_negative_int(value: str) -> int:
@@ -86,6 +90,8 @@ def non_negative_int(value: str) -> int:
         raise argparse.ArgumentTypeError("must be a whole number") from exc
     if number < 0:
         raise argparse.ArgumentTypeError("must be non-negative")
+    if number > MAX_SQLITE_INTEGER:
+        raise argparse.ArgumentTypeError(f"must be <= {MAX_SQLITE_INTEGER}")
     return number
 
 
@@ -102,7 +108,13 @@ def positive_float(value: str) -> float:
 
 
 def positive_seconds(value: str) -> int:
-    return positive_int(value)
+    try:
+        seconds = int(value)
+    except (TypeError, ValueError) as exc:
+        raise argparse.ArgumentTypeError("must be a whole number") from exc
+    if seconds <= 0:
+        raise argparse.ArgumentTypeError("must be greater than 0")
+    return seconds
 
 
 def resolve_agent_token_for_cli(conn: Any, merchant_id: str, token: str | None, token_prefix: str | None) -> str:
@@ -2051,7 +2063,7 @@ def build_parser() -> argparse.ArgumentParser:
     audit_events = audit_sub.add_parser("events", help="List merchant audit events")
     audit_events.add_argument("--merchant", required=True)
     audit_events.add_argument("--event", default="")
-    audit_events.add_argument("--limit", type=positive_seconds, default=50)
+    audit_events.add_argument("--limit", type=positive_int, default=50)
     audit_events.add_argument("--offset", type=non_negative_int, default=0)
     audit_events.add_argument("--merchant-token", default="")
     audit_events.add_argument("--format", choices=["text", "json"], default="text")

@@ -71,6 +71,22 @@ class MaiCliTest(unittest.TestCase):
         self.assertEqual(caught.exception.code, 2)
         self.assertIn("must be a whole number", stderr.getvalue())
 
+    def test_sqlite_sized_int_args_reject_oversized_values_cleanly(self):
+        from mai_cli import cli
+
+        cases = [
+            ["agent", "logs", "--merchant", "seller-a", "--tail", str(10**100)],
+            ["merchant", "list", "--offset", str(10**100)],
+            ["audit", "events", "--merchant", "seller-a", "--limit", str(10**100)],
+        ]
+        for args in cases:
+            with self.subTest(args=args):
+                stderr = StringIO()
+                with redirect_stderr(stderr), self.assertRaises(SystemExit) as caught:
+                    cli.build_parser().parse_args(args)
+                self.assertEqual(caught.exception.code, 2)
+                self.assertIn("must be <= 9223372036854775807", stderr.getvalue())
+
     def test_legacy_import_text_output_is_readable(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"
