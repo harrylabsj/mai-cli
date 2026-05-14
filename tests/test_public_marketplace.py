@@ -696,7 +696,7 @@ class PublicMarketplaceTest(unittest.TestCase):
                 )
             self.assertEqual(status, 200)
             self.assertEqual([product["sku"] for product in products["results"]], ["tea-2", "tea-3"])
-            self.assertEqual(product_summary.call_count, 2)
+            self.assertEqual(product_summary.call_count, 0)
 
             with patch("mai_cli.core.catalog.require_merchant", wraps=catalog.require_merchant) as require_merchant:
                 status, products = self.request(
@@ -707,7 +707,7 @@ class PublicMarketplaceTest(unittest.TestCase):
             )
             self.assertEqual(status, 200)
             self.assertEqual([product["sku"] for product in products["results"]], ["tea-2", "tea-3"])
-            self.assertEqual(require_merchant.call_count, 2)
+            self.assertEqual(require_merchant.call_count, 0)
 
             with patch("mai_cli.core.catalog.merchant_summary", wraps=catalog.merchant_summary) as merchant_summary:
                 status, merchants = self.request(

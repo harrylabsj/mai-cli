@@ -462,6 +462,40 @@ def product_summary(conn: sqlite3.Connection, sku: str) -> dict[str, Any]:
     }
 
 
+def _merchant_summary_from_product_search_row(row: sqlite3.Row) -> dict[str, Any]:
+    return {
+        "id": row["merchant_id"],
+        "name": row["merchant_name"],
+        "city": row["merchant_city"],
+        "service_area": row["merchant_service_area"],
+        "contact": row["merchant_contact"],
+        "hours": row["merchant_hours"],
+        "automation_boundaries": row["merchant_automation_boundaries"],
+        "tags": decode_json(row["merchant_tags_json"], []),
+        "delivery": _delivery_rule_from_joined_merchant(row),
+        "product_count": _safe_non_negative_int(row["active_product_count"]),
+    }
+
+
+def _product_summary_from_search_row(row: sqlite3.Row) -> dict[str, Any]:
+    merchant = _merchant_summary_from_product_search_row(row)
+    return {
+        "sku": row["sku"],
+        "merchant_id": row["merchant_id"],
+        "title": row["title"],
+        "description": row["description"],
+        "category": row["category"],
+        "tags": decode_json(row["tags_json"], []),
+        "price": _safe_non_negative_float(row["price"]),
+        "currency": row["currency"],
+        "stock": _safe_non_negative_int(row["stock"]),
+        "delivery_attributes": decode_json(row["delivery_attributes_json"], []),
+        "merchant": merchant,
+        "delivery": merchant["delivery"],
+        "warnings": product_warnings(row, merchant),
+    }
+
+
 def product_warnings(product: sqlite3.Row, merchant: dict[str, Any]) -> list[str]:
     warnings: list[str] = []
     stock = _safe_non_negative_int(product["stock"])
@@ -538,10 +572,28 @@ def search_products(
         max_price = _finite_float(max_price, "--max-price must be finite")
     values: list[Any] = []
     sql = """
-        select p.*, m.name as merchant_name, m.city as merchant_city, m.service_area as merchant_service_area,
-               m.contact as merchant_contact, m.hours as merchant_hours, m.tags_json as merchant_tags_json
+        select p.*,
+               m.name as merchant_name,
+               m.city as merchant_city,
+               m.service_area as merchant_service_area,
+               m.contact as merchant_contact,
+               m.hours as merchant_hours,
+               m.automation_boundaries as merchant_automation_boundaries,
+               m.tags_json as merchant_tags_json,
+               dr.service_area as delivery_service_area,
+               dr.fee as delivery_fee,
+               dr.currency as delivery_currency,
+               dr.eta_minutes as delivery_eta_minutes,
+               dr.radius_km as delivery_radius_km,
+               dr.notes as delivery_notes,
+               (
+                   select count(*)
+                   from products pc
+                   where pc.merchant_id = m.id and pc.active = 1
+               ) as active_product_count
         from products p
         join merchants m on m.id = p.merchant_id
+        left join delivery_rules dr on dr.merchant_id = m.id
         where p.active = 1
     """
     if city:
@@ -574,7 +626,7 @@ def search_products(
     window_limit = _safe_non_negative_int(limit)
     results: list[dict[str, Any]] = []
     for score, _price, _sku, row in ordered[window_start : window_start + window_limit]:
-        summary = product_summary(conn, row["sku"])
+        summary = _product_summary_from_search_row(row)
         service_area = str(summary["merchant"].get("service_area") or "")
         if area and area.lower() not in service_area.lower():
             summary.setdefault("warnings", []).append("requested area may need merchant confirmation")
