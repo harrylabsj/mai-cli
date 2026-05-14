@@ -4,6 +4,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from mai_cli.db.session import db_session
+
 
 class ProjectShapeTest(unittest.TestCase):
     def test_documented_modules_are_importable(self):
@@ -33,6 +35,24 @@ class ProjectShapeTest(unittest.TestCase):
         self.assertIn("/human-review/queue", routes_conversations.route_paths())
         self.assertIn("/agents/heartbeat", routes_agents.route_paths())
         self.assertIn("/merchants/{merchant_id}/agents", routes_agents.route_paths())
+
+    def test_sqlite_schema_creates_operational_indexes(self):
+        expected = {
+            "idx_conversations_merchant_status_updated",
+            "idx_conversations_buyer_updated",
+            "idx_messages_conversation_id",
+            "idx_moderation_flags_conversation_resolved",
+            "idx_moderation_flags_queue",
+            "idx_api_tokens_merchant_role_created",
+            "idx_agents_owner_id",
+            "idx_audit_events_actor_event_id",
+            "idx_products_active_merchant",
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            with db_session(Path(tmp) / "mai.sqlite") as conn:
+                indexes = {row["name"] for row in conn.execute("select name from sqlite_master where type = 'index'")}
+
+        self.assertTrue(expected.issubset(indexes), sorted(expected - indexes))
 
     def test_config_and_host_adapters_expose_stable_entrypoints(self):
         from mai_cli import config

@@ -164,6 +164,45 @@ SCHEMA = [
     """,
 ]
 
+INDEXES = [
+    """
+    create index if not exists idx_conversations_merchant_status_updated
+    on conversations(merchant_id, status, updated_at desc)
+    """,
+    """
+    create index if not exists idx_conversations_buyer_updated
+    on conversations(buyer_id, updated_at desc)
+    """,
+    """
+    create index if not exists idx_messages_conversation_id
+    on messages(conversation_id, id)
+    """,
+    """
+    create index if not exists idx_moderation_flags_conversation_resolved
+    on moderation_flags(conversation_id, resolved_at, id)
+    """,
+    """
+    create index if not exists idx_moderation_flags_queue
+    on moderation_flags(resolved_at, created_at desc, id desc)
+    """,
+    """
+    create index if not exists idx_api_tokens_merchant_role_created
+    on api_tokens(merchant_id, role, created_at desc)
+    """,
+    """
+    create index if not exists idx_agents_owner_id
+    on agents(owner_id, id)
+    """,
+    """
+    create index if not exists idx_audit_events_actor_event_id
+    on audit_events(actor, event, id desc)
+    """,
+    """
+    create index if not exists idx_products_active_merchant
+    on products(active, merchant_id)
+    """,
+]
+
 EXTRA_COLUMNS = {
     "conversations": [
         ("next_actor", "text not null default ''"),

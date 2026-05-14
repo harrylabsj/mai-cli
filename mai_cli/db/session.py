@@ -11,7 +11,7 @@ from typing import Any, Iterator
 
 from mai_cli import VERSION
 from mai_cli.core.tokens import is_sha256_digest, token_digest, token_prefix, token_suffix
-from mai_cli.db.models import EXTRA_COLUMNS, SCHEMA
+from mai_cli.db.models import EXTRA_COLUMNS, INDEXES, SCHEMA
 
 
 def now_iso() -> str:
@@ -77,6 +77,8 @@ def init_db(conn: sqlite3.Connection) -> None:
         """
     )
     migrate_api_tokens_to_hashes(conn)
+    for statement in INDEXES:
+        conn.execute(statement)
     conn.execute(
         "insert or ignore into meta(key, value) values('schema_version', ?)",
         (VERSION,),

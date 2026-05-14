@@ -371,6 +371,34 @@ class OrchestrationHarnessTest(unittest.TestCase):
             self.assertIn("audit_events", tables)
             self.assertIn("agent_message_processes", tables)
 
+    def test_schema_migration_adds_columns_before_operational_indexes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "legacy-flags.sqlite"
+            conn = sqlite3.connect(db_file)
+            try:
+                conn.execute(
+                    """
+                    create table moderation_flags (
+                        id integer primary key autoincrement,
+                        conversation_id text not null default '',
+                        sku text not null default '',
+                        reason text not null,
+                        severity text not null default 'review',
+                        created_at text not null
+                    )
+                    """
+                )
+                conn.commit()
+            finally:
+                conn.close()
+
+            with db_session(db_file) as conn:
+                columns = {row["name"] for row in conn.execute("pragma table_info(moderation_flags)").fetchall()}
+                indexes = {row["name"] for row in conn.execute("select name from sqlite_master where type = 'index'")}
+
+            self.assertIn("resolved_at", columns)
+            self.assertIn("idx_moderation_flags_conversation_resolved", indexes)
+
     def test_schema_migration_hashes_legacy_plaintext_api_tokens(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "legacy-tokens.sqlite"
