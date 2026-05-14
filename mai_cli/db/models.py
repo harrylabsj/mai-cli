@@ -201,6 +201,14 @@ INDEXES = [
     create index if not exists idx_products_active_merchant
     on products(active, merchant_id)
     """,
+    """
+    create index if not exists idx_products_active_stock_price
+    on products(active, stock, price, sku)
+    """,
+    """
+    create index if not exists idx_merchants_city_lower
+    on merchants(lower(city), id)
+    """,
 ]
 
 EXTRA_COLUMNS = {

@@ -47,6 +47,8 @@ class ProjectShapeTest(unittest.TestCase):
             "idx_agents_owner_id",
             "idx_audit_events_actor_event_id",
             "idx_products_active_merchant",
+            "idx_products_active_stock_price",
+            "idx_merchants_city_lower",
         }
         with tempfile.TemporaryDirectory() as tmp:
             with db_session(Path(tmp) / "mai.sqlite") as conn:
