@@ -142,6 +142,38 @@ class MaiCliTest(unittest.TestCase):
                 self.assertEqual(caught.exception.code, 2)
                 self.assertIn(expected_error, stderr.getvalue())
 
+    def test_product_stock_args_report_invalid_values_cleanly(self):
+        from mai_cli import cli
+
+        cases = [
+            (
+                [
+                    "product",
+                    "add",
+                    "--merchant",
+                    "seller-a",
+                    "--sku",
+                    "tea-a",
+                    "--title",
+                    "Longjing",
+                    "--price",
+                    "88",
+                    "--stock",
+                    "bad",
+                ],
+                "must be a whole number",
+            ),
+            (["product", "stock", "--sku", "tea-a", "--stock", "-1"], "must be non-negative"),
+            (["product", "update", "--sku", "tea-a", "--stock", str(10**100)], "must be <= 9223372036854775807"),
+        ]
+        for args, expected_error in cases:
+            with self.subTest(args=args):
+                stderr = StringIO()
+                with redirect_stderr(stderr), self.assertRaises(SystemExit) as caught:
+                    cli.build_parser().parse_args(args)
+                self.assertEqual(caught.exception.code, 2)
+                self.assertIn(expected_error, stderr.getvalue())
+
     def test_legacy_import_text_output_is_readable(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"
