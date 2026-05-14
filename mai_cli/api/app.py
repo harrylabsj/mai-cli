@@ -176,11 +176,7 @@ def _bool_from_query(value: Any) -> bool:
 
 
 def _merchant_list(conn: Any, limit: int = DEFAULT_RESULT_LIMIT, offset: int = 0) -> list[dict[str, Any]]:
-    rows = conn.execute(
-        "select id from merchants order by name, id limit ? offset ?",
-        (int(limit), int(offset)),
-    ).fetchall()
-    return [catalog.merchant_summary(conn, row["id"]) for row in rows]
+    return catalog.list_merchants(conn, limit=int(limit), offset=int(offset))
 
 
 def _payload_token(payload: dict[str, Any]) -> str:

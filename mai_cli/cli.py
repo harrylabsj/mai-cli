@@ -33,6 +33,7 @@ from mai_cli.config import DEFAULT_DB_PATH
 from mai_cli.core.catalog import (
     create_merchant,
     create_product,
+    list_merchants,
     merchant_summary,
     require_merchant,
     search_merchants,
@@ -144,11 +145,7 @@ def cmd_merchant_create(args: argparse.Namespace) -> None:
 
 def cmd_merchant_list(args: argparse.Namespace) -> None:
     with db_session(db_path_from_args(args)) as conn:
-        rows = conn.execute(
-            "select id from merchants order by name, id limit ? offset ?",
-            (args.limit, args.offset),
-        ).fetchall()
-        merchants = [merchant_summary(conn, row["id"]) for row in rows]
+        merchants = list_merchants(conn, limit=args.limit, offset=args.offset)
     if args.format == "text":
         if not merchants:
             print("No merchants found.")

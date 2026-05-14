@@ -621,9 +621,11 @@ class PublicMarketplaceTest(unittest.TestCase):
                 )
                 self.assertEqual(status, 200)
 
-            status, merchants = self.request(app, "GET", "/merchants", query_string="limit=3")
+            with patch("mai_cli.core.catalog.merchant_summary", wraps=catalog.merchant_summary) as merchant_summary:
+                status, merchants = self.request(app, "GET", "/merchants", query_string="limit=3")
             self.assertEqual(status, 200)
             self.assertEqual(len(merchants["results"]), 3)
+            self.assertEqual(merchant_summary.call_count, 0)
 
             status, products = self.request(app, "GET", "/search/products", query_string="query=longjing&limit=2")
             self.assertEqual(status, 200)

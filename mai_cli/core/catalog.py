@@ -442,6 +442,29 @@ def _merchant_summary_from_search_row(row: sqlite3.Row) -> dict[str, Any]:
     }
 
 
+def list_merchants(conn: sqlite3.Connection, limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        """
+        select m.*,
+               dr.service_area as delivery_service_area,
+               dr.fee as delivery_fee,
+               dr.currency as delivery_currency,
+               dr.eta_minutes as delivery_eta_minutes,
+               dr.radius_km as delivery_radius_km,
+               dr.notes as delivery_notes,
+               count(p.sku) as active_product_count
+        from merchants m
+        left join delivery_rules dr on dr.merchant_id = m.id
+        left join products p on p.merchant_id = m.id and p.active = 1
+        group by m.id
+        order by m.name, m.id
+        limit ? offset ?
+        """,
+        (int(limit), int(offset)),
+    ).fetchall()
+    return [_merchant_summary_from_search_row(row) for row in rows]
+
+
 def product_summary(conn: sqlite3.Connection, sku: str) -> dict[str, Any]:
     product = require_product(conn, sku)
     merchant = merchant_summary(conn, product["merchant_id"])
