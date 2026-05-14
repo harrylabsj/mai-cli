@@ -715,10 +715,10 @@ class PublicMarketplaceTest(unittest.TestCase):
                     "GET",
                     "/search/merchants",
                     query_string="query=west&city=Hangzhou&limit=2&offset=2",
-                )
+            )
             self.assertEqual(status, 200)
             self.assertEqual([merchant["id"] for merchant in merchants["results"]], ["seller-2", "seller-3"])
-            self.assertEqual(merchant_summary.call_count, 2)
+            self.assertEqual(merchant_summary.call_count, 0)
 
     def test_product_search_pushes_simple_filters_into_sql(self):
         class EmptyCursor:

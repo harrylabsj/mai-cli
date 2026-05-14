@@ -416,6 +416,32 @@ def merchant_summary(conn: sqlite3.Connection, merchant_id: str) -> dict[str, An
     }
 
 
+def _delivery_rule_from_joined_merchant(row: sqlite3.Row) -> dict[str, Any]:
+    return {
+        "service_area": row["delivery_service_area"] or "",
+        "fee": _safe_non_negative_float(row["delivery_fee"]),
+        "currency": row["delivery_currency"] or "CNY",
+        "eta_minutes": _safe_non_negative_int(row["delivery_eta_minutes"]),
+        "radius_km": _safe_non_negative_float(row["delivery_radius_km"]),
+        "notes": row["delivery_notes"] or "",
+    }
+
+
+def _merchant_summary_from_search_row(row: sqlite3.Row) -> dict[str, Any]:
+    return {
+        "id": row["id"],
+        "name": row["name"],
+        "city": row["city"],
+        "service_area": row["service_area"],
+        "contact": row["contact"],
+        "hours": row["hours"],
+        "automation_boundaries": row["automation_boundaries"],
+        "tags": decode_json(row["tags_json"], []),
+        "delivery": _delivery_rule_from_joined_merchant(row),
+        "product_count": _safe_non_negative_int(row["active_product_count"]),
+    }
+
+
 def product_summary(conn: sqlite3.Connection, sku: str) -> dict[str, Any]:
     product = require_product(conn, sku)
     merchant = merchant_summary(conn, product["merchant_id"])
@@ -569,11 +595,23 @@ def search_merchants(
     query_lower = query.lower()
     query_tokens = tokenize(query_lower)
     values: list[Any] = []
-    sql = "select * from merchants"
+    sql = """
+        select m.*,
+               dr.service_area as delivery_service_area,
+               dr.fee as delivery_fee,
+               dr.currency as delivery_currency,
+               dr.eta_minutes as delivery_eta_minutes,
+               dr.radius_km as delivery_radius_km,
+               dr.notes as delivery_notes,
+               count(p.sku) as active_product_count
+        from merchants m
+        left join delivery_rules dr on dr.merchant_id = m.id
+        left join products p on p.merchant_id = m.id and p.active = 1
+    """
     if city:
         sql += " where lower(city) = lower(?)"
         values.append(city)
-    sql += " order by name, id"
+    sql += " group by m.id order by m.name, m.id"
     rows = conn.execute(sql, values).fetchall()
     matches: list[tuple[float, str, str, sqlite3.Row]] = []
     for merchant in rows:
@@ -604,8 +642,8 @@ def search_merchants(
     window_start = _safe_non_negative_int(offset)
     window_limit = _safe_non_negative_int(limit)
     results: list[dict[str, Any]] = []
-    for score, _name, merchant_id, _merchant in ordered[window_start : window_start + window_limit]:
-        summary = merchant_summary(conn, merchant_id)
+    for score, _name, _merchant_id, merchant in ordered[window_start : window_start + window_limit]:
+        summary = _merchant_summary_from_search_row(merchant)
         summary["match_score"] = score
         results.append(summary)
     return results
