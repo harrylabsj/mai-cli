@@ -122,6 +122,16 @@ class OrchestrationHarnessTest(unittest.TestCase):
             self.assertEqual(messages.call_count, 0)
             self.assertEqual(flags.call_count, 0)
 
+    def test_merchant_conversations_treats_negative_limit_as_empty(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.seed_conversation(db_file)
+
+            with db_session(db_file) as conn:
+                listed = conversations.merchant_conversations(conn, "seller-a", limit=-1, offset=-1)
+
+            self.assertEqual(listed, [])
+
     def test_processing_claim_is_not_reclaimed(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"

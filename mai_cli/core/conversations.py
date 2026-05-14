@@ -111,6 +111,16 @@ def normalize_structured_payload(value: Any) -> dict[str, Any]:
     return dict(value)
 
 
+def _safe_non_negative_int(value: Any) -> int:
+    if isinstance(value, bool):
+        return 0
+    try:
+        number = int(value or 0)
+    except (OverflowError, TypeError, ValueError):
+        return 0
+    return max(number, 0)
+
+
 def append_message(
     conn: sqlite3.Connection,
     conversation_id: str,
@@ -295,7 +305,7 @@ def merchant_conversations(
         sql = "select id from conversations where merchant_id = ? order by updated_at desc"
     if limit is not None:
         sql += " limit ? offset ?"
-        values.extend([int(limit), max(int(offset), 0)])
+        values.extend([_safe_non_negative_int(limit), _safe_non_negative_int(offset)])
     rows = conn.execute(sql, values).fetchall()
     return [conversation_summary(conn, row["id"]) for row in rows]
 
