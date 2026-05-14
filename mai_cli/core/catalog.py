@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 import re
 import sqlite3
-from typing import Any
+from typing import Any, Mapping
 
 from mai_cli.db.session import decode_json, encode_json, now_iso
 
@@ -450,7 +450,7 @@ def product_warnings(product: sqlite3.Row, merchant: dict[str, Any]) -> list[str
     return warnings
 
 
-def _search_text(product: sqlite3.Row, merchant: sqlite3.Row) -> str:
+def _search_text(product: sqlite3.Row, merchant: Mapping[str, Any]) -> str:
     fields = [
         product["sku"],
         product["title"],
@@ -465,7 +465,7 @@ def _search_text(product: sqlite3.Row, merchant: sqlite3.Row) -> str:
     return " ".join(str(field) for field in fields if field)
 
 
-def _match_score(query: str, product: sqlite3.Row, merchant: sqlite3.Row) -> float:
+def _match_score(query: str, product: sqlite3.Row, merchant: Mapping[str, Any]) -> float:
     query_lower = query.lower()
     searchable = _search_text(product, merchant).lower()
     query_tokens = tokenize(query_lower)
@@ -481,6 +481,18 @@ def _match_score(query: str, product: sqlite3.Row, merchant: sqlite3.Row) -> flo
         score += 5
     score -= _safe_non_negative_float(product["price"]) / 1000
     return round(score, 4)
+
+
+def _joined_product_merchant(row: sqlite3.Row) -> dict[str, Any]:
+    return {
+        "id": row["merchant_id"],
+        "name": row["merchant_name"],
+        "city": row["merchant_city"],
+        "service_area": row["merchant_service_area"],
+        "contact": row["merchant_contact"],
+        "hours": row["merchant_hours"],
+        "tags_json": row["merchant_tags_json"],
+    }
 
 
 def search_products(
@@ -509,7 +521,7 @@ def search_products(
     ).fetchall()
     matches: list[tuple[float, float, str, sqlite3.Row]] = []
     for row in rows:
-        merchant = require_merchant(conn, row["merchant_id"])
+        merchant = _joined_product_merchant(row)
         if city and merchant["city"].lower() != city.lower():
             continue
         price = _safe_non_negative_float(row["price"])
