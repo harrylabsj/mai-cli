@@ -750,6 +750,28 @@ class PublicMarketplaceTest(unittest.TestCase):
         self.assertIn("p.stock > 0", conn.sql)
         self.assertEqual(conn.params, ("Hangzhou", 100.0))
 
+    def test_merchant_search_pushes_city_filter_into_sql(self):
+        class EmptyCursor:
+            def fetchall(self):
+                return []
+
+        class RecordingConnection:
+            sql = ""
+            params = ()
+
+            def execute(self, sql, params=()):
+                self.sql = " ".join(sql.split()).lower()
+                self.params = tuple(params)
+                return EmptyCursor()
+
+        conn = RecordingConnection()
+
+        results = catalog.search_merchants(conn, query="west", city="Hangzhou")
+
+        self.assertEqual(results, [])
+        self.assertIn("lower(city) = lower(?)", conn.sql)
+        self.assertEqual(conn.params, ("Hangzhou",))
+
     def test_route_metadata_matches_fastapi_and_fallback_apps(self):
         expected = {route.path: set(route.methods) for route in route_info()}
         with tempfile.TemporaryDirectory() as tmp:

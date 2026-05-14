@@ -568,7 +568,13 @@ def search_merchants(
     city = str(city or "").strip()
     query_lower = query.lower()
     query_tokens = tokenize(query_lower)
-    rows = conn.execute("select * from merchants order by name, id").fetchall()
+    values: list[Any] = []
+    sql = "select * from merchants"
+    if city:
+        sql += " where lower(city) = lower(?)"
+        values.append(city)
+    sql += " order by name, id"
+    rows = conn.execute(sql, values).fetchall()
     matches: list[tuple[float, str, str, sqlite3.Row]] = []
     for merchant in rows:
         if city and merchant["city"].lower() != city.lower():
