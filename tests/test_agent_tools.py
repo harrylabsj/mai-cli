@@ -457,6 +457,24 @@ class AgentToolsBoundaryTest(unittest.TestCase):
         self.assertIn("Marketplace API request failed", str(exc.exception))
         self.assertIn("connection refused", str(exc.exception))
 
+    def test_http_merchant_agent_tools_wrap_timeout_errors(self):
+        from mai_cli.agents.tools import HTTPMarketplaceError, HTTPMerchantAgentTools
+
+        def failing_opener(_request, timeout=0):
+            raise TimeoutError("timed out")
+
+        tools = HTTPMerchantAgentTools(
+            "http://127.0.0.1:8765",
+            merchant_id="seller-a",
+            merchant_token="tok_seller_a",
+            opener=failing_opener,
+        )
+
+        with self.assertRaises(HTTPMarketplaceError) as exc:
+            tools.heartbeat("seller-a")
+        self.assertIn("Marketplace API request timed out", str(exc.exception))
+        self.assertIn("timed out", str(exc.exception))
+
     def test_http_merchant_agent_tools_report_missing_response_objects_cleanly(self):
         from mai_cli.agents.tools import HTTPMarketplaceError, HTTPMerchantAgentTools
 

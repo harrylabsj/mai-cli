@@ -353,6 +353,8 @@ class HTTPMarketplaceToolDispatcher:
         except urllib.error.HTTPError as exc:  # pragma: no cover - network path
             raw_body = exc.read()
             raise SystemExit(self._error_message(raw_body, f"Marketplace API returned HTTP {exc.code}")) from exc
+        except TimeoutError as exc:
+            raise SystemExit(f"Marketplace API request timed out: {exc}") from exc
         except urllib.error.URLError as exc:
             raise SystemExit(f"Marketplace API request failed: {exc.reason}") from exc
         return self._validate_response(self._decode_body(raw_body))

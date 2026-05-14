@@ -983,6 +983,21 @@ class LlmContractTest(unittest.TestCase):
 
         self.assertEqual(dispatcher.timeout, 10.0)
 
+    def test_http_marketplace_tool_dispatcher_wraps_timeout_errors(self):
+        dispatcher = HTTPMarketplaceToolDispatcher(
+            "http://127.0.0.1:8765",
+            auth_token="buyer-token",
+            actor="alice",
+            token_scope="buyer",
+        )
+
+        with patch("mai_cli.llm.dispatcher.urllib.request.urlopen", side_effect=TimeoutError("timed out")):
+            with self.assertRaises(SystemExit) as raised:
+                dispatcher.dispatch("conversation_summarize", {"conversation_id": "CONV-0001"})
+
+        self.assertIn("Marketplace API request timed out", str(raised.exception))
+        self.assertIn("timed out", str(raised.exception))
+
     def test_http_marketplace_tool_dispatcher_reports_malformed_conversation_response_cleanly(self):
         dispatcher = HTTPMarketplaceToolDispatcher(
             "http://127.0.0.1:8765",
