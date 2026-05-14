@@ -203,6 +203,10 @@ def message_summary(conn: sqlite3.Connection, message_id: int) -> dict[str, Any]
     row = conn.execute("select * from messages where id = ?", (message_id,)).fetchone()
     if row is None:
         raise SystemExit(f"Unknown message: {message_id}")
+    return message_summary_from_row(row)
+
+
+def message_summary_from_row(row: sqlite3.Row) -> dict[str, Any]:
     return {
         "id": row["id"],
         "conversation_id": row["conversation_id"],
@@ -218,6 +222,10 @@ def flag_summary(conn: sqlite3.Connection, flag_id: int) -> dict[str, Any]:
     row = conn.execute("select * from moderation_flags where id = ?", (flag_id,)).fetchone()
     if row is None:
         raise SystemExit(f"Unknown moderation flag: {flag_id}")
+    return flag_summary_from_row(row)
+
+
+def flag_summary_from_row(row: sqlite3.Row) -> dict[str, Any]:
     return {
         "id": row["id"],
         "conversation_id": row["conversation_id"],
@@ -233,18 +241,18 @@ def flag_summary(conn: sqlite3.Connection, flag_id: int) -> dict[str, Any]:
 
 def conversation_messages(conn: sqlite3.Connection, conversation_id: str) -> list[dict[str, Any]]:
     rows = conn.execute(
-        "select id from messages where conversation_id = ? order by id",
+        "select * from messages where conversation_id = ? order by id",
         (conversation_id,),
     ).fetchall()
-    return [message_summary(conn, row["id"]) for row in rows]
+    return [message_summary_from_row(row) for row in rows]
 
 
 def conversation_flags(conn: sqlite3.Connection, conversation_id: str) -> list[dict[str, Any]]:
     rows = conn.execute(
-        "select id from moderation_flags where conversation_id = ? order by id",
+        "select * from moderation_flags where conversation_id = ? order by id",
         (conversation_id,),
     ).fetchall()
-    return [flag_summary(conn, row["id"]) for row in rows]
+    return [flag_summary_from_row(row) for row in rows]
 
 
 def conversation_summary(conn: sqlite3.Connection, conversation_id: str) -> dict[str, Any]:

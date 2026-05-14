@@ -5,7 +5,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from mai_cli.agents import buyer_cli, merchant_agent
-from mai_cli.core import harness
+from mai_cli.core import conversations, harness
 from mai_cli.core.catalog import create_merchant, create_product
 from mai_cli.core.conversations import conversation_summary, next_conversation_id
 from mai_cli.core.harness import abandon_agent_message, abandon_stale_agent_messages, claim_agent_message, complete_agent_message, fail_agent_message
@@ -102,6 +102,25 @@ class OrchestrationHarnessTest(unittest.TestCase):
 
             self.assertTrue(events)
             self.assertEqual(summary.call_count, 0)
+
+    def test_conversation_messages_and_flags_use_list_rows_without_per_item_hydration(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.seed_conversation(db_file)
+
+            with db_session(db_file) as conn:
+                conversations.add_flag(conn, "CONV-0001", "low_confidence")
+                with (
+                    patch("mai_cli.core.conversations.message_summary", wraps=conversations.message_summary) as messages,
+                    patch("mai_cli.core.conversations.flag_summary", wraps=conversations.flag_summary) as flags,
+                ):
+                    listed_messages = conversations.conversation_messages(conn, "CONV-0001")
+                    listed_flags = conversations.conversation_flags(conn, "CONV-0001")
+
+            self.assertTrue(listed_messages)
+            self.assertTrue(listed_flags)
+            self.assertEqual(messages.call_count, 0)
+            self.assertEqual(flags.call_count, 0)
 
     def test_processing_claim_is_not_reclaimed(self):
         with tempfile.TemporaryDirectory() as tmp:
