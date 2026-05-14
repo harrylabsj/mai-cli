@@ -3599,6 +3599,39 @@ class PublicMarketplaceTest(unittest.TestCase):
             self.assertNotIn(issued["agent_token"], serialized)
             self.assertEqual(event["details"]["token"]["token_prefix"], issued["agent_token"][:24])
 
+    def test_audit_events_api_supports_offset(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "marketplace.sqlite"
+            app = create_app(db_file)
+
+            status, merchant = self.request(app, "POST", "/merchants", {"id": "seller-a", "name": "West Lake Tea"})
+            self.assertEqual(status, 200)
+            merchant_token = merchant["merchant_token"]
+            issued_tokens = []
+            for _index in range(6):
+                status, issued = self.request(
+                    app,
+                    "POST",
+                    "/agents/tokens",
+                    {"merchant_id": "seller-a", "merchant_token": merchant_token},
+                )
+                self.assertEqual(status, 200)
+                issued_tokens.append(issued["agent_token"])
+
+            status, listed = self.request(
+                app,
+                "GET",
+                "/audit/events",
+                query_string="merchant_id=seller-a&event=agent_token_issued&limit=2&offset=2",
+                headers={"authorization": f"Bearer {merchant_token}"},
+            )
+
+            self.assertEqual(status, 200)
+            self.assertEqual(
+                [event["details"]["token"]["token_prefix"] for event in listed["events"]],
+                [issued_tokens[3][:24], issued_tokens[2][:24]],
+            )
+
     def test_tool_call_audit_requires_merchant_or_agent_token_and_derives_actor(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "marketplace.sqlite"

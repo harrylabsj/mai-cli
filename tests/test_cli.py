@@ -3033,6 +3033,40 @@ class MaiCliTest(unittest.TestCase):
             self.assertNotIn(issued["agent_token"], output)
             self.assertEqual(event["details"]["token"]["token_prefix"], issued["agent_token"][:24])
 
+    def test_audit_events_command_supports_offset(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.run_cli(db_file, "merchant", "create", "--id", "seller-a", "--name", "West Lake Tea")
+            issued_tokens = [
+                json.loads(self.run_cli(db_file, "agent", "token", "--merchant", "seller-a", "--format", "json"))[
+                    "agent_token"
+                ]
+                for _index in range(6)
+            ]
+
+            listed = json.loads(
+                self.run_cli(
+                    db_file,
+                    "audit",
+                    "events",
+                    "--merchant",
+                    "seller-a",
+                    "--event",
+                    "agent_token_issued",
+                    "--limit",
+                    "2",
+                    "--offset",
+                    "2",
+                    "--format",
+                    "json",
+                )
+            )
+
+            self.assertEqual(
+                [event["details"]["token"]["token_prefix"] for event in listed["events"]],
+                [issued_tokens[3][:24], issued_tokens[2][:24]],
+            )
+
     def test_audit_events_text_output_is_readable_without_secrets(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"

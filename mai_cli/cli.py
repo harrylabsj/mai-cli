@@ -1576,7 +1576,7 @@ def cmd_audit_events(args: argparse.Namespace) -> None:
         require_merchant(conn, args.merchant)
         if args.merchant_token:
             _require_merchant_token(conn, args.merchant, {"merchant_token": args.merchant_token})
-        events = _merchant_audit_events(conn, args.merchant, event=args.event, limit=args.limit)
+        events = _merchant_audit_events(conn, args.merchant, event=args.event, limit=args.limit, offset=args.offset)
     if args.format == "text":
         if not events:
             print(f"No audit events for {args.merchant}.")
@@ -1997,6 +1997,7 @@ def build_parser() -> argparse.ArgumentParser:
     audit_events.add_argument("--merchant", required=True)
     audit_events.add_argument("--event", default="")
     audit_events.add_argument("--limit", type=positive_seconds, default=50)
+    audit_events.add_argument("--offset", type=non_negative_int, default=0)
     audit_events.add_argument("--merchant-token", default="")
     audit_events.add_argument("--format", choices=["text", "json"], default="text")
     audit_events.set_defaults(func=cmd_audit_events)

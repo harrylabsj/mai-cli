@@ -439,14 +439,20 @@ def _audit_event_limit(value: Any) -> int:
     return min(limit, 200)
 
 
-def _merchant_audit_events(conn: Any, merchant_id: str, event: str = "", limit: Any = 50) -> list[dict[str, Any]]:
+def _merchant_audit_events(
+    conn: Any,
+    merchant_id: str,
+    event: str = "",
+    limit: Any = 50,
+    offset: Any = 0,
+) -> list[dict[str, Any]]:
     sql = "select id from audit_events where actor = ?"
     values: list[Any] = [merchant_id]
     if event:
         sql += " and event = ?"
         values.append(event)
-    sql += " order by id desc limit ?"
-    values.append(_audit_event_limit(limit))
+    sql += " order by id desc limit ? offset ?"
+    values.extend([_audit_event_limit(limit), _result_offset(offset)])
     rows = conn.execute(sql, values).fetchall()
     return [audit_event_summary(conn, int(row["id"])) for row in rows]
 
@@ -1272,6 +1278,7 @@ def _audit_events(
     merchant_id: str = "",
     event: str = "",
     limit: Any = 50,
+    offset: Any = 0,
 ) -> dict[str, Any]:
     with db_session(db_path) as conn:
         merchant_id = str(merchant_id or payload.get("merchant_id") or "")
@@ -1281,7 +1288,7 @@ def _audit_events(
         return {
             "ok": True,
             "merchant_id": merchant_id,
-            "events": _merchant_audit_events(conn, merchant_id, event=event, limit=limit),
+            "events": _merchant_audit_events(conn, merchant_id, event=event, limit=limit, offset=offset),
         }
 
 
@@ -1557,6 +1564,7 @@ def handle_request(
                 merchant_id=str(query.get("merchant_id") or ""),
                 event=str(query.get("event") or ""),
                 limit=query.get("limit") or 50,
+                offset=query.get("offset"),
             )
         if path == "/human-review/queue" and method == "GET":
             return 200, _human_review_queue(
@@ -1831,6 +1839,7 @@ def create_app(db_path: str | Path = "mai-cli.sqlite") -> Any:
         merchant_id: str = "",
         event: str = "",
         limit: int = 50,
+        offset: int = 0,
         authorization: str = AUTHORIZATION_HEADER,
     ) -> dict[str, Any]:
         return _audit_events(
@@ -1839,6 +1848,7 @@ def create_app(db_path: str | Path = "mai-cli.sqlite") -> Any:
             merchant_id=merchant_id,
             event=event,
             limit=limit,
+            offset=offset,
         )
 
     @app.get("/human-review/queue")
