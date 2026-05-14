@@ -630,6 +630,8 @@ def emit_conversation_table(conversations: list[dict[str, Any]], empty_message: 
 def cmd_conversation_message(args: argparse.Namespace) -> None:
     structured_payload = {"source_id": args.source_id or args.sender}
     status = str(args.status or "").strip()
+    if args.sender in {"buyer", "buyer_cli"} and status:
+        raise SystemExit("buyer messages cannot set conversation status")
     if status == "closed":
         raise SystemExit("conversation messages cannot close conversations; use conversation close")
     with db_session(db_path_from_args(args)) as conn:

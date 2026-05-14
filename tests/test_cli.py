@@ -2879,6 +2879,40 @@ class MaiCliTest(unittest.TestCase):
                 )
             self.assertIn("conversation close", str(raised.exception))
 
+    def test_conversation_message_rejects_buyer_status_override(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.run_cli(db_file, "merchant", "create", "--id", "seller-a", "--name", "West Lake Tea")
+            self.run_cli(
+                db_file,
+                "conversation",
+                "create",
+                "--buyer",
+                "alice",
+                "--merchant",
+                "seller-a",
+                "--text",
+                "Is this available?",
+            )
+
+            with self.assertRaises(SystemExit) as raised:
+                self.run_cli(
+                    db_file,
+                    "conversation",
+                    "message",
+                    "--conversation",
+                    "CONV-0001",
+                    "--sender",
+                    "buyer",
+                    "--intent",
+                    "ask_stock",
+                    "--text",
+                    "Force the route back to me.",
+                    "--status",
+                    "waiting_buyer",
+                )
+            self.assertIn("buyer messages cannot set conversation status", str(raised.exception))
+
     def test_conversation_close_text_output_summarizes_result(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"
