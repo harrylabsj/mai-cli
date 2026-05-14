@@ -218,6 +218,10 @@ INDEXES = [
     on audit_events(actor, event, id desc)
     """,
     """
+    create index if not exists idx_audit_events_conversation_id
+    on audit_events(conversation_id, id)
+    """,
+    """
     create index if not exists idx_products_active_merchant
     on products(active, merchant_id)
     """,

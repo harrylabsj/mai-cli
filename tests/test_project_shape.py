@@ -51,6 +51,7 @@ class ProjectShapeTest(unittest.TestCase):
             "idx_agents_owner_id",
             "idx_agent_message_processes_agent_status_updated",
             "idx_audit_events_actor_event_id",
+            "idx_audit_events_conversation_id",
             "idx_products_active_merchant",
             "idx_products_active_stock_price",
             "idx_merchants_city_lower",
