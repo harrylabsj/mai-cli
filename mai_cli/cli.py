@@ -1356,9 +1356,15 @@ def _agent_summary(row: Any) -> dict[str, Any]:
 def cmd_agent_list(args: argparse.Namespace) -> None:
     with db_session(db_path_from_args(args)) as conn:
         if args.merchant:
-            rows = conn.execute("select * from agents where owner_id = ? order by id", (args.merchant,)).fetchall()
+            rows = conn.execute(
+                "select * from agents where owner_id = ? order by id limit ? offset ?",
+                (args.merchant, args.limit, args.offset),
+            ).fetchall()
         else:
-            rows = conn.execute("select * from agents order by id").fetchall()
+            rows = conn.execute(
+                "select * from agents order by id limit ? offset ?",
+                (args.limit, args.offset),
+            ).fetchall()
         agents = [_agent_summary(row) for row in rows]
     if args.format == "text":
         if not agents:
@@ -1915,6 +1921,8 @@ def build_parser() -> argparse.ArgumentParser:
     agent_logs.set_defaults(func=cmd_agent_logs)
     agent_list = agent_sub.add_parser("list", help="List marketplace agent heartbeats")
     agent_list.add_argument("--merchant", default="")
+    agent_list.add_argument("--limit", type=positive_int, default=50)
+    agent_list.add_argument("--offset", type=non_negative_int, default=0)
     agent_list.add_argument("--format", choices=["text", "json"], default="text")
     agent_list.set_defaults(func=cmd_agent_list)
     agent_show = agent_sub.add_parser("show", help="Show one marketplace agent heartbeat")

@@ -1563,6 +1563,36 @@ class PublicMarketplaceTest(unittest.TestCase):
             self.assertEqual(status, 200)
             self.assertEqual(merchant_agents["agents"][0]["id"], agent_id)
 
+    def test_agent_list_api_supports_limit_and_offset(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "marketplace.sqlite"
+            app = create_app(db_file)
+            status, merchant = self.request(app, "POST", "/merchants", {"id": "seller-a", "name": "West Lake Tea"})
+            self.assertEqual(status, 200)
+            merchant_token = merchant["merchant_token"]
+            with db_session(db_file) as conn:
+                for index in range(6):
+                    conn.execute(
+                        """
+                        insert into agents(
+                            id, type, owner_id, status, capabilities_json, last_seen_at,
+                            pid, version, last_error, checked_count, replied_count
+                        ) values (?, 'merchant_agent', 'seller-a', 'online', '[]', ?, 0, 'test', '', 0, 0)
+                        """,
+                        (f"agent-{index}", f"2026-01-01T00:00:0{index}"),
+                    )
+
+            status, listed = self.request(
+                app,
+                "GET",
+                "/merchants/seller-a/agents",
+                query_string="limit=2&offset=2",
+                headers={"authorization": f"Bearer {merchant_token}"},
+            )
+
+            self.assertEqual(status, 200)
+            self.assertEqual([agent["id"] for agent in listed["agents"]], ["agent-2", "agent-3"])
+
     def test_agent_status_api_tolerates_corrupt_runtime_counters(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "marketplace.sqlite"

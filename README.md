@@ -138,8 +138,8 @@ python3 scripts/mai.py --db ./mai-cli.sqlite human-review show --review 1
 python3 scripts/mai.py --db ./mai-cli.sqlite human-review show --review 1 --format json
 python3 scripts/mai.py --db ./mai-cli.sqlite human-review resolve --review 1 --action reply --sender merchant --text "Human reviewed."
 python3 scripts/mai.py --db ./mai-cli.sqlite human-review resolve --review 1 --action reply --sender merchant --text "Human reviewed." --format json
-python3 scripts/mai.py --db ./mai-cli.sqlite agent list
-python3 scripts/mai.py --db ./mai-cli.sqlite agent list --format json
+python3 scripts/mai.py --db ./mai-cli.sqlite agent list --limit 50 --offset 0
+python3 scripts/mai.py --db ./mai-cli.sqlite agent list --limit 50 --offset 0 --format json
 python3 scripts/mai.py --db ./mai-cli.sqlite agent show --agent mai-cli-merchant-agent:seller-a
 python3 scripts/mai.py --db ./mai-cli.sqlite agent show --agent mai-cli-merchant-agent:seller-a --format json
 ```

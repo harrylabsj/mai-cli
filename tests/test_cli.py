@@ -2247,6 +2247,44 @@ class MaiCliTest(unittest.TestCase):
             self.assertIn("online", output)
             self.assertNotIn('"agents"', output)
 
+    def test_agent_list_supports_limit_and_offset(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.run_cli(db_file, "merchant", "create", "--id", "seller-a", "--name", "West Lake Tea")
+            conn = sqlite3.connect(db_file)
+            try:
+                for index in range(6):
+                    conn.execute(
+                        """
+                        insert into agents(
+                            id, type, owner_id, status, capabilities_json, last_seen_at,
+                            pid, version, last_error, checked_count, replied_count
+                        ) values (?, 'merchant_agent', 'seller-a', 'online', '[]', ?, 0, 'test', '', 0, 0)
+                        """,
+                        (f"agent-{index}", f"2026-01-01T00:00:0{index}"),
+                    )
+                conn.commit()
+            finally:
+                conn.close()
+
+            listed = json.loads(
+                self.run_cli(
+                    db_file,
+                    "agent",
+                    "list",
+                    "--merchant",
+                    "seller-a",
+                    "--limit",
+                    "2",
+                    "--offset",
+                    "2",
+                    "--format",
+                    "json",
+                )
+            )
+
+            self.assertEqual([agent["id"] for agent in listed["agents"]], ["agent-2", "agent-3"])
+
     def test_agent_heartbeat_text_output_is_readable(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"

@@ -1113,7 +1113,13 @@ def _agent_summary(row: Any) -> dict[str, Any]:
     }
 
 
-def _list_agents(db_path: str | Path, payload: dict[str, Any], owner_id: str = "") -> dict[str, Any]:
+def _list_agents(
+    db_path: str | Path,
+    payload: dict[str, Any],
+    owner_id: str = "",
+    limit: Any = DEFAULT_RESULT_LIMIT,
+    offset: Any = 0,
+) -> dict[str, Any]:
     with db_session(db_path) as conn:
         scoped_owner_id = str(owner_id or "")
         if scoped_owner_id:
@@ -1123,7 +1129,10 @@ def _list_agents(db_path: str | Path, payload: dict[str, Any], owner_id: str = "
             if token_row["role"] not in {"merchant", "agent"} or not token_row["merchant_id"]:
                 raise AuthError("invalid agent read token")
             scoped_owner_id = str(token_row["merchant_id"])
-        rows = conn.execute("select * from agents where owner_id = ? order by id", (scoped_owner_id,)).fetchall()
+        rows = conn.execute(
+            "select * from agents where owner_id = ? order by id limit ? offset ?",
+            (scoped_owner_id, _result_limit(limit), _result_offset(offset)),
+        ).fetchall()
         return {"ok": True, "agents": [_agent_summary(row) for row in rows]}
 
 
@@ -1563,11 +1572,17 @@ def handle_request(
         if path == "/agents/messages/abandon-stale" and method == "POST":
             return 200, _abandon_stale_agent_messages(db_path, payload)
         if path == "/agents" and method == "GET":
-            return 200, _list_agents(db_path, payload)
+            return 200, _list_agents(db_path, payload, limit=query.get("limit"), offset=query.get("offset"))
         if len(parts) == 2 and parts[0] == "agents" and method == "GET":
             return 200, _get_agent(db_path, parts[1], payload)
         if len(parts) == 3 and parts[0] == "merchants" and parts[2] == "agents" and method == "GET":
-            return 200, _list_agents(db_path, payload, owner_id=parts[1])
+            return 200, _list_agents(
+                db_path,
+                payload,
+                owner_id=parts[1],
+                limit=query.get("limit"),
+                offset=query.get("offset"),
+            )
         if path == "/audit/tool-calls" and method == "POST":
             return 200, _record_tool_call_audit(db_path, payload)
         if path == "/audit/events" and method == "GET":
@@ -1843,16 +1858,31 @@ def create_app(db_path: str | Path = "mai-cli.sqlite") -> Any:
         return _abandon_stale_agent_messages(db_path, _payload_with_auth(payload, authorization))
 
     @app.get("/agents")
-    def list_agents(authorization: str = AUTHORIZATION_HEADER) -> dict[str, Any]:
-        return _list_agents(db_path, _payload_with_auth({}, authorization))
+    def list_agents(
+        authorization: str = AUTHORIZATION_HEADER,
+        limit: str = "",
+        offset: str = "",
+    ) -> dict[str, Any]:
+        return _list_agents(db_path, _payload_with_auth({}, authorization), limit=limit, offset=offset)
 
     @app.get("/agents/{agent_id}")
     def get_agent(agent_id: str, authorization: str = AUTHORIZATION_HEADER) -> dict[str, Any]:
         return _get_agent(db_path, agent_id, _payload_with_auth({}, authorization))
 
     @app.get("/merchants/{merchant_id}/agents")
-    def get_merchant_agents(merchant_id: str, authorization: str = AUTHORIZATION_HEADER) -> dict[str, Any]:
-        return _list_agents(db_path, _payload_with_auth({}, authorization), owner_id=merchant_id)
+    def get_merchant_agents(
+        merchant_id: str,
+        authorization: str = AUTHORIZATION_HEADER,
+        limit: str = "",
+        offset: str = "",
+    ) -> dict[str, Any]:
+        return _list_agents(
+            db_path,
+            _payload_with_auth({}, authorization),
+            owner_id=merchant_id,
+            limit=limit,
+            offset=offset,
+        )
 
     @app.post("/audit/tool-calls")
     def record_tool_call_audit(payload: dict[str, Any], authorization: str = AUTHORIZATION_HEADER) -> dict[str, Any]:
