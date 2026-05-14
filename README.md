@@ -45,9 +45,9 @@ python3 scripts/mai.py --db ./mai-cli.sqlite merchant list
 python3 scripts/mai.py --db ./mai-cli.sqlite delivery set --merchant seller-a --service-area "West Lake" --fee 12 --eta-minutes 45
 python3 scripts/mai.py --db ./mai-cli.sqlite product update --merchant seller-a --sku tea-a --stock 4 --price 92
 python3 scripts/mai.py --db ./mai-cli.sqlite search products --query "longjing"
-python3 scripts/mai.py --db ./mai-cli.sqlite search products --query "longjing" --format json
+python3 scripts/mai.py --db ./mai-cli.sqlite search products --query "longjing" --limit 10 --offset 0 --format json
 python3 scripts/mai.py --db ./mai-cli.sqlite search merchants --query "west lake" --city Hangzhou
-python3 scripts/mai.py --db ./mai-cli.sqlite search merchants --query "west lake" --city Hangzhou --format json
+python3 scripts/mai.py --db ./mai-cli.sqlite search merchants --query "west lake" --city Hangzhou --limit 10 --offset 0 --format json
 
 python3 scripts/mai.py --db ./mai-cli.sqlite buyer ask \
   --buyer alice \

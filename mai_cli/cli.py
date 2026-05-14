@@ -78,6 +78,16 @@ def positive_int(value: str) -> int:
     return seconds
 
 
+def non_negative_int(value: str) -> int:
+    try:
+        number = int(value)
+    except (TypeError, ValueError) as exc:
+        raise argparse.ArgumentTypeError("must be a whole number") from exc
+    if number < 0:
+        raise argparse.ArgumentTypeError("must be non-negative")
+    return number
+
+
 def positive_float(value: str) -> float:
     try:
         number = float(value)
@@ -257,6 +267,8 @@ def cmd_search_products(args: argparse.Namespace) -> None:
             area=args.area or "",
             max_price=args.max_price,
             include_out_of_stock=args.include_out_of_stock,
+            limit=args.limit,
+            offset=args.offset,
         )
     if args.format == "text":
         if not results:
@@ -279,7 +291,13 @@ def cmd_search_products(args: argparse.Namespace) -> None:
 
 def cmd_search_merchants(args: argparse.Namespace) -> None:
     with db_session(db_path_from_args(args)) as conn:
-        results = search_merchants(conn, query=args.query or "", city=args.city or "")
+        results = search_merchants(
+            conn,
+            query=args.query or "",
+            city=args.city or "",
+            limit=args.limit,
+            offset=args.offset,
+        )
     if args.format == "text":
         if not results:
             query = args.query or "all merchants"
@@ -1735,11 +1753,15 @@ def build_parser() -> argparse.ArgumentParser:
     search_products_parser.add_argument("--area", default="")
     search_products_parser.add_argument("--max-price", type=float)
     search_products_parser.add_argument("--include-out-of-stock", action="store_true")
+    search_products_parser.add_argument("--limit", type=positive_int, default=10)
+    search_products_parser.add_argument("--offset", type=non_negative_int, default=0)
     search_products_parser.add_argument("--format", choices=["text", "json"], default="text")
     search_products_parser.set_defaults(func=cmd_search_products)
     search_merchants_parser = search_sub.add_parser("merchants", help="Search merchants")
     search_merchants_parser.add_argument("--query", default="")
     search_merchants_parser.add_argument("--city", default="")
+    search_merchants_parser.add_argument("--limit", type=positive_int, default=10)
+    search_merchants_parser.add_argument("--offset", type=non_negative_int, default=0)
     search_merchants_parser.add_argument("--format", choices=["text", "json"], default="text")
     search_merchants_parser.set_defaults(func=cmd_search_merchants)
 

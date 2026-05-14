@@ -756,6 +756,76 @@ class MaiCliTest(unittest.TestCase):
             self.assertIn("West Lake", output)
             self.assertNotIn('"results"', output)
 
+    def test_search_cli_supports_limit_and_offset(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            for index in range(6):
+                merchant_id = f"seller-{index}"
+                self.run_cli(
+                    db_file,
+                    "merchant",
+                    "create",
+                    "--id",
+                    merchant_id,
+                    "--name",
+                    f"West Lake Tea {index}",
+                    "--city",
+                    "Hangzhou",
+                )
+                self.run_cli(
+                    db_file,
+                    "product",
+                    "add",
+                    "--merchant",
+                    merchant_id,
+                    "--sku",
+                    f"tea-{index}",
+                    "--title",
+                    f"Longjing Gift Box {index}",
+                    "--price",
+                    str(80 + index),
+                    "--stock",
+                    "5",
+                    "--tags",
+                    "longjing",
+                )
+
+            products = json.loads(
+                self.run_cli(
+                    db_file,
+                    "search",
+                    "products",
+                    "--query",
+                    "longjing",
+                    "--limit",
+                    "2",
+                    "--offset",
+                    "2",
+                    "--format",
+                    "json",
+                )
+            )
+            merchants = json.loads(
+                self.run_cli(
+                    db_file,
+                    "search",
+                    "merchants",
+                    "--query",
+                    "west",
+                    "--city",
+                    "Hangzhou",
+                    "--limit",
+                    "2",
+                    "--offset",
+                    "2",
+                    "--format",
+                    "json",
+                )
+            )
+
+            self.assertEqual([product["sku"] for product in products["results"]], ["tea-2", "tea-3"])
+            self.assertEqual([merchant["id"] for merchant in merchants["results"]], ["seller-2", "seller-3"])
+
     def test_merchant_list_text_output_is_readable(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"
