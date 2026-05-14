@@ -443,6 +443,8 @@ def _merchant_summary_from_search_row(row: sqlite3.Row) -> dict[str, Any]:
 
 
 def list_merchants(conn: sqlite3.Connection, limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
+    window_limit = _safe_non_negative_int(limit)
+    window_offset = _safe_non_negative_int(offset)
     rows = conn.execute(
         """
         select m.*,
@@ -460,7 +462,7 @@ def list_merchants(conn: sqlite3.Connection, limit: int = 50, offset: int = 0) -
         order by m.name, m.id
         limit ? offset ?
         """,
-        (int(limit), int(offset)),
+        (window_limit, window_offset),
     ).fetchall()
     return [_merchant_summary_from_search_row(row) for row in rows]
 

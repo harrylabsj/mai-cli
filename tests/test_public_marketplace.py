@@ -774,6 +774,15 @@ class PublicMarketplaceTest(unittest.TestCase):
         self.assertIn("lower(city) = lower(?)", conn.sql)
         self.assertEqual(conn.params, ("Hangzhou",))
 
+    def test_core_merchant_list_treats_negative_limit_as_empty(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "marketplace.sqlite"
+            with db_session(db_file) as conn:
+                catalog.create_merchant(conn, merchant_id="seller-a", name="West Lake Tea")
+                merchants = catalog.list_merchants(conn, limit=-1, offset=-1)
+
+            self.assertEqual(merchants, [])
+
     def test_route_metadata_matches_fastapi_and_fallback_apps(self):
         expected = {route.path: set(route.methods) for route in route_info()}
         with tempfile.TemporaryDirectory() as tmp:
