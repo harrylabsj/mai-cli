@@ -39,6 +39,7 @@ class ProjectShapeTest(unittest.TestCase):
     def test_sqlite_schema_creates_operational_indexes(self):
         expected = {
             "idx_conversations_merchant_status_updated",
+            "idx_conversations_merchant_updated",
             "idx_conversations_buyer_updated",
             "idx_messages_conversation_id",
             "idx_moderation_flags_conversation_resolved",
