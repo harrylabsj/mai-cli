@@ -855,6 +855,38 @@ class MaiCliTest(unittest.TestCase):
             self.assertIn("West Lake", output)
             self.assertNotIn('"results"', output)
 
+    def test_merchant_list_supports_limit_and_offset(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            for index in range(6):
+                self.run_cli(
+                    db_file,
+                    "merchant",
+                    "create",
+                    "--id",
+                    f"seller-{index}",
+                    "--name",
+                    f"West Lake Tea {index}",
+                    "--city",
+                    "Hangzhou",
+                )
+
+            merchants = json.loads(
+                self.run_cli(
+                    db_file,
+                    "merchant",
+                    "list",
+                    "--limit",
+                    "2",
+                    "--offset",
+                    "2",
+                    "--format",
+                    "json",
+                )
+            )
+
+            self.assertEqual([merchant["id"] for merchant in merchants["results"]], ["seller-2", "seller-3"])
+
     def test_delivery_set_text_output_is_readable(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"
@@ -2481,6 +2513,57 @@ class MaiCliTest(unittest.TestCase):
             self.assertIn("waiting_merchant", output)
             self.assertIn("merchant_agent", output)
             self.assertNotIn('"conversations"', output)
+
+    def test_conversation_list_supports_limit_and_offset(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.run_cli(db_file, "merchant", "create", "--id", "seller-a", "--name", "West Lake Tea")
+            for index in range(6):
+                self.run_cli(
+                    db_file,
+                    "conversation",
+                    "create",
+                    "--buyer",
+                    f"buyer-{index}",
+                    "--merchant",
+                    "seller-a",
+                    "--text",
+                    f"Question {index}",
+                    "--format",
+                    "json",
+                )
+
+            conn = sqlite3.connect(db_file)
+            try:
+                for index in range(6):
+                    conn.execute(
+                        "update conversations set updated_at = ? where id = ?",
+                        (f"2026-01-01T00:00:0{index}Z", f"CONV-{index + 1:04d}"),
+                    )
+                conn.commit()
+            finally:
+                conn.close()
+
+            conversations = json.loads(
+                self.run_cli(
+                    db_file,
+                    "conversation",
+                    "list",
+                    "--merchant",
+                    "seller-a",
+                    "--limit",
+                    "2",
+                    "--offset",
+                    "2",
+                    "--format",
+                    "json",
+                )
+            )
+
+            self.assertEqual(
+                [conversation["id"] for conversation in conversations["conversations"]],
+                ["CONV-0004", "CONV-0003"],
+            )
 
     def test_conversation_show_text_output_includes_messages(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -144,7 +144,10 @@ def cmd_merchant_create(args: argparse.Namespace) -> None:
 
 def cmd_merchant_list(args: argparse.Namespace) -> None:
     with db_session(db_path_from_args(args)) as conn:
-        rows = conn.execute("select id from merchants order by name, id").fetchall()
+        rows = conn.execute(
+            "select id from merchants order by name, id limit ? offset ?",
+            (args.limit, args.offset),
+        ).fetchall()
         merchants = [merchant_summary(conn, row["id"]) for row in rows]
     if args.format == "text":
         if not merchants:
@@ -588,14 +591,14 @@ def cmd_conversation_list(args: argparse.Namespace) -> None:
         if value:
             clauses.append(f"{column} = ?")
             values.append(value)
-    sql = "select id from conversations"
-    if clauses:
-        sql += " where " + " and ".join(clauses)
     if args.updated_since:
         clauses.append("updated_at >= ?")
         values.append(args.updated_since)
-        sql = "select id from conversations where " + " and ".join(clauses)
-    sql += " order by updated_at desc"
+    sql = "select id from conversations"
+    if clauses:
+        sql += " where " + " and ".join(clauses)
+    sql += " order by updated_at desc limit ? offset ?"
+    values.extend([args.limit, args.offset])
     with db_session(db_path_from_args(args)) as conn:
         rows = conn.execute(sql, values).fetchall()
         conversations = [conversation_summary(conn, row["id"]) for row in rows]
@@ -1677,6 +1680,8 @@ def build_parser() -> argparse.ArgumentParser:
     merchant_create.add_argument("--format", choices=["text", "json"], default="text")
     merchant_create.set_defaults(func=cmd_merchant_create)
     merchant_list = merchant_sub.add_parser("list", help="List merchants")
+    merchant_list.add_argument("--limit", type=positive_int, default=50)
+    merchant_list.add_argument("--offset", type=non_negative_int, default=0)
     merchant_list.add_argument("--format", choices=["text", "json"], default="text")
     merchant_list.set_defaults(func=cmd_merchant_list)
     merchant_update = merchant_sub.add_parser("update", help="Update a merchant profile and delivery rule")
@@ -1830,6 +1835,8 @@ def build_parser() -> argparse.ArgumentParser:
     conversation_list.add_argument("--status", default="")
     conversation_list.add_argument("--sku", default="")
     conversation_list.add_argument("--updated-since", default="")
+    conversation_list.add_argument("--limit", type=positive_int, default=50)
+    conversation_list.add_argument("--offset", type=non_negative_int, default=0)
     conversation_list.add_argument("--format", choices=["text", "json"], default="text")
     conversation_list.set_defaults(func=cmd_conversation_list)
     conversation_message = conversation_sub.add_parser("message", help="Append a message to a conversation")

@@ -41,7 +41,7 @@ python3 scripts/mai.py --db ./mai-cli.sqlite product add \
   --delivery-attributes "same-city,courier"
 
 python3 scripts/mai.py --db ./mai-cli.sqlite merchant update --id seller-a --hours "10:00-20:00"
-python3 scripts/mai.py --db ./mai-cli.sqlite merchant list
+python3 scripts/mai.py --db ./mai-cli.sqlite merchant list --limit 50 --offset 0
 python3 scripts/mai.py --db ./mai-cli.sqlite delivery set --merchant seller-a --service-area "West Lake" --fee 12 --eta-minutes 45
 python3 scripts/mai.py --db ./mai-cli.sqlite product update --merchant seller-a --sku tea-a --stock 4 --price 92
 python3 scripts/mai.py --db ./mai-cli.sqlite search products --query "longjing"
@@ -130,7 +130,7 @@ python3 scripts/mai.py --db ./mai-cli.sqlite conversation resolve-review --conve
 python3 scripts/mai.py --db ./mai-cli.sqlite conversation close --conversation CONV-0001 --sender operator --text "Closed."
 python3 scripts/mai.py --db ./mai-cli.sqlite conversation close --conversation CONV-0001 --sender operator --text "Closed." --format json
 python3 scripts/mai.py --db ./mai-cli.sqlite conversation list --buyer alice --status waiting_buyer
-python3 scripts/mai.py --db ./mai-cli.sqlite conversation list --buyer alice --status waiting_buyer --format json
+python3 scripts/mai.py --db ./mai-cli.sqlite conversation list --buyer alice --status waiting_buyer --limit 50 --offset 0 --format json
 python3 scripts/mai.py --db ./mai-cli.sqlite merchant human-review --merchant seller-a
 python3 scripts/mai.py --db ./mai-cli.sqlite human-review queue
 python3 scripts/mai.py --db ./mai-cli.sqlite human-review queue --format json
