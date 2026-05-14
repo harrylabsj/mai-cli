@@ -113,6 +113,13 @@ def positive_float(value: str) -> float:
     return number
 
 
+def float_value(value: str) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError) as exc:
+        raise argparse.ArgumentTypeError("must be a number") from exc
+
+
 def positive_seconds(value: str) -> int:
     try:
         seconds = int(value)
@@ -1793,9 +1800,9 @@ def build_parser() -> argparse.ArgumentParser:
     merchant_create.add_argument("--hours", default="")
     merchant_create.add_argument("--automation-boundaries", default="")
     merchant_create.add_argument("--tags", default="")
-    merchant_create.add_argument("--delivery-fee", type=float, default=0)
+    merchant_create.add_argument("--delivery-fee", type=float_value, default=0)
     merchant_create.add_argument("--delivery-eta-minutes", type=non_negative_int, default=0)
-    merchant_create.add_argument("--delivery-radius-km", type=float, default=0)
+    merchant_create.add_argument("--delivery-radius-km", type=float_value, default=0)
     merchant_create.add_argument("--format", choices=["text", "json"], default="text")
     merchant_create.set_defaults(func=cmd_merchant_create)
     merchant_list = merchant_sub.add_parser("list", help="List merchants")
@@ -1812,9 +1819,9 @@ def build_parser() -> argparse.ArgumentParser:
     merchant_update.add_argument("--hours")
     merchant_update.add_argument("--automation-boundaries")
     merchant_update.add_argument("--tags")
-    merchant_update.add_argument("--delivery-fee", type=float)
+    merchant_update.add_argument("--delivery-fee", type=float_value)
     merchant_update.add_argument("--delivery-eta-minutes", type=non_negative_int)
-    merchant_update.add_argument("--delivery-radius-km", type=float)
+    merchant_update.add_argument("--delivery-radius-km", type=float_value)
     merchant_update.add_argument("--format", choices=["text", "json"], default="text")
     merchant_update.set_defaults(func=cmd_merchant_update)
     human_review = merchant_sub.add_parser("human-review", help="View conversations requiring merchant human review")
@@ -1829,9 +1836,9 @@ def build_parser() -> argparse.ArgumentParser:
     delivery_set = delivery_sub.add_parser("set", help="Create or update a delivery rule")
     delivery_set.add_argument("--merchant", required=True)
     delivery_set.add_argument("--service-area", default="")
-    delivery_set.add_argument("--fee", type=float, default=0)
+    delivery_set.add_argument("--fee", type=float_value, default=0)
     delivery_set.add_argument("--eta-minutes", type=non_negative_int, default=0)
-    delivery_set.add_argument("--radius-km", type=float, default=0)
+    delivery_set.add_argument("--radius-km", type=float_value, default=0)
     delivery_set.add_argument("--notes", default="")
     delivery_set.add_argument("--format", choices=["text", "json"], default="text")
     delivery_set.set_defaults(func=cmd_delivery_set)
@@ -1842,7 +1849,7 @@ def build_parser() -> argparse.ArgumentParser:
     product_add.add_argument("--merchant", required=True)
     product_add.add_argument("--sku", required=True)
     product_add.add_argument("--title", required=True)
-    product_add.add_argument("--price", required=True, type=float)
+    product_add.add_argument("--price", required=True, type=float_value)
     product_add.add_argument("--stock", required=True, type=non_negative_int)
     product_add.add_argument("--currency", default="CNY")
     product_add.add_argument("--category", default="")
@@ -1861,7 +1868,7 @@ def build_parser() -> argparse.ArgumentParser:
     product_update.add_argument("--sku", required=True)
     product_update.add_argument("--merchant", default="")
     product_update.add_argument("--title")
-    product_update.add_argument("--price", type=float)
+    product_update.add_argument("--price", type=float_value)
     product_update.add_argument("--stock", type=non_negative_int)
     product_update.add_argument("--currency")
     product_update.add_argument("--category")
@@ -1877,7 +1884,7 @@ def build_parser() -> argparse.ArgumentParser:
     search_products_parser.add_argument("--query", default="")
     search_products_parser.add_argument("--city", default="")
     search_products_parser.add_argument("--area", default="")
-    search_products_parser.add_argument("--max-price", type=float)
+    search_products_parser.add_argument("--max-price", type=float_value)
     search_products_parser.add_argument("--include-out-of-stock", action="store_true")
     search_products_parser.add_argument("--limit", type=positive_int, default=10)
     search_products_parser.add_argument("--offset", type=non_negative_int, default=0)

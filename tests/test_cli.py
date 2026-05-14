@@ -202,6 +202,37 @@ class MaiCliTest(unittest.TestCase):
                 self.assertEqual(caught.exception.code, 2)
                 self.assertIn(expected_error, stderr.getvalue())
 
+    def test_float_args_report_non_numeric_values_cleanly(self):
+        from mai_cli import cli
+
+        cases = [
+            [
+                "product",
+                "add",
+                "--merchant",
+                "seller-a",
+                "--sku",
+                "tea-a",
+                "--title",
+                "Longjing",
+                "--price",
+                "bad",
+                "--stock",
+                "1",
+            ],
+            ["product", "update", "--sku", "tea-a", "--price", "bad"],
+            ["delivery", "set", "--merchant", "seller-a", "--fee", "bad"],
+            ["merchant", "update", "--id", "seller-a", "--delivery-radius-km", "bad"],
+            ["search", "products", "--max-price", "bad"],
+        ]
+        for args in cases:
+            with self.subTest(args=args):
+                stderr = StringIO()
+                with redirect_stderr(stderr), self.assertRaises(SystemExit) as caught:
+                    cli.build_parser().parse_args(args)
+                self.assertEqual(caught.exception.code, 2)
+                self.assertIn("must be a number", stderr.getvalue())
+
     def test_legacy_import_text_output_is_readable(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"
