@@ -1029,7 +1029,7 @@ class LlmContractTest(unittest.TestCase):
                     "conversation": {
                         "id": "CONV-0001",
                         "status": "human_required",
-                        "flags": [{"id": 1, "reason": "low_confidence", "resolved_at": None}],
+                        "flags": ["malformed", {"id": 1, "reason": "low_confidence", "resolved_at": None}],
                     },
                 }
             if path == "/conversations/CONV-0001/human-review":

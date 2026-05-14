@@ -512,7 +512,7 @@ class HTTPMarketplaceToolDispatcher:
             existing_flags = [
                 flag
                 for flag in conversation.get("flags") or []
-                if flag.get("reason") == reason and not flag.get("resolved_at")
+                if isinstance(flag, dict) and flag.get("reason") == reason and not flag.get("resolved_at")
             ]
             if existing_flags:
                 flags.append(existing_flags[-1])
