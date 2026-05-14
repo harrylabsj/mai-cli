@@ -811,6 +811,8 @@ def _append_conversation_message(db_path: str | Path, conversation_id: str, payl
             _require_merchant_token(conn, conversation["merchant_id"], payload)
         else:
             raise SystemExit(f"Unknown conversation sender: {sender}")
+        if str(status or "").strip() == "closed":
+            raise SystemExit("conversation messages cannot close conversations; use the close endpoint")
         message = append_message(
             conn,
             conversation_id,

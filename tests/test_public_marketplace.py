@@ -988,6 +988,33 @@ class PublicMarketplaceTest(unittest.TestCase):
             self.assertEqual(status, 200)
             self.assertEqual(message["message"]["sender"], "merchant_agent")
 
+            status, message_close = self.request(
+                app,
+                "POST",
+                "/conversations/CONV-0001/messages",
+                {
+                    "sender": "merchant",
+                    "intent": "support",
+                    "text": "Close via generic message should fail.",
+                    "status": "closed",
+                    "merchant_token": merchant_token,
+                },
+            )
+            self.assertEqual(status, 400)
+            self.assertIn("close endpoint", message_close["error"])
+            status, conversation = self.request(
+                app,
+                "GET",
+                "/conversations/CONV-0001",
+                headers={"authorization": f"Bearer {merchant_token}"},
+            )
+            self.assertEqual(status, 200)
+            self.assertEqual(conversation["conversation"]["status"], "waiting_buyer")
+            self.assertEqual(
+                [event["event"] for event in conversation["conversation"]["audit_events"] if event["event"] == "conversation_closed"],
+                [],
+            )
+
             status, conversations = self.request(
                 app,
                 "GET",
