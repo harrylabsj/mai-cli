@@ -126,6 +126,22 @@ class MaiCliTest(unittest.TestCase):
                 self.assertEqual(caught.exception.code, 2)
                 self.assertIn(expected_error, stderr.getvalue())
 
+    def test_human_review_id_args_report_invalid_values_cleanly(self):
+        from mai_cli import cli
+
+        cases = [
+            (["human-review", "show", "--review", "bad"], "must be a whole number"),
+            (["human-review", "show", "--review", "0"], "must be greater than 0"),
+            (["human-review", "resolve", "--review", "-1", "--action", "reply"], "must be greater than 0"),
+        ]
+        for args, expected_error in cases:
+            with self.subTest(args=args):
+                stderr = StringIO()
+                with redirect_stderr(stderr), self.assertRaises(SystemExit) as caught:
+                    cli.build_parser().parse_args(args)
+                self.assertEqual(caught.exception.code, 2)
+                self.assertIn(expected_error, stderr.getvalue())
+
     def test_legacy_import_text_output_is_readable(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"
