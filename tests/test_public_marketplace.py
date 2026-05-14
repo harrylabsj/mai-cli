@@ -3915,6 +3915,60 @@ class PublicMarketplaceTest(unittest.TestCase):
                 ["CONV-0004", "CONV-0003"],
             )
 
+    def test_merchant_human_review_supports_limit_and_offset(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "marketplace.sqlite"
+            app = create_app(db_file)
+            status, merchant = self.request(app, "POST", "/merchants", {"id": "seller-a", "name": "West Lake Tea"})
+            self.assertEqual(status, 200)
+            merchant_token = merchant["merchant_token"]
+
+            for index in range(6):
+                conversation_id = f"CONV-{index + 1:04d}"
+                status, _conversation = self.request(
+                    app,
+                    "POST",
+                    "/conversations",
+                    {
+                        "buyer_id": f"buyer-{index}",
+                        "merchant_id": "seller-a",
+                        "text": f"Question {index}",
+                    },
+                )
+                self.assertEqual(status, 200)
+                status, _review = self.request(
+                    app,
+                    "POST",
+                    f"/conversations/{conversation_id}/human-review",
+                    {
+                        "reason": "low_confidence",
+                        "severity": "review",
+                        "merchant_token": merchant_token,
+                    },
+                )
+                self.assertEqual(status, 200)
+
+            with db_session(db_file) as conn:
+                for index in range(6):
+                    conn.execute(
+                        "update conversations set updated_at = ? where id = ?",
+                        (f"2026-01-01T00:00:0{index}Z", f"CONV-{index + 1:04d}"),
+                    )
+
+            status, human_review = self.request(
+                app,
+                "GET",
+                "/merchants/seller-a/human-review",
+                query_string="limit=2&offset=2",
+                headers={"authorization": f"Bearer {merchant_token}"},
+            )
+
+            self.assertEqual(status, 200)
+            self.assertEqual(
+                [conversation["id"] for conversation in human_review["conversations"]],
+                ["CONV-0004", "CONV-0003"],
+            )
+
     def test_agent_stale_ttl_is_configurable(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "marketplace.sqlite"

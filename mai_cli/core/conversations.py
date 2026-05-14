@@ -270,22 +270,20 @@ def merchant_conversations(
     conn: sqlite3.Connection,
     merchant_id: str,
     status: str = "",
+    limit: int | None = None,
+    offset: int = 0,
 ) -> list[dict[str, Any]]:
     require_merchant(conn, merchant_id)
+    values: list[Any] = [merchant_id]
     if status:
-        rows = conn.execute(
-            """
-            select id from conversations
-            where merchant_id = ? and status = ?
-            order by updated_at desc
-            """,
-            (merchant_id, status),
-        ).fetchall()
+        sql = "select id from conversations where merchant_id = ? and status = ? order by updated_at desc"
+        values.append(status)
     else:
-        rows = conn.execute(
-            "select id from conversations where merchant_id = ? order by updated_at desc",
-            (merchant_id,),
-        ).fetchall()
+        sql = "select id from conversations where merchant_id = ? order by updated_at desc"
+    if limit is not None:
+        sql += " limit ? offset ?"
+        values.extend([int(limit), max(int(offset), 0)])
+    rows = conn.execute(sql, values).fetchall()
     return [conversation_summary(conn, row["id"]) for row in rows]
 
 

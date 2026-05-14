@@ -67,4 +67,4 @@ Token-protected operations include product writes, merchant profile updates, mer
 
 External channel adapters use `POST /channels/messages` with `channel`, `external_user_id`, `text`, and optional `conversation_id`, `city`, `area`, and `external_message_id`. The API requires a channel token from `MAI_CHANNEL_TOKENS` such as `telegram:secret,whatsapp:secret2`, or a global `MAI_CHANNEL_TOKEN`; pass it as `channel_token` or a Bearer token. Channel buyer ids are always derived from `<normalized-channel>:<external_user_id>`.
 
-List/search and human-review queue endpoints accept `limit` and `offset` where applicable. `limit` is capped to prevent unbounded response growth. Closed conversations are terminal for message, close, and human-review mutations; reopen behavior must be implemented through an explicit audited endpoint.
+List/search, merchant human-review, and human-review queue endpoints accept `limit` and `offset` where applicable. `limit` is capped to prevent unbounded response growth. Closed conversations are terminal for message, close, and human-review mutations; reopen behavior must be implemented through an explicit audited endpoint.

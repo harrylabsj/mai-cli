@@ -1158,10 +1158,27 @@ def _conversation_list(
         return {"ok": True, "conversations": [conversation_summary(conn, row["id"]) for row in rows]}
 
 
-def _merchant_conversations(db_path: str | Path, merchant_id: str, payload: dict[str, Any], status: str = "") -> dict[str, Any]:
+def _merchant_conversations(
+    db_path: str | Path,
+    merchant_id: str,
+    payload: dict[str, Any],
+    status: str = "",
+    limit: Any = DEFAULT_RESULT_LIMIT,
+    offset: Any = 0,
+) -> dict[str, Any]:
     with db_session(db_path) as conn:
         _require_merchant_read_token(conn, merchant_id, payload)
-        return {"ok": True, "merchant_id": merchant_id, "conversations": merchant_conversations(conn, merchant_id, status)}
+        return {
+            "ok": True,
+            "merchant_id": merchant_id,
+            "conversations": merchant_conversations(
+                conn,
+                merchant_id,
+                status,
+                limit=_result_limit(limit),
+                offset=_result_offset(offset),
+            ),
+        }
 
 
 def _review_summary(conn: Any, flag_row: Any) -> dict[str, Any]:
@@ -1558,7 +1575,14 @@ def handle_request(
             filters["merchant_id"] = parts[1]
             return 200, _conversation_list(db_path, filters, payload, owner_kind="merchant", owner_id=parts[1])
         if len(parts) == 3 and parts[0] == "merchants" and parts[2] == "human-review" and method == "GET":
-            return 200, _merchant_conversations(db_path, parts[1], payload, status="human_required")
+            return 200, _merchant_conversations(
+                db_path,
+                parts[1],
+                payload,
+                status="human_required",
+                limit=query.get("limit"),
+                offset=query.get("offset"),
+            )
         if len(parts) == 3 and parts[0] == "conversations" and parts[2] == "human-review" and method == "POST":
             return 200, _create_human_review(db_path, parts[1], payload)
         if len(parts) == 4 and parts[0] == "conversations" and parts[2] == "human-review" and parts[3] == "resolve" and method == "POST":
@@ -1872,8 +1896,20 @@ def create_app(db_path: str | Path = "mai-cli.sqlite") -> Any:
         )
 
     @app.get("/merchants/{merchant_id}/human-review")
-    def human_review(merchant_id: str, authorization: str = AUTHORIZATION_HEADER) -> dict[str, Any]:
-        return _merchant_conversations(db_path, merchant_id, _payload_with_auth({}, authorization), status="human_required")
+    def human_review(
+        merchant_id: str,
+        limit: str = "",
+        offset: str = "",
+        authorization: str = AUTHORIZATION_HEADER,
+    ) -> dict[str, Any]:
+        return _merchant_conversations(
+            db_path,
+            merchant_id,
+            _payload_with_auth({}, authorization),
+            status="human_required",
+            limit=limit,
+            offset=offset,
+        )
 
     @app.post("/conversations/{conversation_id}/human-review")
     def create_human_review(

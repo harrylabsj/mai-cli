@@ -186,7 +186,13 @@ def cmd_merchant_update(args: argparse.Namespace) -> None:
 
 def cmd_merchant_human_review(args: argparse.Namespace) -> None:
     with db_session(db_path_from_args(args)) as conn:
-        conversations = merchant_conversations(conn, args.merchant, "human_required")
+        conversations = merchant_conversations(
+            conn,
+            args.merchant,
+            "human_required",
+            limit=args.limit,
+            offset=args.offset,
+        )
     if args.format == "text":
         emit_conversation_table(conversations, f"No human-review conversations for {args.merchant}.")
         return
@@ -1701,6 +1707,8 @@ def build_parser() -> argparse.ArgumentParser:
     merchant_update.set_defaults(func=cmd_merchant_update)
     human_review = merchant_sub.add_parser("human-review", help="View conversations requiring merchant human review")
     human_review.add_argument("--merchant", required=True)
+    human_review.add_argument("--limit", type=positive_int, default=50)
+    human_review.add_argument("--offset", type=non_negative_int, default=0)
     human_review.add_argument("--format", choices=["text", "json"], default="text")
     human_review.set_defaults(func=cmd_merchant_human_review)
 

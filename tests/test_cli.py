@@ -970,6 +970,69 @@ class MaiCliTest(unittest.TestCase):
             self.assertIn("merchant_human", output)
             self.assertNotIn('"conversations"', output)
 
+    def test_merchant_human_review_supports_limit_and_offset(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.run_cli(db_file, "merchant", "create", "--id", "seller-a", "--name", "West Lake Tea")
+            for index in range(6):
+                conversation_id = f"CONV-{index + 1:04d}"
+                self.run_cli(
+                    db_file,
+                    "conversation",
+                    "create",
+                    "--buyer",
+                    f"buyer-{index}",
+                    "--merchant",
+                    "seller-a",
+                    "--text",
+                    f"Question {index}",
+                    "--format",
+                    "json",
+                )
+                self.run_cli(
+                    db_file,
+                    "conversation",
+                    "human-review",
+                    "--conversation",
+                    conversation_id,
+                    "--reason",
+                    "low_confidence",
+                    "--format",
+                    "json",
+                )
+
+            conn = sqlite3.connect(db_file)
+            try:
+                for index in range(6):
+                    conn.execute(
+                        "update conversations set updated_at = ? where id = ?",
+                        (f"2026-01-01T00:00:0{index}Z", f"CONV-{index + 1:04d}"),
+                    )
+                conn.commit()
+            finally:
+                conn.close()
+
+            human_review = json.loads(
+                self.run_cli(
+                    db_file,
+                    "merchant",
+                    "human-review",
+                    "--merchant",
+                    "seller-a",
+                    "--limit",
+                    "2",
+                    "--offset",
+                    "2",
+                    "--format",
+                    "json",
+                )
+            )
+
+            self.assertEqual(
+                [conversation["id"] for conversation in human_review["conversations"]],
+                ["CONV-0004", "CONV-0003"],
+            )
+
     def test_buyer_ask_text_output_summarizes_selected_consultation(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"
