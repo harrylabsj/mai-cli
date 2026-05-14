@@ -491,6 +491,7 @@ def search_products(
     max_price: float | None = None,
     include_out_of_stock: bool = False,
     limit: int = 10,
+    offset: int = 0,
 ) -> list[dict[str, Any]]:
     query = str(query or "").strip()
     city = str(city or "").strip()
@@ -526,7 +527,10 @@ def search_products(
             summary.setdefault("warnings", []).append("requested area may need merchant confirmation")
         summary["match_score"] = score
         results.append(summary)
-    return sorted(results, key=lambda item: (-item["match_score"], item["price"], item["sku"]))[:limit]
+    ordered = sorted(results, key=lambda item: (-item["match_score"], item["price"], item["sku"]))
+    window_start = _safe_non_negative_int(offset)
+    window_limit = _safe_non_negative_int(limit)
+    return ordered[window_start : window_start + window_limit]
 
 
 def search_merchants(
@@ -534,6 +538,7 @@ def search_merchants(
     query: str = "",
     city: str = "",
     limit: int = 10,
+    offset: int = 0,
 ) -> list[dict[str, Any]]:
     query = str(query or "").strip()
     city = str(city or "").strip()
@@ -566,4 +571,7 @@ def search_merchants(
         summary = merchant_summary(conn, merchant["id"])
         summary["match_score"] = round(score, 4)
         results.append(summary)
-    return sorted(results, key=lambda item: (-item["match_score"], item["name"], item["id"]))[:limit]
+    ordered = sorted(results, key=lambda item: (-item["match_score"], item["name"], item["id"]))
+    window_start = _safe_non_negative_int(offset)
+    window_limit = _safe_non_negative_int(limit)
+    return ordered[window_start : window_start + window_limit]

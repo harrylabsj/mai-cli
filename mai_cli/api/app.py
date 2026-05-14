@@ -697,6 +697,7 @@ def _search_products(db_path: str | Path, query: dict[str, Any]) -> dict[str, An
                 max_price=max_price if str(max_price or "") else None,
                 include_out_of_stock=_bool_from_query(query.get("include_out_of_stock")),
                 limit=_result_limit(query.get("limit"), default=10),
+                offset=_result_offset(query.get("offset")),
             ),
         }
 
@@ -710,6 +711,7 @@ def _search_merchants(db_path: str | Path, query: dict[str, Any]) -> dict[str, A
                 query=str(query.get("query") or ""),
                 city=str(query.get("city") or ""),
                 limit=_result_limit(query.get("limit"), default=10),
+                offset=_result_offset(query.get("offset")),
             ),
         }
 
@@ -1638,6 +1640,7 @@ def create_app(db_path: str | Path = "mai-cli.sqlite") -> Any:
         max_price: str = "",
         include_out_of_stock: str = "",
         limit: str = "",
+        offset: str = "",
     ) -> dict[str, Any]:
         return _search_products(
             db_path,
@@ -1648,12 +1651,13 @@ def create_app(db_path: str | Path = "mai-cli.sqlite") -> Any:
                 "max_price": max_price,
                 "include_out_of_stock": include_out_of_stock,
                 "limit": limit,
+                "offset": offset,
             },
         )
 
     @app.get("/search/merchants")
-    def search_merchants(query: str = "", city: str = "", limit: str = "") -> dict[str, Any]:
-        return _search_merchants(db_path, {"query": query, "city": city, "limit": limit})
+    def search_merchants(query: str = "", city: str = "", limit: str = "", offset: str = "") -> dict[str, Any]:
+        return _search_merchants(db_path, {"query": query, "city": city, "limit": limit, "offset": offset})
 
     @app.post("/channels/messages")
     def ingest_channel_message(payload: dict[str, Any], authorization: str = AUTHORIZATION_HEADER) -> dict[str, Any]:

@@ -606,6 +606,24 @@ class PublicMarketplaceTest(unittest.TestCase):
             self.assertEqual(status, 200)
             self.assertEqual(len(products["results"]), 2)
 
+            status, products = self.request(
+                app,
+                "GET",
+                "/search/products",
+                query_string="query=longjing&limit=2&offset=2",
+            )
+            self.assertEqual(status, 200)
+            self.assertEqual([product["sku"] for product in products["results"]], ["tea-2", "tea-3"])
+
+            status, merchants = self.request(
+                app,
+                "GET",
+                "/search/merchants",
+                query_string="query=west&city=Hangzhou&limit=2&offset=2",
+            )
+            self.assertEqual(status, 200)
+            self.assertEqual([merchant["id"] for merchant in merchants["results"]], ["seller-2", "seller-3"])
+
             status, conversations = self.request(
                 app,
                 "GET",
