@@ -3038,6 +3038,56 @@ class MaiCliTest(unittest.TestCase):
             self.assertIn("urgent", output)
             self.assertNotIn('"reviews"', output)
 
+    def test_human_review_queue_supports_limit_and_offset(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.run_cli(db_file, "merchant", "create", "--id", "seller-a", "--name", "West Lake Tea")
+            for index in range(6):
+                conversation_id = f"CONV-{index + 1:04d}"
+                self.run_cli(
+                    db_file,
+                    "conversation",
+                    "create",
+                    "--buyer",
+                    f"buyer-{index}",
+                    "--merchant",
+                    "seller-a",
+                    "--text",
+                    f"Question {index}",
+                )
+                self.run_cli(
+                    db_file,
+                    "conversation",
+                    "human-review",
+                    "--conversation",
+                    conversation_id,
+                    "--reason",
+                    "low_confidence",
+                    "--format",
+                    "json",
+                )
+
+            queue = json.loads(
+                self.run_cli(
+                    db_file,
+                    "human-review",
+                    "queue",
+                    "--merchant",
+                    "seller-a",
+                    "--limit",
+                    "2",
+                    "--offset",
+                    "2",
+                    "--format",
+                    "json",
+                )
+            )
+
+            self.assertEqual(
+                [review["conversation_id"] for review in queue["reviews"]],
+                ["CONV-0004", "CONV-0003"],
+            )
+
     def test_human_review_show_text_output_includes_context(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"

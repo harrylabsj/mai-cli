@@ -1406,7 +1406,8 @@ def cmd_human_review_queue(args: argparse.Namespace) -> None:
     if args.merchant:
         sql += " and c.merchant_id = ?"
         values.append(args.merchant)
-    sql += " order by f.created_at desc, f.id desc"
+    sql += " order by f.created_at desc, f.id desc limit ? offset ?"
+    values.extend([args.limit, args.offset])
     with db_session(db_path_from_args(args)) as conn:
         rows = conn.execute(sql, values).fetchall()
         reviews = [_review_summary(conn, row["id"]) for row in rows]
@@ -1964,6 +1965,8 @@ def build_parser() -> argparse.ArgumentParser:
     human_review_sub = human_review_cli.add_subparsers(dest="human_review_command", required=True)
     human_review_queue = human_review_sub.add_parser("queue", help="List unresolved human-review flags")
     human_review_queue.add_argument("--merchant", default="")
+    human_review_queue.add_argument("--limit", type=positive_int, default=50)
+    human_review_queue.add_argument("--offset", type=non_negative_int, default=0)
     human_review_queue.add_argument("--format", choices=["text", "json"], default="text")
     human_review_queue.set_defaults(func=cmd_human_review_queue)
     human_review_show = human_review_sub.add_parser("show", help="Show one human-review item with conversation context")

@@ -3868,6 +3868,53 @@ class PublicMarketplaceTest(unittest.TestCase):
             self.assertEqual(status, 200)
             self.assertEqual(closed["conversation"]["status"], "closed")
 
+    def test_human_review_queue_supports_limit_and_offset(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "marketplace.sqlite"
+            app = create_app(db_file)
+            status, merchant = self.request(app, "POST", "/merchants", {"id": "seller-a", "name": "West Lake Tea"})
+            self.assertEqual(status, 200)
+            merchant_token = merchant["merchant_token"]
+
+            for index in range(6):
+                conversation_id = f"CONV-{index + 1:04d}"
+                status, _conversation = self.request(
+                    app,
+                    "POST",
+                    "/conversations",
+                    {
+                        "buyer_id": f"buyer-{index}",
+                        "merchant_id": "seller-a",
+                        "text": f"Question {index}",
+                    },
+                )
+                self.assertEqual(status, 200)
+                status, _review = self.request(
+                    app,
+                    "POST",
+                    f"/conversations/{conversation_id}/human-review",
+                    {
+                        "reason": "low_confidence",
+                        "severity": "review",
+                        "merchant_token": merchant_token,
+                    },
+                )
+                self.assertEqual(status, 200)
+
+            status, queue = self.request(
+                app,
+                "GET",
+                "/human-review/queue",
+                query_string="merchant_id=seller-a&limit=2&offset=2",
+                headers={"authorization": f"Bearer {merchant_token}"},
+            )
+
+            self.assertEqual(status, 200)
+            self.assertEqual(
+                [review["conversation_id"] for review in queue["reviews"]],
+                ["CONV-0004", "CONV-0003"],
+            )
+
     def test_agent_stale_ttl_is_configurable(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "marketplace.sqlite"

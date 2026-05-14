@@ -132,8 +132,8 @@ python3 scripts/mai.py --db ./mai-cli.sqlite conversation close --conversation C
 python3 scripts/mai.py --db ./mai-cli.sqlite conversation list --buyer alice --status waiting_buyer
 python3 scripts/mai.py --db ./mai-cli.sqlite conversation list --buyer alice --status waiting_buyer --limit 50 --offset 0 --format json
 python3 scripts/mai.py --db ./mai-cli.sqlite merchant human-review --merchant seller-a
-python3 scripts/mai.py --db ./mai-cli.sqlite human-review queue
-python3 scripts/mai.py --db ./mai-cli.sqlite human-review queue --format json
+python3 scripts/mai.py --db ./mai-cli.sqlite human-review queue --limit 50 --offset 0
+python3 scripts/mai.py --db ./mai-cli.sqlite human-review queue --limit 50 --offset 0 --format json
 python3 scripts/mai.py --db ./mai-cli.sqlite human-review show --review 1
 python3 scripts/mai.py --db ./mai-cli.sqlite human-review show --review 1 --format json
 python3 scripts/mai.py --db ./mai-cli.sqlite human-review resolve --review 1 --action reply --sender merchant --text "Human reviewed."

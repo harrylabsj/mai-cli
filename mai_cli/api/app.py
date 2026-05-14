@@ -1181,7 +1181,13 @@ def _review_summary(conn: Any, flag_row: Any) -> dict[str, Any]:
     }
 
 
-def _human_review_queue(db_path: str | Path, payload: dict[str, Any], merchant_id: str = "") -> dict[str, Any]:
+def _human_review_queue(
+    db_path: str | Path,
+    payload: dict[str, Any],
+    merchant_id: str = "",
+    limit: Any = DEFAULT_RESULT_LIMIT,
+    offset: Any = 0,
+) -> dict[str, Any]:
     if not merchant_id:
         raise AuthError("merchant_id is required for human-review queue")
     sql = """
@@ -1192,7 +1198,8 @@ def _human_review_queue(db_path: str | Path, payload: dict[str, Any], merchant_i
     values: list[Any] = []
     sql += " and c.merchant_id = ?"
     values.append(merchant_id)
-    sql += " order by f.created_at desc, f.id desc"
+    sql += " order by f.created_at desc, f.id desc limit ? offset ?"
+    values.extend([_result_limit(limit), _result_offset(offset)])
     with db_session(db_path) as conn:
         _require_merchant_read_token(conn, merchant_id, payload)
         rows = conn.execute(sql, values).fetchall()
@@ -1535,7 +1542,13 @@ def handle_request(
                 limit=query.get("limit") or 50,
             )
         if path == "/human-review/queue" and method == "GET":
-            return 200, _human_review_queue(db_path, payload, merchant_id=str(query.get("merchant_id") or ""))
+            return 200, _human_review_queue(
+                db_path,
+                payload,
+                merchant_id=str(query.get("merchant_id") or ""),
+                limit=query.get("limit"),
+                offset=query.get("offset"),
+            )
         if len(parts) == 2 and parts[0] == "human-review" and method == "GET":
             return 200, _get_human_review(db_path, parts[1], payload)
         if len(parts) == 3 and parts[0] == "human-review" and parts[2] == "resolve" and method == "POST":
@@ -1805,8 +1818,19 @@ def create_app(db_path: str | Path = "mai-cli.sqlite") -> Any:
         )
 
     @app.get("/human-review/queue")
-    def human_review_queue(merchant_id: str = "", authorization: str = AUTHORIZATION_HEADER) -> dict[str, Any]:
-        return _human_review_queue(db_path, _payload_with_auth({}, authorization), merchant_id=merchant_id)
+    def human_review_queue(
+        merchant_id: str = "",
+        limit: str = "",
+        offset: str = "",
+        authorization: str = AUTHORIZATION_HEADER,
+    ) -> dict[str, Any]:
+        return _human_review_queue(
+            db_path,
+            _payload_with_auth({}, authorization),
+            merchant_id=merchant_id,
+            limit=limit,
+            offset=offset,
+        )
 
     @app.get("/human-review/{review_id}")
     def get_human_review(review_id: int, authorization: str = AUTHORIZATION_HEADER) -> dict[str, Any]:
