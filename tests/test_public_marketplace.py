@@ -13,6 +13,7 @@ from mai_cli.api.app import AuthError, MarketplaceASGIApp, _list_agents, _resolv
 from mai_cli.api.app import create_app
 from mai_cli.core import catalog
 from mai_cli.core.conversations import conversation_summary
+from mai_cli.core.harness import audit_event_summary
 from mai_cli.core.tokens import token_digest
 from mai_cli.db.session import db_session
 
@@ -3720,6 +3721,36 @@ class PublicMarketplaceTest(unittest.TestCase):
                 [event["details"]["token"]["token_prefix"] for event in listed["events"]],
                 [issued_tokens[3][:24], issued_tokens[2][:24]],
             )
+
+    def test_audit_events_api_uses_list_rows_without_per_event_hydration(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "marketplace.sqlite"
+            app = create_app(db_file)
+
+            status, merchant = self.request(app, "POST", "/merchants", {"id": "seller-a", "name": "West Lake Tea"})
+            self.assertEqual(status, 200)
+            merchant_token = merchant["merchant_token"]
+            for _index in range(3):
+                status, _issued = self.request(
+                    app,
+                    "POST",
+                    "/agents/tokens",
+                    {"merchant_id": "seller-a", "merchant_token": merchant_token},
+                )
+                self.assertEqual(status, 200)
+
+            with patch("mai_cli.api.app.audit_event_summary", wraps=audit_event_summary) as summary:
+                status, listed = self.request(
+                    app,
+                    "GET",
+                    "/audit/events",
+                    query_string="merchant_id=seller-a&event=agent_token_issued&limit=2",
+                    headers={"authorization": f"Bearer {merchant_token}"},
+                )
+
+            self.assertEqual(status, 200)
+            self.assertEqual(len(listed["events"]), 2)
+            self.assertEqual(summary.call_count, 0)
 
     def test_tool_call_audit_requires_merchant_or_agent_token_and_derives_actor(self):
         with tempfile.TemporaryDirectory() as tmp:

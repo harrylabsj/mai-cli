@@ -440,6 +440,17 @@ def _audit_event_limit(value: Any) -> int:
     return min(limit, 200)
 
 
+def _audit_event_summary_from_row(row: Any) -> dict[str, Any]:
+    return {
+        "id": row["id"],
+        "conversation_id": row["conversation_id"],
+        "actor": row["actor"],
+        "event": row["event"],
+        "details": decode_json(row["details_json"], {}),
+        "created_at": row["created_at"],
+    }
+
+
 def _merchant_audit_events(
     conn: Any,
     merchant_id: str,
@@ -447,7 +458,7 @@ def _merchant_audit_events(
     limit: Any = 50,
     offset: Any = 0,
 ) -> list[dict[str, Any]]:
-    sql = "select id from audit_events where actor = ?"
+    sql = "select id, conversation_id, actor, event, details_json, created_at from audit_events where actor = ?"
     values: list[Any] = [merchant_id]
     if event:
         sql += " and event = ?"
@@ -455,7 +466,7 @@ def _merchant_audit_events(
     sql += " order by id desc limit ? offset ?"
     values.extend([_audit_event_limit(limit), _result_offset(offset)])
     rows = conn.execute(sql, values).fetchall()
-    return [audit_event_summary(conn, int(row["id"])) for row in rows]
+    return [_audit_event_summary_from_row(row) for row in rows]
 
 
 def _issue_merchant_token(conn: Any, merchant_id: str) -> str:
