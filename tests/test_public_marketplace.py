@@ -9,7 +9,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from mai_cli.api.app import AuthError, MarketplaceASGIApp, _list_agents, route_info
+from mai_cli.api.app import AuthError, MarketplaceASGIApp, _list_agents, _resolve_agent_token, route_info
 from mai_cli.api.app import create_app
 from mai_cli.core import catalog
 from mai_cli.core.tokens import token_digest
@@ -189,6 +189,25 @@ class PublicMarketplaceTest(unittest.TestCase):
 
             self.assertEqual(status, 200)
             self.assertTrue(body["ok"])
+
+    def test_agent_token_prefix_resolution_reads_at_most_two_matches(self):
+        class Cursor:
+            def __init__(self, sql):
+                self.sql = sql
+
+            def fetchall(self):
+                if "limit 2" not in self.sql.lower():
+                    raise AssertionError("prefix resolution should cap ambiguity checks at two rows")
+                return [{"token": "first"}, {"token": "second"}]
+
+        class Connection:
+            def execute(self, sql, _params):
+                return Cursor(sql)
+
+        with self.assertRaises(ValueError) as raised:
+            _resolve_agent_token(Connection(), "seller-a", token_prefix="mai_agent_seller-a_")
+
+        self.assertIn("ambiguous", str(raised.exception))
 
     def fastapi_request(self, app, method, path, *args, auto_admin=True, auto_channel=True):
         endpoint = next(

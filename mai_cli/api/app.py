@@ -418,6 +418,7 @@ def _resolve_agent_token(conn: Any, merchant_id: str, token: Any = "", token_pre
         select token from api_tokens
         where merchant_id = ? and role = 'agent' and (token_prefix like ? or token like ?)
         order by created_at desc, token
+        limit 2
         """,
         (merchant_id, f"{prefix}%", f"{prefix}%"),
     ).fetchall()
