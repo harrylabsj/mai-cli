@@ -1017,6 +1017,53 @@ class LlmContractTest(unittest.TestCase):
             )
         self.assertIn("Marketplace API response missing object: message", str(raised.exception))
 
+    def test_http_marketplace_tool_dispatcher_reuses_message_created_review_flag(self):
+        calls = []
+
+        def fake_transport(method, path, payload, query, headers):
+            calls.append({"method": method, "path": path, "payload": payload, "query": query, "headers": headers})
+            if path == "/conversations/CONV-0001/messages":
+                return {
+                    "ok": True,
+                    "message": {"id": 2, "sender": "merchant_agent", "structured_payload": payload["structured_payload"]},
+                    "conversation": {
+                        "id": "CONV-0001",
+                        "status": "human_required",
+                        "flags": [{"id": 1, "reason": "low_confidence", "resolved_at": None}],
+                    },
+                }
+            if path == "/conversations/CONV-0001/human-review":
+                return {
+                    "ok": True,
+                    "review": {"id": 2, "reason": "low_confidence", "resolved_at": None},
+                    "conversation": {"id": "CONV-0001", "status": "human_required", "flags": []},
+                }
+            if path == "/audit/tool-calls":
+                return {"ok": True, "event": {"event": "llm_tool_call"}}
+            raise AssertionError(f"unexpected API path: {path}")
+
+        dispatcher = HTTPMarketplaceToolDispatcher(
+            "http://127.0.0.1:8765",
+            auth_token="merchant-token",
+            actor="mai-cli-merchant-agent:seller-a",
+            token_scope="merchant_agent",
+            transport=fake_transport,
+        )
+
+        result = dispatcher.dispatch(
+            "merchant_reply",
+            {
+                "conversation_id": "CONV-0001",
+                "intent": "support",
+                "text": "Needs human review.",
+                "human_required": True,
+                "reason": "low_confidence",
+            },
+        )
+
+        self.assertEqual([flag["id"] for flag in result["result"]["flags"]], [1])
+        self.assertNotIn("/conversations/CONV-0001/human-review", [call["path"] for call in calls])
+
     def test_http_marketplace_tool_dispatcher_preserves_denial_when_audit_fails(self):
         dispatcher = HTTPMarketplaceToolDispatcher(
             "http://127.0.0.1:8765",

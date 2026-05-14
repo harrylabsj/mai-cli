@@ -509,16 +509,24 @@ class HTTPMarketplaceToolDispatcher:
         message = self._response_object(message_result, "message")
         conversation = self._response_object(message_result, "conversation")
         if human_required:
-            review_result = self._request(
-                "POST",
-                f"{self._conversation_path(conversation_id)}/human-review",
-                {
-                    "reason": reason,
-                    "source_id": self.source_id,
-                },
-            )
-            flags.append(self._response_object(review_result, "review"))
-            conversation = self._response_object(review_result, "conversation")
+            existing_flags = [
+                flag
+                for flag in conversation.get("flags") or []
+                if flag.get("reason") == reason and not flag.get("resolved_at")
+            ]
+            if existing_flags:
+                flags.append(existing_flags[-1])
+            else:
+                review_result = self._request(
+                    "POST",
+                    f"{self._conversation_path(conversation_id)}/human-review",
+                    {
+                        "reason": reason,
+                        "source_id": self.source_id,
+                    },
+                )
+                flags.append(self._response_object(review_result, "review"))
+                conversation = self._response_object(review_result, "conversation")
         return {
             "ok": True,
             "message": message,

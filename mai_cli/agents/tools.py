@@ -293,6 +293,7 @@ class HTTPMerchantAgentTools:
         self.opener = opener or urllib.request.urlopen
         self.host = str(host or "")
         self.session_id = str(session_id or "")
+        self._message_created_review_flags: dict[tuple[str, str], dict[str, Any]] = {}
 
     def _merchant_payload(self, payload: dict[str, Any] | None = None) -> dict[str, Any]:
         merged = dict(payload or {})
@@ -463,9 +464,18 @@ class HTTPMerchantAgentTools:
             ),
         )
         self._record_tool_call("conversation_message", conversation_id=conversation_id)
+        conversation = result.get("conversation")
+        if isinstance(conversation, dict):
+            for flag in conversation.get("flags") or []:
+                if isinstance(flag, dict) and flag.get("reason") and not flag.get("resolved_at"):
+                    self._message_created_review_flags[(conversation_id, str(flag["reason"]))] = dict(flag)
         return self._response_object(result, "message")
 
     def add_flag(self, conversation_id: str, reason: str, sku: str = "") -> dict[str, Any]:
+        cached = self._message_created_review_flags.pop((conversation_id, reason), None)
+        if cached is not None:
+            self._record_tool_call("human_review_flag", conversation_id=conversation_id)
+            return cached
         result = self._request(
             "POST",
             f"/conversations/{urllib.parse.quote(conversation_id, safe='')}/human-review",

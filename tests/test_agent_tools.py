@@ -261,6 +261,46 @@ class AgentToolsBoundaryTest(unittest.TestCase):
         self.assertEqual(opener.requests[3]["body"]["status"], "waiting_buyer")
         self.assertEqual(opener.requests[3]["body"]["merchant_token"], "tok_seller_a")
 
+    def test_http_merchant_agent_tools_reuses_message_created_review_flag(self):
+        from mai_cli.agents.tools import HTTPMerchantAgentTools
+
+        opener = CapturingHTTPOpener(
+            [
+                {
+                    "ok": True,
+                    "message": {"id": 2, "sender": "merchant_agent"},
+                    "conversation": {
+                        "id": "CONV-0001",
+                        "flags": [{"id": 7, "reason": "low_stock", "resolved_at": ""}],
+                    },
+                },
+                {
+                    "ok": True,
+                    "review": {"id": 8, "reason": "low_stock", "resolved_at": ""},
+                },
+            ]
+        )
+        tools = HTTPMerchantAgentTools(
+            "http://127.0.0.1:8765/",
+            merchant_id="seller-a",
+            merchant_token="tok_seller_a",
+            opener=opener,
+        )
+
+        tools.append_message(
+            "CONV-0001",
+            "merchant_agent",
+            "ask_delivery",
+            "Needs human review.",
+            structured_payload={"reason": "low_stock", "source_id": "mai-cli-merchant-agent:seller-a"},
+            status="human_required",
+        )
+        review = tools.add_flag("CONV-0001", "low_stock", sku="tea-a")
+
+        self.assertEqual(review["id"], 7)
+        paths = [urlparse(call["request"].full_url).path for call in opener.requests]
+        self.assertEqual(paths, ["/conversations/CONV-0001/messages"])
+
     def test_http_merchant_agent_tools_tolerates_invalid_timeout(self):
         from mai_cli.agents.tools import HTTPMerchantAgentTools
 
