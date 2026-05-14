@@ -94,7 +94,7 @@ def migrate_api_tokens_to_hashes(conn: sqlite3.Connection) -> None:
         stored_hash = str(row["token_hash"] or "")
         if is_sha256_digest(stored) and stored_hash == stored:
             continue
-        if stored_hash and is_sha256_digest(stored):
+        if is_sha256_digest(stored):
             conn.execute(
                 """
                 update api_tokens

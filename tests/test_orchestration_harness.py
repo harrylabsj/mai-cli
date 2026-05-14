@@ -389,6 +389,52 @@ class OrchestrationHarnessTest(unittest.TestCase):
             self.assertEqual(row["token_prefix"], raw_token[:24])
             self.assertEqual(row["token_suffix"], raw_token[-6:])
 
+    def test_schema_migration_preserves_existing_token_digest_without_rehashing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "digest-token.sqlite"
+            raw_token = "mai_seller-a_already-hashed"
+            digest = token_digest(raw_token)
+            conn = sqlite3.connect(db_file)
+            try:
+                conn.execute(
+                    """
+                    create table api_tokens (
+                        token text primary key,
+                        token_hash text not null default '',
+                        token_prefix text not null default '',
+                        token_suffix text not null default '',
+                        role text not null,
+                        merchant_id text not null default '',
+                        buyer_id text not null default '',
+                        agent_id text not null default '',
+                        conversation_id text not null default '',
+                        revoked_at text not null default '',
+                        expires_at text not null default '',
+                        created_at text not null
+                    )
+                    """
+                )
+                conn.execute(
+                    """
+                    insert into api_tokens(token, role, merchant_id, created_at)
+                    values (?, 'merchant', 'seller-a', '2026-05-14T00:00:00')
+                    """,
+                    (digest,),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+
+            with db_session(db_file) as conn:
+                row = conn.execute(
+                    "select token, token_hash, token_prefix, token_suffix from api_tokens"
+                ).fetchone()
+
+            self.assertEqual(row["token"], digest)
+            self.assertEqual(row["token_hash"], digest)
+            self.assertEqual(row["token_prefix"], digest[:24])
+            self.assertEqual(row["token_suffix"], digest[-6:])
+
     def test_suspicious_conversation_routes_to_operator_review(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"
