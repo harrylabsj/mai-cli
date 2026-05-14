@@ -507,7 +507,7 @@ def search_products(
         where p.active = 1
         """
     ).fetchall()
-    results: list[dict[str, Any]] = []
+    matches: list[tuple[float, float, str, sqlite3.Row]] = []
     for row in rows:
         merchant = require_merchant(conn, row["merchant_id"])
         if city and merchant["city"].lower() != city.lower():
@@ -521,16 +521,20 @@ def search_products(
         score = _match_score(query, row, merchant)
         if query and score <= (5 if stock > 0 else 0):
             continue
+        matches.append((score, price, str(row["sku"]), row))
+
+    ordered = sorted(matches, key=lambda item: (-item[0], item[1], item[2]))
+    window_start = _safe_non_negative_int(offset)
+    window_limit = _safe_non_negative_int(limit)
+    results: list[dict[str, Any]] = []
+    for score, _price, _sku, row in ordered[window_start : window_start + window_limit]:
         summary = product_summary(conn, row["sku"])
         service_area = str(summary["merchant"].get("service_area") or "")
         if area and area.lower() not in service_area.lower():
             summary.setdefault("warnings", []).append("requested area may need merchant confirmation")
         summary["match_score"] = score
         results.append(summary)
-    ordered = sorted(results, key=lambda item: (-item["match_score"], item["price"], item["sku"]))
-    window_start = _safe_non_negative_int(offset)
-    window_limit = _safe_non_negative_int(limit)
-    return ordered[window_start : window_start + window_limit]
+    return results
 
 
 def search_merchants(
@@ -545,7 +549,7 @@ def search_merchants(
     query_lower = query.lower()
     query_tokens = tokenize(query_lower)
     rows = conn.execute("select * from merchants order by name, id").fetchall()
-    results: list[dict[str, Any]] = []
+    matches: list[tuple[float, str, str, sqlite3.Row]] = []
     for merchant in rows:
         if city and merchant["city"].lower() != city.lower():
             continue
@@ -568,10 +572,14 @@ def search_merchants(
                 score += 8
         if query and score <= 0:
             continue
-        summary = merchant_summary(conn, merchant["id"])
-        summary["match_score"] = round(score, 4)
-        results.append(summary)
-    ordered = sorted(results, key=lambda item: (-item["match_score"], item["name"], item["id"]))
+        matches.append((round(score, 4), str(merchant["name"]), str(merchant["id"]), merchant))
+
+    ordered = sorted(matches, key=lambda item: (-item[0], item[1], item[2]))
     window_start = _safe_non_negative_int(offset)
     window_limit = _safe_non_negative_int(limit)
-    return ordered[window_start : window_start + window_limit]
+    results: list[dict[str, Any]] = []
+    for score, _name, merchant_id, _merchant in ordered[window_start : window_start + window_limit]:
+        summary = merchant_summary(conn, merchant_id)
+        summary["match_score"] = score
+        results.append(summary)
+    return results

@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 from mai_cli.api.app import AuthError, MarketplaceASGIApp, _list_agents, route_info
 from mai_cli.api.app import create_app
+from mai_cli.core import catalog
 from mai_cli.core.tokens import token_digest
 from mai_cli.db.session import db_session
 
@@ -633,6 +634,58 @@ class PublicMarketplaceTest(unittest.TestCase):
             )
             self.assertEqual(status, 200)
             self.assertEqual(len(conversations["conversations"]), 1)
+
+    def test_search_pagination_only_hydrates_requested_window(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "marketplace.sqlite"
+            app = create_app(db_file)
+
+            for index in range(6):
+                merchant_id = f"seller-{index}"
+                status, merchant = self.request(
+                    app,
+                    "POST",
+                    "/merchants",
+                    {"id": merchant_id, "name": f"West Lake Tea {index}", "city": "Hangzhou"},
+                )
+                self.assertEqual(status, 200)
+                status, _product = self.request(
+                    app,
+                    "POST",
+                    "/products",
+                    {
+                        "merchant_id": merchant_id,
+                        "sku": f"tea-{index}",
+                        "title": f"Longjing Gift Box {index}",
+                        "price": 80 + index,
+                        "stock": 5,
+                        "tags": ["longjing"],
+                        "merchant_token": merchant["merchant_token"],
+                    },
+                )
+                self.assertEqual(status, 200)
+
+            with patch("mai_cli.core.catalog.product_summary", wraps=catalog.product_summary) as product_summary:
+                status, products = self.request(
+                    app,
+                    "GET",
+                    "/search/products",
+                    query_string="query=longjing&limit=2&offset=2",
+                )
+            self.assertEqual(status, 200)
+            self.assertEqual([product["sku"] for product in products["results"]], ["tea-2", "tea-3"])
+            self.assertEqual(product_summary.call_count, 2)
+
+            with patch("mai_cli.core.catalog.merchant_summary", wraps=catalog.merchant_summary) as merchant_summary:
+                status, merchants = self.request(
+                    app,
+                    "GET",
+                    "/search/merchants",
+                    query_string="query=west&city=Hangzhou&limit=2&offset=2",
+                )
+            self.assertEqual(status, 200)
+            self.assertEqual([merchant["id"] for merchant in merchants["results"]], ["seller-2", "seller-3"])
+            self.assertEqual(merchant_summary.call_count, 2)
 
     def test_route_metadata_matches_fastapi_and_fallback_apps(self):
         expected = {route.path: set(route.methods) for route in route_info()}
