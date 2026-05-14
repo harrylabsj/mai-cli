@@ -12,6 +12,7 @@ from unittest.mock import patch
 from mai_cli.api.app import AuthError, MarketplaceASGIApp, _list_agents, _resolve_agent_token, route_info
 from mai_cli.api.app import create_app
 from mai_cli.core import catalog
+from mai_cli.core.conversations import conversation_summary
 from mai_cli.core.tokens import token_digest
 from mai_cli.db.session import db_session
 
@@ -4035,6 +4036,51 @@ class PublicMarketplaceTest(unittest.TestCase):
                 [review["conversation_id"] for review in queue["reviews"]],
                 ["CONV-0004", "CONV-0003"],
             )
+
+    def test_human_review_queue_uses_joined_review_summaries(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "marketplace.sqlite"
+            app = create_app(db_file)
+            status, merchant = self.request(app, "POST", "/merchants", {"id": "seller-a", "name": "West Lake Tea"})
+            self.assertEqual(status, 200)
+            merchant_token = merchant["merchant_token"]
+
+            status, _conversation = self.request(
+                app,
+                "POST",
+                "/conversations",
+                {
+                    "buyer_id": "alice",
+                    "merchant_id": "seller-a",
+                    "text": "Needs human review",
+                },
+            )
+            self.assertEqual(status, 200)
+            status, _review = self.request(
+                app,
+                "POST",
+                "/conversations/CONV-0001/human-review",
+                {
+                    "reason": "low_confidence",
+                    "severity": "review",
+                    "merchant_token": merchant_token,
+                },
+            )
+            self.assertEqual(status, 200)
+
+            with patch("mai_cli.api.app.conversation_summary", wraps=conversation_summary) as summary:
+                status, queue = self.request(
+                    app,
+                    "GET",
+                    "/human-review/queue",
+                    query_string="merchant_id=seller-a",
+                    headers={"authorization": f"Bearer {merchant_token}"},
+                )
+
+            self.assertEqual(status, 200)
+            self.assertEqual(queue["reviews"][0]["buyer_id"], "alice")
+            self.assertEqual(queue["reviews"][0]["merchant_id"], "seller-a")
+            self.assertEqual(summary.call_count, 0)
 
     def test_merchant_human_review_supports_limit_and_offset(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -1205,12 +1205,19 @@ def _merchant_conversations(
 
 
 def _review_summary(conn: Any, flag_row: Any) -> dict[str, Any]:
-    conversation = conversation_summary(conn, flag_row["conversation_id"])
+    row_keys = set(flag_row.keys()) if hasattr(flag_row, "keys") else set()
+    if {"merchant_id", "buyer_id"}.issubset(row_keys):
+        merchant_id = flag_row["merchant_id"]
+        buyer_id = flag_row["buyer_id"]
+    else:
+        conversation = conversation_summary(conn, flag_row["conversation_id"])
+        merchant_id = conversation["merchant_id"]
+        buyer_id = conversation["buyer_id"]
     return {
         "id": flag_row["id"],
         "conversation_id": flag_row["conversation_id"],
-        "merchant_id": conversation["merchant_id"],
-        "buyer_id": conversation["buyer_id"],
+        "merchant_id": merchant_id,
+        "buyer_id": buyer_id,
         "sku": flag_row["sku"],
         "reason": flag_row["reason"],
         "severity": flag_row["severity"],
@@ -1231,7 +1238,8 @@ def _human_review_queue(
     if not merchant_id:
         raise AuthError("merchant_id is required for human-review queue")
     sql = """
-        select f.* from moderation_flags f
+        select f.*, c.merchant_id as merchant_id, c.buyer_id as buyer_id
+        from moderation_flags f
         join conversations c on c.id = f.conversation_id
         where f.resolved_at = ''
     """
