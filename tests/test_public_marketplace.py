@@ -1075,6 +1075,19 @@ class PublicMarketplaceTest(unittest.TestCase):
             self.assertEqual(message["message"]["structured_payload"]["reason"], "suspicious_content")
             self.assertEqual(message["conversation"]["status"], "human_required")
             self.assertEqual(message["conversation"]["next_actor"], "operator")
+            self.assertEqual(
+                [flag["reason"] for flag in message["conversation"]["flags"]],
+                ["suspicious_content"],
+            )
+            status, queue = self.request(
+                app,
+                "GET",
+                "/human-review/queue",
+                query_string="merchant_id=seller-a",
+                headers={"authorization": f"Bearer {merchant_token}"},
+            )
+            self.assertEqual(status, 200)
+            self.assertEqual([review["reason"] for review in queue["reviews"]], ["suspicious_content"])
 
     def test_append_message_rejects_unknown_conversation_status(self):
         with tempfile.TemporaryDirectory() as tmp:

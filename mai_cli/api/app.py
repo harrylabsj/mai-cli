@@ -822,6 +822,14 @@ def _append_conversation_message(db_path: str | Path, conversation_id: str, payl
             structured_payload=structured_payload,
             status=status,
         )
+        if str(status or "").strip() == "human_required":
+            add_flag(
+                conn,
+                conversation_id,
+                reason=str(message["structured_payload"].get("reason") or "human_required"),
+                severity=str(message["structured_payload"].get("severity") or "review"),
+                sku=conversation.get("sku") or "",
+            )
         return {"ok": True, "message": message, "conversation": conversation_summary(conn, conversation_id)}
 
 
