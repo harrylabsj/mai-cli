@@ -49,6 +49,7 @@ class ProjectShapeTest(unittest.TestCase):
             "idx_api_tokens_token_hash",
             "idx_api_tokens_merchant_role_prefix",
             "idx_agents_owner_id",
+            "idx_agent_message_processes_agent_status_updated",
             "idx_audit_events_actor_event_id",
             "idx_products_active_merchant",
             "idx_products_active_stock_price",

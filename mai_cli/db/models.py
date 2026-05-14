@@ -210,6 +210,10 @@ INDEXES = [
     on agents(owner_id, id)
     """,
     """
+    create index if not exists idx_agent_message_processes_agent_status_updated
+    on agent_message_processes(agent_id, status, updated_at, message_id)
+    """,
+    """
     create index if not exists idx_audit_events_actor_event_id
     on audit_events(actor, event, id desc)
     """,
