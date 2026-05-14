@@ -504,9 +504,9 @@ def _require_api_token(conn: Any, payload: dict[str, Any], missing_error: str = 
         """
         select role, merchant_id, buyer_id, agent_id, conversation_id, revoked_at, expires_at
         from api_tokens
-        where token = ? or token = ? or token_hash = ?
+        where token_hash = ?
         """,
-        (token, digest, digest),
+        (digest,),
     ).fetchone()
     if row is None:
         raise AuthError("invalid authorization token")

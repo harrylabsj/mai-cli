@@ -3439,6 +3439,15 @@ class PublicMarketplaceTest(unittest.TestCase):
             self.assertIn(merchant_token[:24], [row["token_prefix"] for row in rows])
             self.assertIn(agent_token[-6:], [row["token_suffix"] for row in rows])
 
+            status, hash_auth = self.request(
+                app,
+                "GET",
+                "/conversations/CONV-0001",
+                headers={"authorization": f"Bearer {token_digest(buyer_token)}"},
+            )
+            self.assertEqual(status, 403)
+            self.assertIn("invalid authorization token", hash_auth["error"])
+
     def test_agent_token_revoke_api_blocks_future_agent_access(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "marketplace.sqlite"
