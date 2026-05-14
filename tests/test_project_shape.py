@@ -41,6 +41,7 @@ class ProjectShapeTest(unittest.TestCase):
             "idx_conversations_merchant_status_updated",
             "idx_conversations_merchant_updated",
             "idx_conversations_buyer_updated",
+            "idx_conversations_buyer_merchant_sku_created",
             "idx_messages_conversation_id",
             "idx_moderation_flags_conversation_resolved",
             "idx_moderation_flags_queue",

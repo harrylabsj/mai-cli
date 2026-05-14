@@ -178,6 +178,10 @@ INDEXES = [
     on conversations(buyer_id, updated_at desc)
     """,
     """
+    create index if not exists idx_conversations_buyer_merchant_sku_created
+    on conversations(buyer_id, merchant_id, sku, created_at desc)
+    """,
+    """
     create index if not exists idx_messages_conversation_id
     on messages(conversation_id, id)
     """,
