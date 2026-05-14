@@ -190,6 +190,10 @@ INDEXES = [
     on moderation_flags(conversation_id, resolved_at, id)
     """,
     """
+    create index if not exists idx_moderation_flags_conversation_id
+    on moderation_flags(conversation_id, id)
+    """,
+    """
     create index if not exists idx_moderation_flags_queue
     on moderation_flags(resolved_at, created_at desc, id desc)
     """,
