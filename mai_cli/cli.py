@@ -1233,8 +1233,9 @@ def cmd_agent_tokens(args: argparse.Namespace) -> None:
             from api_tokens
             where merchant_id = ? and role = 'agent'
             order by created_at desc, token desc
+            limit ? offset ?
             """,
-            (args.merchant,),
+            (args.merchant, args.limit, args.offset),
         ).fetchall()
         tokens = [_agent_token_summary(row) for row in rows]
     if args.format == "text":
@@ -1949,6 +1950,8 @@ def build_parser() -> argparse.ArgumentParser:
     agent_tokens = agent_sub.add_parser("tokens", help="List scoped merchant-agent API tokens")
     agent_tokens.add_argument("--merchant", required=True)
     agent_tokens.add_argument("--merchant-token", default="")
+    agent_tokens.add_argument("--limit", type=positive_int, default=50)
+    agent_tokens.add_argument("--offset", type=non_negative_int, default=0)
     agent_tokens.add_argument("--format", choices=["text", "json"], default="text")
     agent_tokens.set_defaults(func=cmd_agent_tokens)
     agent_rotate_token = agent_sub.add_parser("rotate-token", help="Rotate a scoped merchant-agent API token")

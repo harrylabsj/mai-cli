@@ -900,7 +900,13 @@ def _create_agent_token(db_path: str | Path, payload: dict[str, Any]) -> dict[st
         return {"ok": True, "merchant_id": merchant_id, "agent_id": agent_id, "agent_token": token, "expires_at": expires_at}
 
 
-def _list_agent_tokens(db_path: str | Path, payload: dict[str, Any], merchant_id: str = "") -> dict[str, Any]:
+def _list_agent_tokens(
+    db_path: str | Path,
+    payload: dict[str, Any],
+    merchant_id: str = "",
+    limit: Any = DEFAULT_RESULT_LIMIT,
+    offset: Any = 0,
+) -> dict[str, Any]:
     with db_session(db_path) as conn:
         merchant_id = str(merchant_id or payload.get("merchant_id") or "")
         if not merchant_id:
@@ -912,8 +918,9 @@ def _list_agent_tokens(db_path: str | Path, payload: dict[str, Any], merchant_id
             from api_tokens
             where merchant_id = ? and role = 'agent'
             order by created_at desc, token desc
+            limit ? offset ?
             """,
-            (merchant_id,),
+            (merchant_id, _result_limit(limit), _result_offset(offset)),
         ).fetchall()
         return {"ok": True, "merchant_id": merchant_id, "tokens": [_agent_token_summary(row) for row in rows]}
 
@@ -1532,7 +1539,13 @@ def handle_request(
         if path == "/agents/heartbeat" and method == "POST":
             return 200, _agent_heartbeat(db_path, payload)
         if path == "/agents/tokens" and method == "GET":
-            return 200, _list_agent_tokens(db_path, payload, merchant_id=str(query.get("merchant_id") or ""))
+            return 200, _list_agent_tokens(
+                db_path,
+                payload,
+                merchant_id=str(query.get("merchant_id") or ""),
+                limit=query.get("limit"),
+                offset=query.get("offset"),
+            )
         if path == "/agents/tokens" and method == "POST":
             return 200, _create_agent_token(db_path, payload)
         if path == "/agents/tokens/revoke" and method == "POST":
@@ -1772,8 +1785,19 @@ def create_app(db_path: str | Path = "mai-cli.sqlite") -> Any:
         return _create_agent_token(db_path, _payload_with_auth(payload, authorization))
 
     @app.get("/agents/tokens")
-    def list_agent_tokens(merchant_id: str = "", authorization: str = AUTHORIZATION_HEADER) -> dict[str, Any]:
-        return _list_agent_tokens(db_path, _payload_with_auth({}, authorization), merchant_id=merchant_id)
+    def list_agent_tokens(
+        merchant_id: str = "",
+        limit: str = "",
+        offset: str = "",
+        authorization: str = AUTHORIZATION_HEADER,
+    ) -> dict[str, Any]:
+        return _list_agent_tokens(
+            db_path,
+            _payload_with_auth({}, authorization),
+            merchant_id=merchant_id,
+            limit=limit,
+            offset=offset,
+        )
 
     @app.post("/agents/tokens/revoke")
     def revoke_agent_token(payload: dict[str, Any], authorization: str = AUTHORIZATION_HEADER) -> dict[str, Any]:

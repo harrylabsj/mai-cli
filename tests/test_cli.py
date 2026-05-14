@@ -2142,6 +2142,48 @@ class MaiCliTest(unittest.TestCase):
             self.assertTrue(by_prefix[revocable["agent_token"][:24]]["revoked"])
             self.assertEqual(by_prefix[revocable["agent_token"][:24]]["revoked_at"], revoked["revoked_at"])
 
+    def test_agent_tokens_command_supports_limit_and_offset(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.run_cli(db_file, "merchant", "create", "--id", "seller-a", "--name", "West Lake Tea")
+            issued_tokens = [
+                json.loads(self.run_cli(db_file, "agent", "token", "--merchant", "seller-a", "--format", "json"))[
+                    "agent_token"
+                ]
+                for _index in range(6)
+            ]
+            conn = sqlite3.connect(db_file)
+            try:
+                for index, token in enumerate(issued_tokens):
+                    conn.execute(
+                        "update api_tokens set created_at = ? where token_hash = ?",
+                        (f"2026-01-01T00:00:0{index}", token_digest(token)),
+                    )
+                conn.commit()
+            finally:
+                conn.close()
+
+            listed = json.loads(
+                self.run_cli(
+                    db_file,
+                    "agent",
+                    "tokens",
+                    "--merchant",
+                    "seller-a",
+                    "--limit",
+                    "2",
+                    "--offset",
+                    "2",
+                    "--format",
+                    "json",
+                )
+            )
+
+            self.assertEqual(
+                [token["token_prefix"] for token in listed["tokens"]],
+                [issued_tokens[3][:24], issued_tokens[2][:24]],
+            )
+
     def test_agent_tokens_text_output_is_readable_without_secret(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"
