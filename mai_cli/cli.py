@@ -1863,7 +1863,11 @@ def build_parser() -> argparse.ArgumentParser:
     conversation_message.set_defaults(func=cmd_conversation_message)
     conversation_close = conversation_sub.add_parser("close", help="Close a conversation")
     conversation_close.add_argument("--conversation", required=True)
-    conversation_close.add_argument("--sender", default="operator")
+    conversation_close.add_argument(
+        "--sender",
+        default="operator",
+        choices=["buyer", "buyer_cli", "merchant_agent", "merchant", "operator"],
+    )
     conversation_close.add_argument("--intent", default="support")
     conversation_close.add_argument("--text", default="")
     conversation_close.add_argument("--source-id", default="")

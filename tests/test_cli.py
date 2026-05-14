@@ -2840,6 +2840,37 @@ class MaiCliTest(unittest.TestCase):
             self.assertIn("Next actor: -", output)
             self.assertNotIn('"conversation"', output)
 
+    def test_conversation_close_rejects_unknown_sender(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.run_cli(db_file, "merchant", "create", "--id", "seller-a", "--name", "West Lake Tea")
+            self.run_cli(
+                db_file,
+                "conversation",
+                "create",
+                "--buyer",
+                "alice",
+                "--merchant",
+                "seller-a",
+                "--text",
+                "Is this available?",
+            )
+
+            stderr = StringIO()
+            with redirect_stderr(stderr), self.assertRaises(SystemExit) as raised:
+                self.run_cli(
+                    db_file,
+                    "conversation",
+                    "close",
+                    "--conversation",
+                    "CONV-0001",
+                    "--sender",
+                    "unknown_sender",
+                )
+
+            self.assertEqual(raised.exception.code, 2)
+            self.assertIn("invalid choice", stderr.getvalue())
+
     def test_conversation_human_review_text_output_summarizes_flag(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"
