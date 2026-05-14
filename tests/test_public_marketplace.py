@@ -2365,6 +2365,7 @@ class PublicMarketplaceTest(unittest.TestCase):
             )
             self.assertEqual(status, 200)
             self.assertEqual(buyer_close["conversation"]["status"], "closed")
+            self.assertIn("conversation_closed", [event["event"] for event in buyer_close["conversation"]["audit_events"]])
 
             status, merchant_close_conversation = self.request(
                 app,
@@ -2629,6 +2630,89 @@ class PublicMarketplaceTest(unittest.TestCase):
             self.assertEqual(status, 200)
             self.assertEqual(final["conversation"]["status"], "waiting_buyer")
             self.assertEqual(final["conversation"]["messages"][-1]["structured_payload"]["review_id"], second_review_id)
+
+    def test_human_review_close_resolution_records_conversation_closed_audit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "marketplace.sqlite"
+            app = create_app(db_file)
+
+            status, merchant = self.request(app, "POST", "/merchants", {"id": "seller-a", "name": "West Lake Tea"})
+            self.assertEqual(status, 200)
+            merchant_token = merchant["merchant_token"]
+            status, _first_conversation = self.request(
+                app,
+                "POST",
+                "/conversations",
+                {
+                    "buyer_id": "alice",
+                    "merchant_id": "seller-a",
+                    "text": "Can I get a private discount?",
+                },
+            )
+            self.assertEqual(status, 200)
+            status, first_review = self.request(
+                app,
+                "POST",
+                "/conversations/CONV-0001/human-review",
+                {"reason": "low_confidence", "merchant_token": merchant_token},
+            )
+            self.assertEqual(status, 200)
+
+            status, closed_by_id = self.request(
+                app,
+                "POST",
+                f"/human-review/{first_review['review']['id']}/resolve",
+                {
+                    "action": "close",
+                    "sender": "merchant",
+                    "text": "Closing after human review.",
+                    "merchant_token": merchant_token,
+                },
+            )
+            self.assertEqual(status, 200)
+            self.assertEqual(closed_by_id["conversation"]["status"], "closed")
+            self.assertIn("human_review_resolved", [event["event"] for event in closed_by_id["conversation"]["audit_events"]])
+            self.assertIn("conversation_closed", [event["event"] for event in closed_by_id["conversation"]["audit_events"]])
+
+            status, _second_conversation = self.request(
+                app,
+                "POST",
+                "/conversations",
+                {
+                    "buyer_id": "bob",
+                    "merchant_id": "seller-a",
+                    "text": "Please review this too.",
+                },
+            )
+            self.assertEqual(status, 200)
+            status, _second_review = self.request(
+                app,
+                "POST",
+                "/conversations/CONV-0002/human-review",
+                {"reason": "suspicious_content", "merchant_token": merchant_token},
+            )
+            self.assertEqual(status, 200)
+
+            status, closed_by_conversation = self.request(
+                app,
+                "POST",
+                "/conversations/CONV-0002/human-review/resolve",
+                {
+                    "action": "close",
+                    "sender": "merchant",
+                    "merchant_token": merchant_token,
+                },
+            )
+            self.assertEqual(status, 200)
+            self.assertEqual(closed_by_conversation["conversation"]["status"], "closed")
+            self.assertIn(
+                "human_review_resolved",
+                [event["event"] for event in closed_by_conversation["conversation"]["audit_events"]],
+            )
+            self.assertIn(
+                "conversation_closed",
+                [event["event"] for event in closed_by_conversation["conversation"]["audit_events"]],
+            )
 
     def test_human_review_api_normalizes_blank_reason_and_severity(self):
         with tempfile.TemporaryDirectory() as tmp:

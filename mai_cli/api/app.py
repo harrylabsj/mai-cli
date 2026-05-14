@@ -850,6 +850,7 @@ def _close_conversation(db_path: str | Path, conversation_id: str, payload: dict
             raise SystemExit(f"Unknown conversation sender: {sender}")
         if conversation["status"] == "closed":
             raise SystemExit(f"Conversation {conversation_id} is closed")
+        next_actor = next_actor_for_status("closed")
         if payload.get("text"):
             append_message(
                 conn,
@@ -861,13 +862,25 @@ def _close_conversation(db_path: str | Path, conversation_id: str, payload: dict
                 status="closed",
             )
         else:
-            next_actor = next_actor_for_status("closed")
             conn.execute(
                 "update conversations set status = 'closed', next_actor = ?, updated_at = ?, last_sender = ? where id = ?",
                 (next_actor, now_iso(), sender, conversation_id),
             )
-            append_audit_event(conn, conversation_id, sender, "conversation_closed", {"next_actor": next_actor})
+        _append_conversation_closed_audit(conn, conversation_id, sender, next_actor)
         return {"ok": True, "conversation": conversation_summary(conn, conversation_id)}
+
+
+def _append_conversation_closed_audit(
+    conn: Any,
+    conversation_id: str,
+    actor: str,
+    next_actor: str,
+    details: dict[str, Any] | None = None,
+) -> None:
+    payload: dict[str, Any] = {"next_actor": next_actor}
+    if details:
+        payload.update(details)
+    append_audit_event(conn, conversation_id, actor, "conversation_closed", payload)
 
 
 def _agent_heartbeat(db_path: str | Path, payload: dict[str, Any]) -> dict[str, Any]:
@@ -1448,6 +1461,14 @@ def _resolve_human_review_item(db_path: str | Path, review_id: str | int, payloa
                 "remaining_unresolved_reviews": int(remaining or 0),
             },
         )
+        if status == "closed":
+            _append_conversation_closed_audit(
+                conn,
+                conversation_id,
+                payload.get("source_id") or sender,
+                next_actor,
+                {"resolution": action, "review_id": int(review_id), "source": "human_review"},
+            )
         review = _review_summary(conn, _human_review_row(conn, review_id))
         rows = conn.execute(
             "select * from moderation_flags where conversation_id = ? order by id",
@@ -1483,6 +1504,7 @@ def _resolve_human_review(db_path: str | Path, conversation_id: str, payload: di
         )
         if resolved.rowcount == 0:
             raise SystemExit(f"No unresolved human reviews for conversation: {conversation_id}")
+        next_actor = next_actor_for_status(status)
         if payload.get("text"):
             append_message(
                 conn,
@@ -1494,17 +1516,24 @@ def _resolve_human_review(db_path: str | Path, conversation_id: str, payload: di
                 status=status,
             )
         else:
-            next_actor = next_actor_for_status(status)
             conn.execute(
                 "update conversations set status = ?, next_actor = ?, updated_at = ?, last_sender = ? where id = ?",
                 (status, next_actor, now, sender, conversation_id),
             )
-            append_audit_event(
+        append_audit_event(
+            conn,
+            conversation_id,
+            payload.get("source_id") or sender,
+            "human_review_resolved",
+            {"resolution": action, "status": status, "next_actor": next_actor},
+        )
+        if status == "closed":
+            _append_conversation_closed_audit(
                 conn,
                 conversation_id,
-                sender,
-                "human_review_resolved",
-                {"resolution": action, "status": status, "next_actor": next_actor},
+                payload.get("source_id") or sender,
+                next_actor,
+                {"resolution": action, "source": "human_review"},
             )
         rows = conn.execute(
             "select * from moderation_flags where conversation_id = ? order by id",
