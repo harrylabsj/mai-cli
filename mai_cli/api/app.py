@@ -1985,12 +1985,12 @@ def create_app(db_path: str | Path = "mai-cli.sqlite") -> Any:
         )
 
     @app.get("/human-review/{review_id}")
-    def get_human_review(review_id: int, authorization: str = AUTHORIZATION_HEADER) -> dict[str, Any]:
+    def get_human_review(review_id: str, authorization: str = AUTHORIZATION_HEADER) -> dict[str, Any]:
         return _get_human_review(db_path, review_id, _payload_with_auth({}, authorization))
 
     @app.post("/human-review/{review_id}/resolve")
     def resolve_human_review_item(
-        review_id: int,
+        review_id: str,
         payload: dict[str, Any],
         authorization: str = AUTHORIZATION_HEADER,
     ) -> dict[str, Any]:

@@ -418,6 +418,25 @@ class PublicMarketplaceTest(unittest.TestCase):
         self.assertEqual(signature.parameters["limit"].annotation, "str")
         self.assertEqual(signature.parameters["offset"].annotation, "str")
 
+    def test_fastapi_human_review_id_validation_stays_in_app_layer(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "marketplace.sqlite"
+            with patch("mai_cli.api.app.FastAPI", FakeFastAPI):
+                app = create_app(db_file)
+
+        for path, method in (
+            ("/human-review/{review_id}", "GET"),
+            ("/human-review/{review_id}/resolve", "POST"),
+        ):
+            endpoint = next(
+                route.endpoint
+                for route in app.routes
+                if route.path == path and method in route.methods
+            )
+            with self.subTest(path=path, method=method):
+                signature = inspect.signature(endpoint)
+                self.assertEqual(signature.parameters["review_id"].annotation, "str")
+
     def test_fastapi_conversation_reads_require_owner_token(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "marketplace.sqlite"
