@@ -52,7 +52,13 @@ from mai_cli.db.session import db_session, decode_json, now_iso
 from mai_cli.llm.dispatcher import HTTPMarketplaceToolDispatcher, MarketplaceToolDispatcher
 from mai_cli.llm.prompts import buyer_system_prompt, merchant_system_prompt
 from mai_cli.llm.providers import provider_from_env
-from mai_cli.llm.runner import run_marketplace_tool_loop
+from mai_cli.llm.runner import (
+    MAX_LLM_PROVIDER_RETRIES,
+    MAX_LLM_PROVIDER_RETRY_DELAY_SECONDS,
+    MAX_LLM_TOOL_CALL_BUDGET,
+    MAX_LLM_TOOL_LOOP_STEPS,
+    run_marketplace_tool_loop,
+)
 
 MAX_SQLITE_INTEGER = 2**63 - 1
 
@@ -115,6 +121,43 @@ def positive_seconds(value: str) -> int:
     if seconds <= 0:
         raise argparse.ArgumentTypeError("must be greater than 0")
     return seconds
+
+
+def positive_int_at_most(maximum: int) -> Any:
+    def parse(value: str) -> int:
+        number = positive_int(value)
+        if number > maximum:
+            raise argparse.ArgumentTypeError(f"must be <= {maximum}")
+        return number
+
+    return parse
+
+
+def non_negative_int_at_most(maximum: int) -> Any:
+    def parse(value: str) -> int:
+        number = non_negative_int(value)
+        if number > maximum:
+            raise argparse.ArgumentTypeError(f"must be <= {maximum}")
+        return number
+
+    return parse
+
+
+def non_negative_float_at_most(maximum: float) -> Any:
+    def parse(value: str) -> float:
+        try:
+            number = float(value)
+        except (TypeError, ValueError) as exc:
+            raise argparse.ArgumentTypeError("must be a number") from exc
+        if not math.isfinite(number):
+            raise argparse.ArgumentTypeError("must be finite")
+        if number < 0:
+            raise argparse.ArgumentTypeError("must be non-negative")
+        if number > maximum:
+            raise argparse.ArgumentTypeError(f"must be <= {maximum:g}")
+        return number
+
+    return parse
 
 
 def tcp_port(value: str) -> int:
@@ -2096,10 +2139,14 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["buyer", "buyer_cli", "merchant", "merchant_agent", "local_trusted", "operator"],
         default="",
     )
-    llm_run.add_argument("--max-steps", type=int, default=4)
-    llm_run.add_argument("--max-tool-calls", type=int, default=None)
-    llm_run.add_argument("--provider-retries", type=int, default=0)
-    llm_run.add_argument("--provider-retry-delay-seconds", type=float, default=0.0)
+    llm_run.add_argument("--max-steps", type=positive_int_at_most(MAX_LLM_TOOL_LOOP_STEPS), default=4)
+    llm_run.add_argument("--max-tool-calls", type=non_negative_int_at_most(MAX_LLM_TOOL_CALL_BUDGET), default=None)
+    llm_run.add_argument("--provider-retries", type=non_negative_int_at_most(MAX_LLM_PROVIDER_RETRIES), default=0)
+    llm_run.add_argument(
+        "--provider-retry-delay-seconds",
+        type=non_negative_float_at_most(MAX_LLM_PROVIDER_RETRY_DELAY_SECONDS),
+        default=0.0,
+    )
     llm_run.add_argument("--format", choices=["text", "json"], default="text")
     llm_run.set_defaults(func=cmd_llm_run)
 

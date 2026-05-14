@@ -103,6 +103,29 @@ class MaiCliTest(unittest.TestCase):
                 self.assertEqual(caught.exception.code, 2)
                 self.assertIn(expected_error, stderr.getvalue())
 
+    def test_llm_run_budget_args_report_invalid_values_cleanly(self):
+        from mai_cli import cli
+
+        base_args = ["llm", "run", "--actor", "alice", "--text", "find tea"]
+        cases = [
+            (["--max-steps", "0"], "must be greater than 0"),
+            (["--max-steps", "17"], "must be <= 16"),
+            (["--max-tool-calls", "-1"], "must be non-negative"),
+            (["--max-tool-calls", "65"], "must be <= 64"),
+            (["--provider-retries", "-1"], "must be non-negative"),
+            (["--provider-retries", "6"], "must be <= 5"),
+            (["--provider-retry-delay-seconds", "nan"], "must be finite"),
+            (["--provider-retry-delay-seconds", "-1"], "must be non-negative"),
+            (["--provider-retry-delay-seconds", "61"], "must be <= 60"),
+        ]
+        for option_args, expected_error in cases:
+            with self.subTest(option_args=option_args):
+                stderr = StringIO()
+                with redirect_stderr(stderr), self.assertRaises(SystemExit) as caught:
+                    cli.build_parser().parse_args([*base_args, *option_args])
+                self.assertEqual(caught.exception.code, 2)
+                self.assertIn(expected_error, stderr.getvalue())
+
     def test_legacy_import_text_output_is_readable(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"
