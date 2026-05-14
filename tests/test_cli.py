@@ -4,7 +4,7 @@ import sqlite3
 import sys
 import tempfile
 import unittest
-from contextlib import redirect_stderr, redirect_stdout
+from contextlib import closing, redirect_stderr, redirect_stdout
 from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
@@ -2839,6 +2839,14 @@ class MaiCliTest(unittest.TestCase):
             self.assertIn("Status: closed", output)
             self.assertIn("Next actor: -", output)
             self.assertNotIn('"conversation"', output)
+            with closing(sqlite3.connect(db_file)) as conn:
+                events = [
+                    row[0]
+                    for row in conn.execute(
+                        "select event from audit_events where conversation_id = 'CONV-0001' order by id"
+                    ).fetchall()
+                ]
+            self.assertIn("conversation_closed", events)
 
     def test_conversation_close_rejects_unknown_sender(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -3495,6 +3503,102 @@ class MaiCliTest(unittest.TestCase):
             )
             self.assertEqual(final["conversation"]["status"], "waiting_buyer")
             self.assertEqual(final["conversation"]["messages"][-1]["structured_payload"]["review_id"], second_review_id)
+
+    def test_human_review_close_resolution_records_cli_conversation_closed_audit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.run_cli(db_file, "merchant", "create", "--id", "seller-a", "--name", "West Lake Tea")
+            self.run_cli(
+                db_file,
+                "conversation",
+                "create",
+                "--buyer",
+                "alice",
+                "--merchant",
+                "seller-a",
+                "--text",
+                "Can I get a private discount?",
+            )
+            first = json.loads(
+                self.run_cli(
+                    db_file,
+                    "conversation",
+                    "human-review",
+                    "--conversation",
+                    "CONV-0001",
+                    "--reason",
+                    "low_confidence",
+                    "--format",
+                    "json",
+                )
+            )
+            first_review_id = first["review"]["id"]
+
+            closed_by_id = json.loads(
+                self.run_cli(
+                    db_file,
+                    "human-review",
+                    "resolve",
+                    "--review",
+                    str(first_review_id),
+                    "--action",
+                    "close",
+                    "--sender",
+                    "merchant",
+                    "--text",
+                    "Closing after human review.",
+                    "--format",
+                    "json",
+                )
+            )
+            self.assertEqual(closed_by_id["conversation"]["status"], "closed")
+            self.assertIn("human_review_resolved", [event["event"] for event in closed_by_id["conversation"]["audit_events"]])
+            self.assertIn("conversation_closed", [event["event"] for event in closed_by_id["conversation"]["audit_events"]])
+
+            self.run_cli(
+                db_file,
+                "conversation",
+                "create",
+                "--buyer",
+                "bob",
+                "--merchant",
+                "seller-a",
+                "--text",
+                "Please review this too.",
+            )
+            self.run_cli(
+                db_file,
+                "conversation",
+                "human-review",
+                "--conversation",
+                "CONV-0002",
+                "--reason",
+                "suspicious_content",
+            )
+            closed_by_conversation = json.loads(
+                self.run_cli(
+                    db_file,
+                    "conversation",
+                    "resolve-review",
+                    "--conversation",
+                    "CONV-0002",
+                    "--action",
+                    "close",
+                    "--sender",
+                    "merchant",
+                    "--format",
+                    "json",
+                )
+            )
+            self.assertEqual(closed_by_conversation["conversation"]["status"], "closed")
+            self.assertIn(
+                "human_review_resolved",
+                [event["event"] for event in closed_by_conversation["conversation"]["audit_events"]],
+            )
+            self.assertIn(
+                "conversation_closed",
+                [event["event"] for event in closed_by_conversation["conversation"]["audit_events"]],
+            )
 
     def test_human_review_resolve_rejects_closed_conversation(self):
         with tempfile.TemporaryDirectory() as tmp:

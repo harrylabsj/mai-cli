@@ -651,9 +651,23 @@ def cmd_conversation_message(args: argparse.Namespace) -> None:
     emit({"ok": True, "message": message, "conversation": conversation}, args.format)
 
 
+def append_conversation_closed_audit(
+    conn: Any,
+    conversation_id: str,
+    actor: str,
+    next_actor: str,
+    details: dict[str, Any] | None = None,
+) -> None:
+    payload: dict[str, Any] = {"next_actor": next_actor}
+    if details:
+        payload.update(details)
+    append_audit_event(conn, conversation_id, actor, "conversation_closed", payload)
+
+
 def cmd_conversation_close(args: argparse.Namespace) -> None:
     with db_session(db_path_from_args(args)) as conn:
         require_open_conversation(conn, args.conversation)
+        next_actor = next_actor_for_status("closed")
         if args.text:
             append_message(
                 conn,
@@ -665,12 +679,11 @@ def cmd_conversation_close(args: argparse.Namespace) -> None:
                 status="closed",
             )
         else:
-            next_actor = next_actor_for_status("closed")
             conn.execute(
                 "update conversations set status = 'closed', next_actor = ?, updated_at = ?, last_sender = ? where id = ?",
                 (next_actor, now_iso(), args.sender, args.conversation),
             )
-            append_audit_event(conn, args.conversation, args.sender, "conversation_closed", {"next_actor": next_actor})
+        append_conversation_closed_audit(conn, args.conversation, args.sender, next_actor)
         conversation = conversation_summary(conn, args.conversation)
     if args.format == "text":
         print(f"Conversation closed: {conversation['id']}")
@@ -745,6 +758,7 @@ def cmd_conversation_resolve_review(args: argparse.Namespace) -> None:
         )
         if resolved.rowcount == 0:
             raise SystemExit(f"No unresolved human reviews for conversation: {args.conversation}")
+        next_actor = next_actor_for_status(status)
         if args.text:
             append_message(
                 conn,
@@ -756,17 +770,24 @@ def cmd_conversation_resolve_review(args: argparse.Namespace) -> None:
                 status=status,
             )
         else:
-            next_actor = next_actor_for_status(status)
             conn.execute(
                 "update conversations set status = ?, next_actor = ?, updated_at = ?, last_sender = ? where id = ?",
                 (status, next_actor, now, args.sender, args.conversation),
             )
-            append_audit_event(
+        append_audit_event(
+            conn,
+            args.conversation,
+            args.source_id or args.sender,
+            "human_review_resolved",
+            {"resolution": args.action, "status": status, "next_actor": next_actor},
+        )
+        if status == "closed":
+            append_conversation_closed_audit(
                 conn,
                 args.conversation,
-                args.sender,
-                "human_review_resolved",
-                {"resolution": args.action, "status": status, "next_actor": next_actor},
+                args.source_id or args.sender,
+                next_actor,
+                {"resolution": args.action, "source": "human_review"},
             )
         rows = conn.execute("select id from moderation_flags where conversation_id = ? order by id", (args.conversation,)).fetchall()
         reviews = [_review_summary(conn, row["id"]) for row in rows]
@@ -1527,6 +1548,14 @@ def cmd_human_review_resolve(args: argparse.Namespace) -> None:
                 "remaining_unresolved_reviews": int(remaining or 0),
             },
         )
+        if status == "closed":
+            append_conversation_closed_audit(
+                conn,
+                conversation_id,
+                args.source_id or args.sender,
+                next_actor,
+                {"resolution": args.action, "review_id": review_id, "source": "human_review"},
+            )
         review = _review_summary(conn, review_id)
         rows = conn.execute("select id from moderation_flags where conversation_id = ? order by id", (conversation_id,)).fetchall()
         reviews = [_review_summary(conn, row["id"]) for row in rows]
