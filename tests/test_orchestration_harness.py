@@ -5,13 +5,33 @@ from pathlib import Path
 
 from mai_cli.agents import buyer_cli, merchant_agent
 from mai_cli.core.catalog import create_merchant, create_product
-from mai_cli.core.conversations import conversation_summary
+from mai_cli.core.conversations import conversation_summary, next_conversation_id
 from mai_cli.core.harness import abandon_agent_message, abandon_stale_agent_messages, claim_agent_message, complete_agent_message, fail_agent_message
 from mai_cli.core.tokens import token_digest
 from mai_cli.db.session import db_session, decode_json
 
 
 class OrchestrationHarnessTest(unittest.TestCase):
+    def test_next_conversation_id_reads_only_the_max_numeric_suffix(self):
+        class Cursor:
+            def fetchone(self):
+                return {"max_id": 10000}
+
+            def fetchall(self):
+                raise AssertionError("next_conversation_id should not load every conversation id")
+
+        class Connection:
+            sql = ""
+
+            def execute(self, sql):
+                self.sql = sql
+                return Cursor()
+
+        conn = Connection()
+
+        self.assertEqual(next_conversation_id(conn), "CONV-10001")
+        self.assertIn("limit 1", conn.sql.lower())
+
     def seed_conversation(self, db_file: Path) -> None:
         with db_session(db_file) as conn:
             create_merchant(

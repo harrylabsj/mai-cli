@@ -13,13 +13,18 @@ CONVERSATION_STATUSES = {"open", "waiting_merchant", "waiting_buyer", "human_req
 
 
 def next_conversation_id(conn: sqlite3.Connection) -> str:
-    rows = conn.execute("select id from conversations where id like 'CONV-%'").fetchall()
-    max_id = 0
-    for row in rows:
-        try:
-            max_id = max(max_id, int(str(row["id"]).split("-", 1)[1]))
-        except (IndexError, ValueError):
-            continue
+    row = conn.execute(
+        """
+        select cast(substr(id, 6) as integer) as max_id
+        from conversations
+        where id like 'CONV-%'
+          and substr(id, 6) <> ''
+          and substr(id, 6) not glob '*[^0-9]*'
+        order by max_id desc
+        limit 1
+        """
+    ).fetchone()
+    max_id = int(row["max_id"]) if row is not None and row["max_id"] is not None else 0
     return f"CONV-{max_id + 1:04d}"
 
 
