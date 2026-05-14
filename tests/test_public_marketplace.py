@@ -720,6 +720,36 @@ class PublicMarketplaceTest(unittest.TestCase):
             self.assertEqual([merchant["id"] for merchant in merchants["results"]], ["seller-2", "seller-3"])
             self.assertEqual(merchant_summary.call_count, 2)
 
+    def test_product_search_pushes_simple_filters_into_sql(self):
+        class EmptyCursor:
+            def fetchall(self):
+                return []
+
+        class RecordingConnection:
+            sql = ""
+            params = ()
+
+            def execute(self, sql, params=()):
+                self.sql = " ".join(sql.split()).lower()
+                self.params = tuple(params)
+                return EmptyCursor()
+
+        conn = RecordingConnection()
+
+        results = catalog.search_products(
+            conn,
+            query="longjing",
+            city="Hangzhou",
+            max_price=100,
+            include_out_of_stock=False,
+        )
+
+        self.assertEqual(results, [])
+        self.assertIn("lower(m.city) = lower(?)", conn.sql)
+        self.assertIn("p.price <= ?", conn.sql)
+        self.assertIn("p.stock > 0", conn.sql)
+        self.assertEqual(conn.params, ("Hangzhou", 100.0))
+
     def test_route_metadata_matches_fastapi_and_fallback_apps(self):
         expected = {route.path: set(route.methods) for route in route_info()}
         with tempfile.TemporaryDirectory() as tmp:

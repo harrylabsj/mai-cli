@@ -510,15 +510,23 @@ def search_products(
     area = str(area or "").strip()
     if max_price is not None:
         max_price = _finite_float(max_price, "--max-price must be finite")
-    rows = conn.execute(
-        """
+    values: list[Any] = []
+    sql = """
         select p.*, m.name as merchant_name, m.city as merchant_city, m.service_area as merchant_service_area,
                m.contact as merchant_contact, m.hours as merchant_hours, m.tags_json as merchant_tags_json
         from products p
         join merchants m on m.id = p.merchant_id
         where p.active = 1
-        """
-    ).fetchall()
+    """
+    if city:
+        sql += " and lower(m.city) = lower(?)"
+        values.append(city)
+    if max_price is not None:
+        sql += " and p.price <= ?"
+        values.append(max_price)
+    if not include_out_of_stock:
+        sql += " and p.stock > 0"
+    rows = conn.execute(sql, values).fetchall()
     matches: list[tuple[float, float, str, sqlite3.Row]] = []
     for row in rows:
         merchant = _joined_product_merchant(row)
