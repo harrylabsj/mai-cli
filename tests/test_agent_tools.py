@@ -512,6 +512,15 @@ class AgentToolsBoundaryTest(unittest.TestCase):
         self.assertEqual(result["failed"], [])
         self.assertIn(("abandon_stale_messages", "mai-cli-merchant-agent:seller-a", 300), tools.calls)
 
+    def test_process_once_tolerates_oversized_claim_ttl_env(self):
+        tools = StaleAbandonMarketplaceTools()
+
+        with patch.dict(os.environ, {"MAI_AGENT_CLAIM_TTL_SECONDS": str(10**100)}, clear=False):
+            result = merchant_agent.process_once_with_tools(tools, "seller-a")
+
+        self.assertEqual(result["failed"], [])
+        self.assertIn(("abandon_stale_messages", "mai-cli-merchant-agent:seller-a", 300), tools.calls)
+
     def test_process_once_records_failed_message_for_retry_and_heartbeat_error(self):
         tools = FailingMarketplaceTools()
 

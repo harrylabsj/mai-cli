@@ -10,7 +10,7 @@ from typing import Any
 from mai_cli import VERSION
 from mai_cli.agents.buyer_cli import MVP_WARNINGS
 from mai_cli.agents.tools import DEFAULT_CAPABILITIES, MerchantAgentTools, SQLiteMerchantAgentTools, record_heartbeat
-from mai_cli.core.harness import message_idempotency_key
+from mai_cli.core.harness import MAX_STALE_TTL_SECONDS, message_idempotency_key
 from mai_cli.core.risk import human_review_reason
 
 
@@ -53,9 +53,9 @@ def _positive_message_id(value: Any) -> int:
 def _claim_ttl_seconds_from_env() -> int:
     try:
         seconds = int(os.environ.get("MAI_AGENT_CLAIM_TTL_SECONDS") or "300")
-    except ValueError:
+    except (OverflowError, TypeError, ValueError):
         return 300
-    return seconds if seconds > 0 else 300
+    return seconds if 0 < seconds <= MAX_STALE_TTL_SECONDS else 300
 
 
 def heartbeat(
