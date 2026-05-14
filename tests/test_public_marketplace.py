@@ -264,7 +264,7 @@ class PublicMarketplaceTest(unittest.TestCase):
 
             self.assertEqual(status, 400)
             self.assertFalse(body["ok"])
-            self.assertIn("id", body["error"])
+            self.assertIn("invalid JSON request body", body["error"])
 
     def test_fallback_asgi_rejects_non_object_json_body(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -283,7 +283,7 @@ class PublicMarketplaceTest(unittest.TestCase):
 
             self.assertEqual(status, 400)
             self.assertFalse(body["ok"])
-            self.assertIn("id", body["error"])
+            self.assertIn("JSON request body must be an object", body["error"])
 
     def test_api_factory_exposes_consultation_routes_and_initializes_sqlite(self):
         with tempfile.TemporaryDirectory() as tmp:

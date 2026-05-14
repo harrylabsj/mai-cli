@@ -100,9 +100,25 @@ class MarketplaceASGIApp:
                 break
         try:
             decoded_payload = json.loads(b"".join(chunks).decode("utf-8") or "{}")
-            payload = decoded_payload if isinstance(decoded_payload, dict) else {}
         except (UnicodeDecodeError, json.JSONDecodeError):
-            payload = {}
+            body = json.dumps(
+                {"ok": False, "error": "invalid JSON request body"},
+                ensure_ascii=False,
+                sort_keys=True,
+            ).encode("utf-8")
+            await send({"type": "http.response.start", "status": 400, "headers": [(b"content-type", b"application/json")]})
+            await send({"type": "http.response.body", "body": body})
+            return
+        if not isinstance(decoded_payload, dict):
+            body = json.dumps(
+                {"ok": False, "error": "JSON request body must be an object"},
+                ensure_ascii=False,
+                sort_keys=True,
+            ).encode("utf-8")
+            await send({"type": "http.response.start", "status": 400, "headers": [(b"content-type", b"application/json")]})
+            await send({"type": "http.response.body", "body": body})
+            return
+        payload = decoded_payload
         headers = {
             key.decode("latin1").lower(): value.decode("latin1")
             for key, value in scope.get("headers", [])
