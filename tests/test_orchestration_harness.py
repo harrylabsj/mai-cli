@@ -7,6 +7,7 @@ from mai_cli.agents import buyer_cli, merchant_agent
 from mai_cli.core.catalog import create_merchant, create_product
 from mai_cli.core.conversations import conversation_summary
 from mai_cli.core.harness import abandon_agent_message, abandon_stale_agent_messages, claim_agent_message, complete_agent_message, fail_agent_message
+from mai_cli.core.tokens import token_digest
 from mai_cli.db.session import db_session, decode_json
 
 
@@ -349,6 +350,44 @@ class OrchestrationHarnessTest(unittest.TestCase):
             self.assertIn("next_actor", conversation_columns)
             self.assertIn("audit_events", tables)
             self.assertIn("agent_message_processes", tables)
+
+    def test_schema_migration_hashes_legacy_plaintext_api_tokens(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "legacy-tokens.sqlite"
+            raw_token = "mai_seller-a_legacy-secret"
+            conn = sqlite3.connect(db_file)
+            try:
+                conn.execute(
+                    """
+                    create table api_tokens (
+                        token text primary key,
+                        role text not null,
+                        merchant_id text not null default '',
+                        buyer_id text not null default '',
+                        created_at text not null
+                    )
+                    """
+                )
+                conn.execute(
+                    """
+                    insert into api_tokens(token, role, merchant_id, buyer_id, created_at)
+                    values (?, 'merchant', 'seller-a', '', '2026-05-14T00:00:00')
+                    """,
+                    (raw_token,),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+
+            with db_session(db_file) as conn:
+                row = conn.execute(
+                    "select token, token_hash, token_prefix, token_suffix from api_tokens"
+                ).fetchone()
+
+            self.assertEqual(row["token"], token_digest(raw_token))
+            self.assertEqual(row["token_hash"], token_digest(raw_token))
+            self.assertEqual(row["token_prefix"], raw_token[:24])
+            self.assertEqual(row["token_suffix"], raw_token[-6:])
 
     def test_suspicious_conversation_routes_to_operator_review(self):
         with tempfile.TemporaryDirectory() as tmp:

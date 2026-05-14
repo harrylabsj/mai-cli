@@ -110,6 +110,9 @@ SCHEMA = [
     """
     create table if not exists api_tokens (
         token text primary key,
+        token_hash text not null default '',
+        token_prefix text not null default '',
+        token_suffix text not null default '',
         role text not null,
         merchant_id text not null default '',
         buyer_id text not null default '',
@@ -178,6 +181,9 @@ EXTRA_COLUMNS = {
         ("resolved_by", "text not null default ''"),
     ],
     "api_tokens": [
+        ("token_hash", "text not null default ''"),
+        ("token_prefix", "text not null default ''"),
+        ("token_suffix", "text not null default ''"),
         ("agent_id", "text not null default ''"),
         ("conversation_id", "text not null default ''"),
         ("revoked_at", "text not null default ''"),

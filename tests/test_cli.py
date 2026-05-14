@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import mai  # noqa: E402
+from mai_cli.core.tokens import token_digest  # noqa: E402
 
 
 class MaiCliTest(unittest.TestCase):
@@ -1797,8 +1798,8 @@ class MaiCliTest(unittest.TestCase):
             conn = sqlite3.connect(db_file)
             try:
                 row = conn.execute(
-                    "select revoked_at from api_tokens where token = ?",
-                    (issued["agent_token"],),
+                    "select revoked_at from api_tokens where token_hash = ?",
+                    (token_digest(issued["agent_token"]),),
                 ).fetchone()
             finally:
                 conn.close()
@@ -1830,8 +1831,8 @@ class MaiCliTest(unittest.TestCase):
             conn = sqlite3.connect(db_file)
             try:
                 row = conn.execute(
-                    "select revoked_at from api_tokens where token = ?",
-                    (issued["agent_token"],),
+                    "select revoked_at from api_tokens where token_hash = ?",
+                    (token_digest(issued["agent_token"]),),
                 ).fetchone()
             finally:
                 conn.close()
@@ -1880,8 +1881,8 @@ class MaiCliTest(unittest.TestCase):
             conn = sqlite3.connect(db_file)
             try:
                 row = conn.execute(
-                    "select expires_at from api_tokens where token = ?",
-                    (issued["agent_token"],),
+                    "select expires_at from api_tokens where token_hash = ?",
+                    (token_digest(issued["agent_token"]),),
                 ).fetchone()
             finally:
                 conn.close()
@@ -1958,8 +1959,8 @@ class MaiCliTest(unittest.TestCase):
             conn = sqlite3.connect(db_file)
             try:
                 conn.execute(
-                    "update api_tokens set expires_at = ? where token = ?",
-                    ("2000-01-01T00:00:00", expiring["agent_token"]),
+                    "update api_tokens set expires_at = ? where token_hash = ?",
+                    ("2000-01-01T00:00:00", token_digest(expiring["agent_token"])),
                 )
                 conn.commit()
             finally:
@@ -2695,10 +2696,13 @@ class MaiCliTest(unittest.TestCase):
             self.assertEqual(rotated["previous_token"]["token_prefix"], old_token[:24])
             conn = sqlite3.connect(db_file)
             try:
-                old_row = conn.execute("select revoked_at from api_tokens where token = ?", (old_token,)).fetchone()
+                old_row = conn.execute(
+                    "select revoked_at from api_tokens where token_hash = ?",
+                    (token_digest(old_token),),
+                ).fetchone()
                 new_row = conn.execute(
-                    "select expires_at, revoked_at from api_tokens where token = ?",
-                    (rotated["agent_token"],),
+                    "select expires_at, revoked_at from api_tokens where token_hash = ?",
+                    (token_digest(rotated["agent_token"]),),
                 ).fetchone()
             finally:
                 conn.close()
@@ -3080,6 +3084,53 @@ class MaiCliTest(unittest.TestCase):
             )
             self.assertEqual(final["conversation"]["status"], "waiting_buyer")
             self.assertEqual(final["conversation"]["messages"][-1]["structured_payload"]["review_id"], second_review_id)
+
+    def test_human_review_resolve_rejects_closed_conversation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "mai.sqlite"
+            self.run_cli(db_file, "merchant", "create", "--id", "seller-a", "--name", "West Lake Tea")
+            self.run_cli(
+                db_file,
+                "conversation",
+                "create",
+                "--buyer",
+                "alice",
+                "--merchant",
+                "seller-a",
+                "--text",
+                "Can I get a private discount?",
+            )
+            review = json.loads(
+                self.run_cli(
+                    db_file,
+                    "conversation",
+                    "human-review",
+                    "--conversation",
+                    "CONV-0001",
+                    "--reason",
+                    "low_confidence",
+                    "--format",
+                    "json",
+                )
+            )
+            self.run_cli(db_file, "conversation", "close", "--conversation", "CONV-0001", "--sender", "operator")
+
+            with self.assertRaises(SystemExit) as raised:
+                self.run_cli(
+                    db_file,
+                    "human-review",
+                    "resolve",
+                    "--review",
+                    str(review["review"]["id"]),
+                    "--action",
+                    "reply",
+                    "--sender",
+                    "merchant",
+                    "--format",
+                    "json",
+                )
+
+            self.assertIn("Conversation CONV-0001 is closed", str(raised.exception))
 
 
 if __name__ == "__main__":

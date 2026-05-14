@@ -1,8 +1,10 @@
 import asyncio
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 from urllib.parse import urlparse
 
 from mai_cli.adapters import hermes
@@ -26,7 +28,19 @@ class Response:
 
 
 class HostAdapterAPIE2ETest(unittest.TestCase):
+    TEST_ADMIN_TOKEN = "test-admin-bootstrap-token"
+
+    def setUp(self):
+        self._env_patcher = patch.dict(os.environ, {"MAI_ADMIN_TOKEN": self.TEST_ADMIN_TOKEN}, clear=False)
+        self._env_patcher.start()
+
+    def tearDown(self):
+        self._env_patcher.stop()
+
     async def asgi_request(self, app, method, path, payload=None, query_string="", headers=None):
+        if method == "POST" and path == "/merchants" and isinstance(payload, dict):
+            payload = dict(payload)
+            payload.setdefault("admin_token", self.TEST_ADMIN_TOKEN)
         body = json.dumps(payload or {}).encode("utf-8") if payload is not None else b""
         sent = []
         received = False

@@ -44,7 +44,7 @@ from mai_cli.core.catalog import (
 )
 from mai_cli.core.channels import ingest_buyer_message
 from mai_cli.core.conversations import merchant_conversations
-from mai_cli.core.conversations import add_flag, append_message, conversation_summary, ensure_conversation
+from mai_cli.core.conversations import add_flag, append_message, conversation_summary, ensure_conversation, require_open_conversation
 from mai_cli.core.harness import append_audit_event, next_actor_for_status
 from mai_cli.core.risk import infer_intent
 from mai_cli.db.session import db_session, decode_json, now_iso
@@ -629,6 +629,7 @@ def cmd_conversation_message(args: argparse.Namespace) -> None:
 
 def cmd_conversation_close(args: argparse.Namespace) -> None:
     with db_session(db_path_from_args(args)) as conn:
+        require_open_conversation(conn, args.conversation)
         if args.text:
             append_message(
                 conn,
@@ -708,6 +709,7 @@ def cmd_conversation_human_review(args: argparse.Namespace) -> None:
 def cmd_conversation_resolve_review(args: argparse.Namespace) -> None:
     status = "closed" if args.action == "close" else "waiting_buyer"
     with db_session(db_path_from_args(args)) as conn:
+        require_open_conversation(conn, args.conversation)
         now = now_iso()
         resolved = conn.execute(
             """
@@ -1200,7 +1202,7 @@ def cmd_agent_tokens(args: argparse.Namespace) -> None:
             _require_merchant_token(conn, args.merchant, {"merchant_token": args.merchant_token})
         rows = conn.execute(
             """
-            select token, role, merchant_id, agent_id, created_at, expires_at, revoked_at
+            select token, token_hash, token_prefix, token_suffix, role, merchant_id, agent_id, created_at, expires_at, revoked_at
             from api_tokens
             where merchant_id = ? and role = 'agent'
             order by created_at desc, token desc
@@ -1233,14 +1235,7 @@ def cmd_agent_rotate_token(args: argparse.Namespace) -> None:
         if args.merchant_token:
             _require_merchant_token(conn, args.merchant, {"merchant_token": args.merchant_token})
         token = resolve_agent_token_for_cli(conn, args.merchant, args.token, args.token_prefix)
-        row = conn.execute(
-            """
-            select token, role, merchant_id, agent_id, created_at, expires_at, revoked_at
-            from api_tokens
-            where token = ?
-            """,
-            (token,),
-        ).fetchone()
+        row = _agent_token_row(conn, token)
         if row is None or row["role"] != "agent" or row["merchant_id"] != args.merchant:
             raise SystemExit("Unknown scoped agent token for merchant")
         revoked_at = row["revoked_at"] or now_iso()
@@ -1286,10 +1281,7 @@ def cmd_agent_revoke_token(args: argparse.Namespace) -> None:
         if args.merchant_token:
             _require_merchant_token(conn, args.merchant, {"merchant_token": args.merchant_token})
         token = resolve_agent_token_for_cli(conn, args.merchant, args.token, args.token_prefix)
-        row = conn.execute(
-            "select role, merchant_id, agent_id, revoked_at from api_tokens where token = ?",
-            (token,),
-        ).fetchone()
+        row = _agent_token_row(conn, token)
         if row is None or row["role"] != "agent" or row["merchant_id"] != args.merchant:
             raise SystemExit("Unknown scoped agent token for merchant")
         revoked_at = row["revoked_at"] or now_iso()
@@ -1446,6 +1438,7 @@ def cmd_human_review_resolve(args: argparse.Namespace) -> None:
         if row["resolved_at"]:
             raise SystemExit(f"Human review already resolved: {review_id}")
         conversation_id = row["conversation_id"]
+        require_open_conversation(conn, conversation_id)
         now = now_iso()
         conn.execute(
             """

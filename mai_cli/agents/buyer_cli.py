@@ -26,6 +26,7 @@ def ask(
     source_id: str = "buyer-cli",
     host: str = "",
     session_id: str = "",
+    reuse_open: bool = True,
 ) -> dict[str, Any]:
     buyer_id = str(buyer_id or "").strip()
     if not buyer_id:
@@ -41,7 +42,7 @@ def ask(
             "missing_facts": ["merchant", "product"],
         }
     selected = candidates[0]
-    conversation = ensure_conversation(conn, buyer_id, selected["merchant_id"], selected["sku"])
+    conversation = ensure_conversation(conn, buyer_id, selected["merchant_id"], selected["sku"], reuse_open=reuse_open)
     message = append_message(
         conn,
         conversation["id"],

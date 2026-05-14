@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from mai_cli import VERSION
+from mai_cli.core.tokens import is_sha256_digest, token_digest, token_prefix, token_suffix
 from mai_cli.db.models import EXTRA_COLUMNS, SCHEMA
 
 
@@ -75,11 +76,44 @@ def init_db(conn: sqlite3.Connection) -> None:
         where next_actor = ''
         """
     )
+    migrate_api_tokens_to_hashes(conn)
     conn.execute(
         "insert or ignore into meta(key, value) values('schema_version', ?)",
         (VERSION,),
     )
     conn.commit()
+
+
+def migrate_api_tokens_to_hashes(conn: sqlite3.Connection) -> None:
+    columns = {row["name"] for row in conn.execute("pragma table_info(api_tokens)").fetchall()}
+    if not {"token", "token_hash", "token_prefix", "token_suffix"}.issubset(columns):
+        return
+    rows = conn.execute("select token, token_hash, token_prefix, token_suffix from api_tokens").fetchall()
+    for row in rows:
+        stored = str(row["token"] or "")
+        stored_hash = str(row["token_hash"] or "")
+        if is_sha256_digest(stored) and stored_hash == stored:
+            continue
+        if stored_hash and is_sha256_digest(stored):
+            conn.execute(
+                """
+                update api_tokens
+                set token_hash = ?, token_prefix = coalesce(nullif(token_prefix, ''), ?),
+                    token_suffix = coalesce(nullif(token_suffix, ''), ?)
+                where token = ?
+                """,
+                (stored, row["token_prefix"] or stored[:24], row["token_suffix"] or stored[-6:], stored),
+            )
+            continue
+        digest = token_digest(stored)
+        conn.execute(
+            """
+            update api_tokens
+            set token = ?, token_hash = ?, token_prefix = ?, token_suffix = ?
+            where token = ?
+            """,
+            (digest, digest, token_prefix(stored), token_suffix(stored), stored),
+        )
 
 
 @contextmanager

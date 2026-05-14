@@ -13,6 +13,9 @@ services:
       - "8765"
     ports:
       - "${MAI_API_BIND:-127.0.0.1}:${MAI_API_PORT:-8765}:8765"
+    environment:
+      MAI_ADMIN_TOKEN: "${MAI_ADMIN_TOKEN:?set MAI_ADMIN_TOKEN before starting mai-api}"
+      MAI_CHANNEL_TOKENS: "${MAI_CHANNEL_TOKENS:-}"
     volumes:
       - mai_api_data:/data
     restart: unless-stopped

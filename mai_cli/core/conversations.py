@@ -28,6 +28,7 @@ def ensure_conversation(
     buyer_id: str,
     merchant_id: str,
     sku: str = "",
+    reuse_open: bool = True,
 ) -> dict[str, Any]:
     buyer_id = str(buyer_id or "").strip()
     merchant_id = str(merchant_id or "").strip()
@@ -41,17 +42,18 @@ def ensure_conversation(
         product = require_product(conn, sku)
         if product["merchant_id"] != merchant_id:
             raise SystemExit(f"Product {sku} does not belong to merchant {merchant_id}")
-    row = conn.execute(
-        """
-        select * from conversations
-        where buyer_id = ? and merchant_id = ? and sku = ? and status != 'closed'
-        order by created_at desc
-        limit 1
-        """,
-        (buyer_id, merchant_id, sku),
-    ).fetchone()
-    if row is not None:
-        return conversation_summary(conn, row["id"])
+    if reuse_open:
+        row = conn.execute(
+            """
+            select * from conversations
+            where buyer_id = ? and merchant_id = ? and sku = ? and status != 'closed'
+            order by created_at desc
+            limit 1
+            """,
+            (buyer_id, merchant_id, sku),
+        ).fetchone()
+        if row is not None:
+            return conversation_summary(conn, row["id"])
     now = now_iso()
     conversation_id = next_conversation_id(conn)
     conn.execute(
@@ -75,6 +77,13 @@ def require_conversation(conn: sqlite3.Connection, conversation_id: str) -> sqli
     row = conn.execute("select * from conversations where id = ?", (conversation_id,)).fetchone()
     if row is None:
         raise SystemExit(f"Unknown conversation: {conversation_id}")
+    return row
+
+
+def require_open_conversation(conn: sqlite3.Connection, conversation_id: str) -> sqlite3.Row:
+    row = require_conversation(conn, conversation_id)
+    if row["status"] == "closed":
+        raise SystemExit(f"Conversation {conversation_id} is closed")
     return row
 
 
@@ -106,7 +115,7 @@ def append_message(
     structured_payload: dict[str, Any] | None = None,
     status: str | None = None,
 ) -> dict[str, Any]:
-    conversation = require_conversation(conn, conversation_id)
+    conversation = require_open_conversation(conn, conversation_id)
     if not text.strip():
         raise SystemExit("message text is required")
     now = now_iso()
@@ -163,6 +172,7 @@ def add_flag(
     severity: str = "review",
     sku: str = "",
 ) -> dict[str, Any]:
+    require_open_conversation(conn, conversation_id)
     reason = _normalize_review_text(reason, "human_required")
     severity = _normalize_review_text(severity, "review")
     sku = str(sku or "").strip()
