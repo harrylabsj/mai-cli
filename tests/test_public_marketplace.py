@@ -2934,6 +2934,67 @@ class PublicMarketplaceTest(unittest.TestCase):
             self.assertIsNone(replayed["conversation"])
             self.assertIn("No matching merchant or product found.", replayed["warnings"])
 
+    def test_channel_message_retries_stale_processing_ingress(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "marketplace.sqlite"
+            app = create_app(db_file)
+            _, merchant = self.request(app, "POST", "/merchants", {"id": "seller-a", "name": "West Lake Tea"})
+            self.request(
+                app,
+                "POST",
+                "/products",
+                {
+                    "merchant_id": "seller-a",
+                    "sku": "tea-a",
+                    "title": "Longjing Gift Box",
+                    "price": 88,
+                    "stock": 5,
+                    "tags": ["longjing"],
+                    "merchant_token": merchant["merchant_token"],
+                },
+            )
+            with db_session(db_file) as conn:
+                conn.execute(
+                    """
+                    insert into channel_message_ingresses(
+                        channel, external_user_id, external_message_id, status,
+                        conversation_id, message_id, created_at, updated_at
+                    )
+                    values (?, ?, ?, 'processing', '', 0, ?, ?)
+                    """,
+                    ("telegram", "@alice", "tg-stale-processing", "2000-01-01T00:00:00", "2000-01-01T00:00:00"),
+                )
+
+            status, retried = self.request(
+                app,
+                "POST",
+                "/channels/messages",
+                {
+                    "channel": "telegram",
+                    "external_user_id": "@alice",
+                    "external_message_id": "tg-stale-processing",
+                    "text": "longjing gift delivery today",
+                },
+            )
+
+            self.assertEqual(status, 200)
+            self.assertFalse(retried["idempotent"])
+            self.assertEqual(retried["conversation"]["id"], "CONV-0001")
+            self.assertEqual(retried["message"]["structured_payload"]["external_message_id"], "tg-stale-processing")
+            with db_session(db_file) as conn:
+                row = conn.execute(
+                    """
+                    select status, conversation_id, message_id
+                    from channel_message_ingresses
+                    where channel = 'telegram'
+                      and external_user_id = '@alice'
+                      and external_message_id = 'tg-stale-processing'
+                    """
+                ).fetchone()
+            self.assertEqual(row["status"], "processed")
+            self.assertEqual(row["conversation_id"], "CONV-0001")
+            self.assertGreater(row["message_id"], 0)
+
     def test_agent_message_process_api_enforces_merchant_boundary(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "marketplace.sqlite"

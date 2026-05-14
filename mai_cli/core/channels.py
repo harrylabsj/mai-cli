@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import sqlite3
+from datetime import datetime, timedelta
 from typing import Any
 
 from mai_cli.core.catalog import search_products
@@ -20,6 +21,7 @@ MVP_WARNINGS = [
 
 PROCESSING_STATUS = "processing"
 PROCESSED_STATUS = "processed"
+DEFAULT_PROCESSING_STALE_SECONDS = 300
 
 
 def _safe_non_negative_int(value: Any) -> int:
@@ -131,6 +133,18 @@ def _existing_ingress_response(conn: sqlite3.Connection, row: sqlite3.Row, buyer
     }
 
 
+def _processing_ingress_is_stale(row: sqlite3.Row, stale_after_seconds: int = DEFAULT_PROCESSING_STALE_SECONDS) -> bool:
+    try:
+        updated_at = datetime.fromisoformat(str(row["updated_at"] or ""))
+    except (TypeError, ValueError):
+        return True
+    try:
+        current = datetime.now(tz=updated_at.tzinfo) if updated_at.tzinfo is not None else datetime.now()
+    except TypeError:
+        return True
+    return current - updated_at > timedelta(seconds=max(int(stale_after_seconds), 1))
+
+
 def _begin_channel_ingress(
     conn: sqlite3.Connection,
     channel: str,
@@ -148,7 +162,16 @@ def _begin_channel_ingress(
         (channel, external_user_id, external_message_id),
     ).fetchone()
     if row is not None:
-        return _existing_ingress_response(conn, row, buyer_id, channel)
+        if row["status"] == PROCESSING_STATUS and _processing_ingress_is_stale(row):
+            conn.execute(
+                """
+                delete from channel_message_ingresses
+                where channel = ? and external_user_id = ? and external_message_id = ?
+                """,
+                (channel, external_user_id, external_message_id),
+            )
+        else:
+            return _existing_ingress_response(conn, row, buyer_id, channel)
     now = now_iso()
     try:
         conn.execute(
