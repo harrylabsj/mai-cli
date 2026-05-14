@@ -87,6 +87,22 @@ class MaiCliTest(unittest.TestCase):
                 self.assertEqual(caught.exception.code, 2)
                 self.assertIn("must be <= 9223372036854775807", stderr.getvalue())
 
+    def test_api_serve_port_reports_invalid_values_cleanly(self):
+        from mai_cli import cli
+
+        cases = [
+            ("bad", "must be a whole number"),
+            ("0", "must be between 1 and 65535"),
+            ("70000", "must be between 1 and 65535"),
+        ]
+        for port, expected_error in cases:
+            with self.subTest(port=port):
+                stderr = StringIO()
+                with redirect_stderr(stderr), self.assertRaises(SystemExit) as caught:
+                    cli.build_parser().parse_args(["api", "serve", "--port", port])
+                self.assertEqual(caught.exception.code, 2)
+                self.assertIn(expected_error, stderr.getvalue())
+
     def test_legacy_import_text_output_is_readable(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_file = Path(tmp) / "mai.sqlite"

@@ -117,6 +117,16 @@ def positive_seconds(value: str) -> int:
     return seconds
 
 
+def tcp_port(value: str) -> int:
+    try:
+        port = int(value)
+    except (TypeError, ValueError) as exc:
+        raise argparse.ArgumentTypeError("must be a whole number") from exc
+    if port < 1 or port > 65535:
+        raise argparse.ArgumentTypeError("must be between 1 and 65535")
+    return port
+
+
 def resolve_agent_token_for_cli(conn: Any, merchant_id: str, token: str | None, token_prefix: str | None) -> str:
     try:
         return _resolve_agent_token(conn, merchant_id, token, token_prefix)
@@ -2129,7 +2139,7 @@ def build_parser() -> argparse.ArgumentParser:
     api_routes.set_defaults(func=cmd_api_routes)
     api_serve = api_sub.add_parser("serve", help="Serve the FastAPI marketplace API")
     api_serve.add_argument("--host", default="127.0.0.1")
-    api_serve.add_argument("--port", type=int, default=8765)
+    api_serve.add_argument("--port", type=tcp_port, default=8765)
     api_serve.set_defaults(func=cmd_api_serve)
     return parser
 
