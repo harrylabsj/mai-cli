@@ -892,7 +892,7 @@ def yes_no(value: Any) -> str:
     return "yes" if value else "no"
 
 
-SECRET_VALUE_RE = re.compile(r"mai_(?:agent|buyer)_[^\s\"',]+")
+SECRET_VALUE_RE = re.compile(r"mai_(?:merchant|agent|buyer)_[^\s\"',]+")
 SECRET_KEY_RE = re.compile(
     r"((?:merchant_token|agent_token|buyer_token|auth_token|authorization)\s*[:=]\s*)(?:Bearer\s+)?[^\s\"',]+",
     re.IGNORECASE,

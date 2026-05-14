@@ -1930,11 +1930,13 @@ class MaiCliTest(unittest.TestCase):
             )
 
             self.assertEqual(issued["agent_id"], "mai-cli-merchant-agent:seller-a")
-            self.assertTrue(issued["agent_token"].startswith("mai_agent_seller-a_"))
+            self.assertTrue(issued["agent_token"].startswith("mai_agent_"))
+            self.assertNotIn("seller-a", issued["agent_token"])
 
             text_output = self.run_cli(db_file, "agent", "token", "--merchant", "seller-a")
             self.assertIn("Agent token issued for mai-cli-merchant-agent:seller-a", text_output)
-            self.assertIn("mai_agent_seller-a_", text_output)
+            self.assertIn("mai_agent_", text_output)
+            self.assertNotIn("mai_agent_seller-a_", text_output)
             self.assertNotIn('"agent_token"', text_output)
 
     def test_agent_revoke_token_command_revokes_scoped_agent_token(self):
@@ -2018,7 +2020,7 @@ class MaiCliTest(unittest.TestCase):
                     "--merchant",
                     "seller-a",
                     "--token-prefix",
-                    "mai_agent_seller-a_",
+                    "mai_agent_",
                     "--format",
                     "json",
                 )

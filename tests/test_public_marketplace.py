@@ -207,7 +207,7 @@ class PublicMarketplaceTest(unittest.TestCase):
                 return Cursor(sql)
 
         with self.assertRaises(ValueError) as raised:
-            _resolve_agent_token(Connection(), "seller-a", token_prefix="mai_agent_seller-a_")
+            _resolve_agent_token(Connection(), "seller-a", token_prefix="mai_agent_")
 
         self.assertIn("ambiguous", str(raised.exception))
 
@@ -3423,6 +3423,9 @@ class PublicMarketplaceTest(unittest.TestCase):
             )
             self.assertEqual(status, 200)
             buyer_token = created["buyer_token"]
+            self.assertNotIn("seller-a", merchant_token)
+            self.assertNotIn("seller-a", agent_token)
+            self.assertNotIn("alice", buyer_token)
 
             with db_session(db_file) as conn:
                 rows = conn.execute(
@@ -3878,7 +3881,7 @@ class PublicMarketplaceTest(unittest.TestCase):
                 app,
                 "POST",
                 "/agents/tokens/revoke",
-                {"merchant_id": "seller-a", "merchant_token": merchant_token, "token_prefix": "mai_agent_seller-a_"},
+                {"merchant_id": "seller-a", "merchant_token": merchant_token, "token_prefix": "mai_agent_"},
             )
             self.assertEqual(status, 400)
             self.assertIn("ambiguous", ambiguous["error"])

@@ -456,7 +456,7 @@ def _merchant_audit_events(
 
 
 def _issue_merchant_token(conn: Any, merchant_id: str) -> str:
-    token = f"mai_{merchant_id}_{secrets.token_urlsafe(18)}"
+    token = f"mai_merchant_{secrets.token_urlsafe(24)}"
     digest = token_digest(token)
     conn.execute(
         """
@@ -469,7 +469,7 @@ def _issue_merchant_token(conn: Any, merchant_id: str) -> str:
 
 
 def _issue_agent_token(conn: Any, merchant_id: str, agent_id: str, ttl_seconds: Any = None) -> tuple[str, str]:
-    token = f"mai_agent_{merchant_id}_{secrets.token_urlsafe(18)}"
+    token = f"mai_agent_{secrets.token_urlsafe(24)}"
     digest = token_digest(token)
     expires_at = _expires_at_from_ttl(ttl_seconds)
     conn.execute(
@@ -483,7 +483,7 @@ def _issue_agent_token(conn: Any, merchant_id: str, agent_id: str, ttl_seconds: 
 
 
 def _issue_buyer_token(conn: Any, buyer_id: str, conversation_id: str) -> str:
-    token = f"mai_buyer_{buyer_id}_{secrets.token_urlsafe(18)}"
+    token = f"mai_buyer_{secrets.token_urlsafe(24)}"
     digest = token_digest(token)
     conn.execute(
         """
