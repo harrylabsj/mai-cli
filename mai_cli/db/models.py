@@ -194,6 +194,10 @@ INDEXES = [
     on api_tokens(token_hash)
     """,
     """
+    create index if not exists idx_api_tokens_merchant_role_prefix
+    on api_tokens(merchant_id, role, token_prefix)
+    """,
+    """
     create index if not exists idx_agents_owner_id
     on agents(owner_id, id)
     """,

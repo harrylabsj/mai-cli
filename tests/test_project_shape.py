@@ -45,6 +45,7 @@ class ProjectShapeTest(unittest.TestCase):
             "idx_moderation_flags_queue",
             "idx_api_tokens_merchant_role_created",
             "idx_api_tokens_token_hash",
+            "idx_api_tokens_merchant_role_prefix",
             "idx_agents_owner_id",
             "idx_audit_events_actor_event_id",
             "idx_products_active_merchant",
